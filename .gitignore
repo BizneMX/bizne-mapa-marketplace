@@ -1,0 +1,21 @@
+# Archivos de Python
+*.pyc
+__pycache__/
+*.pdf
+
+# Archivos de datos grandes (solo el mapa va al repo)
+*.ipynb
+Bizne_*.pptx
+Bizne_*.xlsx
+build_*.js
+slide_*.jpg
+perf_*.jpg
+ctx_*.jpg
+*.log
+metro_cdmx_estaciones.csv
+dormidas_prioridad.csv
+sectores_*.csv
+bizne_priority_zones.csv
+
+# Archivos temporales
+.DS_Store
