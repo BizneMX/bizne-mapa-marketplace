@@ -1,0 +1,40 @@
+name: Actualizar Mapa Bizne PA
+
+on:
+  schedule:
+    # 8am hora México (UTC-6) = 14:00 UTC
+    - cron: '0 14 * * *'
+  workflow_dispatch:  # Permite correrlo manualmente desde GitHub
+
+jobs:
+  update-map:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: pip install -r requirements.txt
+
+      - name: Correr modelo de demanda
+        env:
+          REDASH_NEGOCIOS:      ${{ secrets.REDASH_NEGOCIOS }}
+          REDASH_USUARIOS:      ${{ secrets.REDASH_USUARIOS }}
+          REDASH_TRANSACCIONES: ${{ secrets.REDASH_TRANSACCIONES }}
+          GITHUB_ACTIONS_RUN: "true"
+        run: python3 bizne_model_ci.py
+
+      - name: Publicar mapa en GitHub Pages
+        run: |
+          git config user.email "github-actions@bizne.mx"
+          git config user.name "Bizne Bot"
+          git add index.html
+          git diff --staged --quiet && echo "Sin cambios" || git commit -m "Mapa actualizado $(date '+%Y-%m-%d %H:%M UTC')"
+          git push

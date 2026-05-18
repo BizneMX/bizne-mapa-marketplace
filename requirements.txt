@@ -1,0 +1,10 @@
+pandas
+numpy
+scipy
+scikit-learn
+folium
+h3
+hdbscan
+pykrige
+statsmodels
+requests
