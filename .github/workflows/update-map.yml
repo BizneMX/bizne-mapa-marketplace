@@ -6,6 +6,9 @@ on:
     - cron: '0 14 * * *'
   workflow_dispatch:  # Permite correrlo manualmente desde GitHub
 
+env:
+  AGENT_TOOLSDIRECTORY: /Users/alonsoavila/hostedtoolcache
+
 jobs:
   update-map:
     runs-on: self-hosted
