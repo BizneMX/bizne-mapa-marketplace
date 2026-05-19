@@ -9,6 +9,8 @@ on:
 jobs:
   update-map:
     runs-on: self-hosted
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repo
