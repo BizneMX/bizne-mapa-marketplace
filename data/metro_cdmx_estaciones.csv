@@ -1,0 +1,195 @@
+linea,nombre,lat,lng
+L1,Observatorio,19.3998,-99.1933
+L1,Tacubaya,19.4019,-99.18
+L1,Juanacatlán,19.4053,-99.1734
+L1,Chapultepec,19.4225,-99.1761
+L1,Sevilla,19.4254,-99.1673
+L1,Insurgentes,19.4263,-99.1601
+L1,Cuauhtémoc,19.4266,-99.1507
+L1,Balderas,19.427,-99.1455
+L1,Salto del Agua,19.426,-99.139
+L1,Isabel la Católica,19.4268,-99.1335
+L1,Pino Suárez,19.4257,-99.1277
+L1,Merced,19.4257,-99.1221
+L1,Candelaria,19.4262,-99.1145
+L1,San Lázaro,19.4315,-99.1103
+L1,Moctezuma,19.429,-99.1002
+L1,Balbuena,19.429,-99.0905
+L1,Blvd. Puerto Aéreo,19.4289,-99.0753
+L1,Gómez Farías,19.4197,-99.0677
+L1,Zaragoza,19.4107,-99.059
+L1,Pantitlán,19.4151,-99.0475
+L2,Cuatro Caminos,19.4975,-99.2096
+L2,Panteones,19.4933,-99.2032
+L2,Tacuba,19.4685,-99.1983
+L2,Cuitláhuac,19.4685,-99.1928
+L2,Popotla,19.465,-99.18
+L2,Colegio Militar,19.458,-99.1782
+L2,Normal,19.4545,-99.1742
+L2,San Cosme,19.4461,-99.1672
+L2,Revolución,19.4387,-99.1594
+L2,Hidalgo,19.4356,-99.1502
+L2,Bellas Artes,19.4356,-99.1431
+L2,Allende,19.4352,-99.139
+L2,Zócalo,19.4327,-99.1334
+L2,Pino Suárez,19.4257,-99.1277
+L2,San Antonio Abad,19.4143,-99.1278
+L2,Chabacano,19.4042,-99.1311
+L2,Viaducto,19.3953,-99.1338
+L2,Xola,19.3852,-99.134
+L2,Villa de Cortés,19.372,-99.133
+L2,Nativitas,19.3616,-99.1317
+L2,Portales,19.3543,-99.131
+L2,Ermita,19.3456,-99.1354
+L2,General Anaya,19.3338,-99.1354
+L2,Tasqueña,19.3175,-99.1354
+L3,Indios Verdes,19.5247,-99.1173
+L3,Deportivo 18 de Marzo,19.5006,-99.113
+L3,Potrero,19.4864,-99.113
+L3,La Raza,19.4785,-99.1334
+L3,Tlatelolco,19.4529,-99.1385
+L3,Guerrero,19.4472,-99.1488
+L3,Hidalgo,19.4356,-99.1502
+L3,Juárez,19.4318,-99.146
+L3,Balderas,19.427,-99.1455
+L3,Niños Héroes,19.4167,-99.1452
+L3,Hospital General,19.4099,-99.144
+L3,Centro Médico,19.4029,-99.1435
+L3,Etiopía/Plaza de la Transparencia,19.3939,-99.1437
+L3,Eugenia,19.3848,-99.1435
+L3,División del Norte,19.3769,-99.1435
+L3,Zapata,19.3664,-99.1432
+L3,Coyoacán,19.3541,-99.1485
+L3,Viveros/Derechos Humanos,19.3473,-99.1636
+L3,Miguel Ángel de Quevedo,19.3449,-99.1733
+L3,Copilco,19.3344,-99.1771
+L3,Universidad,19.3213,-99.1768
+L4,Santa Anita,19.3949,-99.1036
+L4,Jamaica,19.4016,-99.1074
+L4,Fray Servando,19.4206,-99.1162
+L4,Candelaria,19.4262,-99.1145
+L4,Morelos,19.4379,-99.1196
+L4,Canal del Norte,19.4494,-99.1185
+L4,Consulado,19.4603,-99.113
+L4,Bondojito,19.471,-99.11
+L4,Talisman,19.4809,-99.1059
+L4,Martín Carrera,19.4925,-99.105
+L5,Pantitlán,19.4151,-99.0475
+L5,Hangares,19.4225,-99.0641
+L5,Terminal Aérea,19.4358,-99.0721
+L5,Oceanía,19.4464,-99.0924
+L5,Aragón,19.4577,-99.1007
+L5,Eduardo Molina,19.4646,-99.1062
+L5,Consulado,19.4603,-99.113
+L5,Valle Gómez,19.4637,-99.1207
+L5,Misterios,19.4714,-99.1287
+L5,La Raza,19.4785,-99.1334
+L5,Autobuses del Norte,19.4859,-99.1459
+L5,Instituto del Petróleo,19.4939,-99.1532
+L5,Politécnico,19.4998,-99.1538
+L6,El Rosario,19.5246,-99.2046
+L6,Tezozómoc,19.5151,-99.1942
+L6,Azcapotzalco,19.5024,-99.1859
+L6,Ferrería/Arena Ciudad de México,19.4939,-99.1762
+L6,Norte 45,19.4898,-99.1659
+L6,Vallejo,19.4856,-99.1558
+L6,Instituto del Petróleo,19.4939,-99.1532
+L6,Lindavista,19.4998,-99.1423
+L6,Deportivo 18 de Marzo,19.5006,-99.113
+L6,La Villa-Basílica,19.486,-99.117
+L6,Martín Carrera,19.4925,-99.105
+L7,El Rosario,19.5246,-99.2046
+L7,Aquiles Serdán,19.5163,-99.2147
+L7,Camarones,19.5041,-99.2112
+L7,Refinería,19.4973,-99.2029
+L7,Tacuba,19.4685,-99.1983
+L7,San Joaquín,19.4373,-99.2056
+L7,Polanco,19.4326,-99.1982
+L7,Auditorio,19.4264,-99.1989
+L7,Constituyentes,19.4182,-99.2032
+L7,Tacubaya,19.4019,-99.18
+L7,San Pedro de los Pinos,19.3948,-99.1767
+L7,San Antonio,19.3863,-99.1804
+L7,Mixcoac,19.3737,-99.1861
+L7,Barranca del Muerto,19.3646,-99.1899
+L8,Garibaldi/Lagunilla,19.4442,-99.1405
+L8,Bellas Artes,19.4356,-99.1431
+L8,San Juan de Letrán,19.4288,-99.1415
+L8,Salto del Agua,19.426,-99.139
+L8,Doctores,19.4168,-99.1399
+L8,Obrera,19.4073,-99.1372
+L8,Chabacano,19.4042,-99.1311
+L8,La Viga,19.3983,-99.123
+L8,Santa Anita,19.3949,-99.1036
+L8,Coyuya,19.3949,-99.0938
+L8,Iztacalco,19.3919,-99.0833
+L8,Apatlaco,19.389,-99.0756
+L8,Aculco,19.3887,-99.0649
+L8,Escuadrón 201,19.3887,-99.0547
+L8,Atlalilco,19.3727,-99.0568
+L8,Iztapalapa,19.3637,-99.0539
+L8,Cerro de la Estrella,19.3499,-99.0519
+L8,UAM-I,19.3376,-99.05
+L8,Constitución de 1917,19.326,-99.0471
+L9,Tacubaya,19.4019,-99.18
+L9,Patriotismo,19.402,-99.1712
+L9,Mixcoac,19.3737,-99.1861
+L9,Centro Médico,19.4029,-99.1435
+L9,Lázaro Cárdenas,19.4035,-99.1325
+L9,Chabacano,19.4042,-99.1311
+L9,Jamaica,19.4016,-99.1074
+L9,Velódromo,19.4136,-99.0865
+L9,Ciudad Deportiva,19.4184,-99.0738
+L9,Puebla,19.4175,-99.0607
+L9,Pantitlán,19.4151,-99.0475
+LA,Pantitlán,19.4151,-99.0475
+LA,Agrícola Oriental,19.4073,-99.032
+LA,Canal de San Juan,19.404,-99.0209
+LA,Tepalcates,19.4038,-99.0093
+LA,Guelatao,19.4037,-98.9995
+LA,Peñón Viejo,19.4037,-98.9893
+LA,Acatitla,19.4036,-98.9781
+LA,Santa Marta,19.4036,-98.9683
+LA,Los Reyes,19.3872,-98.9671
+LA,La Paz,19.3708,-98.9603
+LB,Ciudad Azteca,19.5393,-99.0156
+LB,Plaza Aragón,19.526,-99.0251
+LB,Olimpica,19.5134,-99.0287
+LB,Ecatepec,19.5013,-99.0378
+LB,Múzquiz,19.4944,-99.0461
+LB,Río de los Remedios,19.4862,-99.0512
+LB,Impulsora,19.4791,-99.0568
+LB,Nezahualcóyotl,19.4717,-99.062
+LB,Villa de Aragón,19.4652,-99.07
+LB,Bosque de Aragón,19.462,-99.0779
+LB,Deportivo Oceanía,19.4543,-99.0898
+LB,Oceanía,19.4464,-99.0924
+LB,Romero Rubio,19.4487,-99.1019
+LB,Ricardo Flores Magón,19.4469,-99.1144
+LB,San Lázaro,19.4315,-99.1103
+LB,Morelos,19.4379,-99.1196
+LB,Tepito,19.4464,-99.1263
+LB,Guerrero,19.4472,-99.1488
+LB,Garibaldi/Lagunilla,19.4442,-99.1405
+LB,Lagunilla,19.442,-99.136
+LB,Tlatelolco,19.4529,-99.1385
+LB,Buenavista,19.4489,-99.1545
+L12,Mixcoac,19.3737,-99.1861
+L12,Insurgentes Sur,19.3685,-99.1767
+L12,Hospital 20 de Noviembre,19.3611,-99.1624
+L12,Zapata,19.3664,-99.1432
+L12,Parque de los Venados,19.3664,-99.1343
+L12,Eje Central,19.3664,-99.1254
+L12,Calle 11,19.3664,-99.1148
+L12,Lomas Estrella,19.3664,-99.1038
+L12,San Andrés Tomatlán,19.3664,-99.0929
+L12,Culhuacán,19.3664,-99.082
+L12,Atlalilco,19.3727,-99.0568
+L12,Mexicaltzingo,19.3741,-99.0489
+L12,Periférico Oriente,19.379,-99.041
+L12,Tezonco,19.3796,-99.0317
+L12,Olivos,19.3756,-99.0222
+L12,Nopalera,19.3717,-99.0125
+L12,Zapotitlán,19.3643,-99.0076
+L12,Tlaltenco,19.3598,-99.0027
+L12,Tláhuac,19.3559,-99.0001

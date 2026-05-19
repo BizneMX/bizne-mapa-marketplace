@@ -12,10 +12,13 @@ slide_*.jpg
 perf_*.jpg
 ctx_*.jpg
 *.log
-metro_cdmx_estaciones.csv
 dormidas_prioridad.csv
-sectores_*.csv
 bizne_priority_zones.csv
+# Excluir CSVs generados (raíz), pero no los estáticos en data/
+sectores_*.csv
+metro_cdmx_estaciones.csv
+!data/sectores_pa.csv
+!data/metro_cdmx_estaciones.csv
 
 # Archivos temporales
 .DS_Store
