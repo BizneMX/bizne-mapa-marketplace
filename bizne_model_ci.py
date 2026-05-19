@@ -105,7 +105,10 @@ try:
 except Exception:
     print("  ⚠ Usando cache local de negocios")
     cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_negocios_cache.csv")
-    df_biz_raw = pd.read_csv(cache) if os.path.exists(cache) else pd.DataFrame()
+    if not os.path.exists(cache):
+        print("  ❌ No hay cache de negocios disponible. Verifica el secret REDASH_NEGOCIOS en GitHub Actions.")
+        raise SystemExit(1)
+    df_biz_raw = pd.read_csv(cache)
 
 # Corregir formato de coordenadas: "197.744.668" → 19.7744668
 # El archivo tiene puntos extra mal colocados (formato regional incorrecto)
@@ -237,7 +240,10 @@ try:
 except Exception:
     print("  ⚠ Usando cache local de usuarios")
     cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_usuarios_cache.csv")
-    df_su_raw = pd.read_csv(cache) if os.path.exists(cache) else pd.DataFrame()
+    if not os.path.exists(cache):
+        print("  ❌ No hay cache de usuarios disponible. Verifica el secret REDASH_USUARIOS en GitHub Actions.")
+        raise SystemExit(1)
+    df_su_raw = pd.read_csv(cache)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], dayfirst=True)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
@@ -275,7 +281,11 @@ try:
     df_tx.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_transacciones.csv"), index=False)
 except Exception:
     print("  ⚠ Usando cache local de transacciones")
-    df_tx = pd.read_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_transacciones.csv"))
+    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_transacciones.csv")
+    if not os.path.exists(cache):
+        print("  ❌ No hay cache de transacciones disponible. Verifica el secret REDASH_TRANSACCIONES en GitHub Actions.")
+        raise SystemExit(1)
+    df_tx = pd.read_csv(cache)
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], dayfirst=True)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &
