@@ -6,9 +6,6 @@ on:
     - cron: '0 14 * * *'
   workflow_dispatch:  # Permite correrlo manualmente desde GitHub
 
-env:
-  AGENT_TOOLSDIRECTORY: /Users/alonsoavila/hostedtoolcache
-
 jobs:
   update-map:
     runs-on: self-hosted
@@ -17,14 +14,11 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: 'pip'
-
       - name: Instalar dependencias
-        run: pip install -r requirements.txt
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
 
       - name: Correr modelo de demanda
         env:
@@ -32,7 +26,7 @@ jobs:
           REDASH_USUARIOS:      ${{ secrets.REDASH_USUARIOS }}
           REDASH_TRANSACCIONES: ${{ secrets.REDASH_TRANSACCIONES }}
           GITHUB_ACTIONS_RUN: "true"
-        run: python3 bizne_model_ci.py
+        run: .venv/bin/python3 bizne_model_ci.py
 
       - name: Publicar mapa en GitHub Pages
         run: |
