@@ -74,9 +74,9 @@ print(f"   H3 resolución       : {H3_RES}  (~{h3.average_hexagon_area(H3_RES,'k
 
 # %%
 # ── REDASH API — Fuentes de datos automáticas ────────────────────────────────
-REDASH_NEGOCIOS      = os.environ.get("REDASH_NEGOCIOS", "https://redash.bizne.com.mx/api/queries/103/results.csv?api_key=nhtJ8wPVcxiSZPnTc53EQP0QYwl7D6djRaRaG2am")
-REDASH_USUARIOS      = os.environ.get("REDASH_USUARIOS", "https://redash.bizne.com.mx/api/queries/122/results.csv?api_key=6sXb6kLzOsK2lvXYsT3RClb3hcxTbpcDzEMIdWNC")
-REDASH_TRANSACCIONES = os.environ.get("REDASH_TRANSACCIONES", "https://redash.bizne.com.mx/api/queries/121/results.csv?api_key=YbIjulZzKYWKyz39vGRPzmSnIzOAVkPBgoJfVx0l")
+REDASH_NEGOCIOS      = os.environ.get("REDASH_NEGOCIOS", "")
+REDASH_USUARIOS      = os.environ.get("REDASH_USUARIOS", "")
+REDASH_TRANSACCIONES = os.environ.get("REDASH_TRANSACCIONES", "")
 
 def _redash(url, nombre):
     """Descarga un query de Redash como DataFrame. Falla con mensaje claro."""
