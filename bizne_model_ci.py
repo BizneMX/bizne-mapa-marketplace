@@ -1720,7 +1720,7 @@ kepler_hex["tier_value"] = kepler_hex["zone_tier"].map(tier_val)
 kepler_hex.index.name = "hex_id"
 kepler_hex = kepler_hex.reset_index().round(4)
 
-kepler_hex.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_hex_demanda.csv", index=False)
+kepler_hex.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_hex_demanda.csv"), index=False)
 print(f"✅ kepler_real_hex_demanda.csv   ({len(kepler_hex):,} hexes)")
 
 # ── CSV 2: Negocios activos (capa Point — supply) ─────────────────────────────
@@ -1740,7 +1740,7 @@ kepler_biz = df_biz[[
     "effective_capacity":               "capacidad_comidas_dia",
 }).round(4)
 
-kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv", index=False)
+kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False)
 print(f"✅ kepler_real_negocios.csv       ({len(kepler_biz):,} negocios activos)")
 
 # ── CSV: Cocinas Dormidas (capa separada) ─────────────────────────────────────
@@ -1756,7 +1756,7 @@ kepler_dorm = df_biz_dorm[[
     "kitchen_quality_score":       "quality_score",
 }).round(4)
 kepler_dorm["capacidad_si_reactiva"] = CAPACITY_INACTIVE
-kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv", index=False)
+kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv"), index=False)
 print(f"✅ kepler_real_dormidas.csv        ({len(kepler_dorm):,} cocinas dormidas)")
 
 # ── CSV 3: Sectores PA (capa Point — demanda potencial) ──────────────────────
@@ -1767,7 +1767,7 @@ kepler_sec["usuarios_potenciales"]  = (kepler_sec["elementos"] * TARGET_CONVERSI
 kepler_sec["demanda_diaria_est"]    = (kepler_sec["elementos"] * TARGET_CONVERSION * TX_PER_USER_DAY).round(1)
 kepler_sec["demanda_mensual_est"]   = (kepler_sec["elementos"] * TARGET_CONVERSION * TX_PER_USER_MONTH).round(0).astype(int)
 
-kepler_sec.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_sectores.csv", index=False)
+kepler_sec.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_sectores.csv"), index=False)
 print(f"✅ kepler_real_sectores.csv        ({len(kepler_sec):,} sectores)")
 
 # ── CSV 4: Signups APPROVED (capa Point — usuarios activos) ──────────────────
@@ -1782,7 +1782,7 @@ kepler_su = df_su[[
     "ticket_promedio":"ticket_prom",
 }).round(4)
 
-kepler_su.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_usuarios.csv", index=False)
+kepler_su.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_usuarios.csv"), index=False)
 print(f"✅ kepler_real_usuarios.csv        ({len(kepler_su):,} usuarios APPROVED)")
 
 # ── CSV 5: Estaciones Metro (capa Point) ─────────────────────────────────────
@@ -1792,7 +1792,7 @@ kepler_metro = df_metro[[
     "elementos": "elementos_estimados",
     "n_lineas":  "num_lineas_transbordo",
 }).round(4)
-kepler_metro.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_metro.csv", index=False)
+kepler_metro.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_metro.csv"), index=False)
 print(f"✅ kepler_real_metro.csv           ({len(kepler_metro):,} registros, {kepler_metro['nombre'].nunique()} estaciones)")
 
 
