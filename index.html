@@ -91,6 +91,57 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 .sub{font-size:10px;color:#64748b;}
 #guide-close{background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;padding:10px 16px;}
 .gtab-bar{display:flex;justify-content:space-between;align-items:center;background:#1e293b;}
+/* ── Chat panel ─────────────────────────────────────────────── */
+#chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
+#chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
+  border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;
+  box-shadow:0 3px 10px rgba(0,0,0,.4);}
+#chat-panel{display:none;position:fixed;bottom:134px;right:20px;z-index:2001;
+  width:370px;height:500px;background:#0f172a;border-radius:14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
+  flex-direction:column;overflow:hidden;border:1px solid #1e3a52;}
+#chat-panel.open{display:flex;}
+#chat-head{background:#151A4F;color:#fff;padding:10px 14px;display:flex;
+  justify-content:space-between;align-items:center;font-size:12px;font-weight:700;
+  border-bottom:2px solid #6EE9B3;cursor:move;}
+#chat-head-title{color:#6EE9B3;display:flex;align-items:center;gap:6px;}
+#chat-close-btn{background:none;border:none;color:#6EE9B3;font-size:16px;cursor:pointer;
+  padding:0;line-height:1;}
+#chat-msgs{flex:1;overflow-y:auto;padding:10px 12px;display:flex;flex-direction:column;
+  gap:8px;scroll-behavior:smooth;}
+#chat-msgs::-webkit-scrollbar{width:4px;}
+#chat-msgs::-webkit-scrollbar-track{background:#0a0f1e;}
+#chat-msgs::-webkit-scrollbar-thumb{background:#1e3a52;border-radius:4px;}
+.cm-user{align-self:flex-end;background:#1e3a52;color:#e2e8f0;padding:8px 12px;
+  border-radius:12px 12px 2px 12px;max-width:85%;font-size:11px;line-height:1.5;}
+.cm-bot{align-self:flex-start;background:#111827;color:#e2e8f0;padding:8px 12px;
+  border-radius:12px 12px 12px 2px;max-width:96%;font-size:11px;line-height:1.6;
+  border-left:2px solid #6EE9B3;}
+.cm-bot b{color:#6EE9B3;}
+.cm-tag{display:inline-block;background:#0e1530;color:#a78bfa;
+  padding:1px 5px;border-radius:4px;font-size:9px;margin:1px 0;}
+.cm-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:7px;}
+.cm-chip{background:#0e1530;border:1px solid #1e3a52;color:#00BFA5;
+  padding:3px 9px;border-radius:10px;font-size:9px;cursor:pointer;transition:.15s;}
+.cm-chip:hover{background:#1e3a52;border-color:#00BFA5;}
+#chat-input-row{padding:8px 10px;border-top:1px solid #1e3a52;display:flex;
+  gap:6px;background:#0a0f1e;flex-shrink:0;}
+#chat-input{flex:1;background:#1e293b;border:1px solid #334155;border-radius:8px;
+  padding:7px 10px;font-size:11px;color:#e2e8f0;outline:none;font-family:system-ui;}
+#chat-input:focus{border-color:#6EE9B3;}
+#chat-input::placeholder{color:#475569;}
+#chat-send{background:#151A4F;border:1.5px solid #6EE9B3;color:#6EE9B3;
+  border-radius:8px;padding:6px 13px;font-size:14px;cursor:pointer;transition:.15s;}
+#chat-send:hover{background:#6EE9B3;color:#151A4F;}
+.cm-count-table{width:100%;border-collapse:collapse;margin-top:5px;font-size:10px;}
+.cm-count-table td{padding:3px 4px;border-bottom:1px solid #1e3a52;}
+.cm-count-table td:last-child{text-align:right;color:#6EE9B3;font-weight:700;}
+.cm-typing{display:flex;gap:4px;align-items:center;padding:4px 0;}
+.cm-typing span{width:6px;height:6px;background:#6EE9B3;border-radius:50%;
+  animation:cmBounce .9s infinite;}
+.cm-typing span:nth-child(2){animation-delay:.2s;}
+.cm-typing span:nth-child(3){animation-delay:.4s;}
+@keyframes cmBounce{0%,80%,100%{transform:translateY(0);}40%{transform:translateY(-5px);}}
 </style>
 
 <style>
@@ -472,6 +523,38 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}
   </div>
 </div>
 
+
+<div id="chat-wrap">
+  <button id="chat-toggle-btn" onclick="toggleChat()" title="Consultar negocios">💬</button>
+</div>
+<div id="chat-panel">
+  <div id="chat-head">
+    <div id="chat-head-title">🤖 <span>Consultor Bizne</span></div>
+    <button id="chat-close-btn" onclick="toggleChat()">✕</button>
+  </div>
+  <div id="chat-msgs">
+    <div class="cm-bot">
+      <b>Hola!</b> Puedo consultarte los negocios del mapa por cualquier criterio.<br>
+      <div class="cm-chips">
+        <span class="cm-chip" onclick="chatSendText('Top 10 negocios por score')">Top 10 score</span>
+        <span class="cm-chip" onclick="chatSendText('Contar por delegación')">Por delegación</span>
+        <span class="cm-chip" onclick="chatSendText('Negocios sin transacciones')">Sin tx 30d</span>
+        <span class="cm-chip" onclick="chatSendText('Negocios con menú del día')">Con menú día</span>
+        <span class="cm-chip" onclick="chatSendText('Negocios nivel crítica')">Nivel crítica</span>
+        <span class="cm-chip" onclick="chatSendText('Negocios dormidos')">Dormidos</span>
+        <span class="cm-chip" onclick="chatSendText('Contar por nivel')">Por nivel</span>
+        <span class="cm-chip" onclick="chatSendText('Top 10 en Iztapalapa')">Iztapalapa</span>
+      </div>
+    </div>
+  </div>
+  <div id="chat-input-row">
+    <input id="chat-input" type="text"
+      placeholder="Ej: top 5 en GAM con menú Bizne…"
+      onkeydown="if(event.key==='Enter')chatSend()">
+    <button id="chat-send" onclick="chatSend()">↵</button>
+  </div>
+</div>
+
 <div id="map"></div>
 <script>
 var _bizneMap = L.map('map', {center:[19.42,-99.13],zoom:11,zoomControl:true});
@@ -845,6 +928,275 @@ document.addEventListener("DOMContentLoaded", function() {
     console.log('✅ Bizne Map v5 loaded · HEX:675 · BIZ:524 · HUNTER:375 · SD:187');
   }, 600);
 });
+</script>
+<script>
+// ── CHAT ENGINE ───────────────────────────────────────────────────────
+(function() {
+
+function removeAccents(s) {
+  return (s||'').normalize('NFD').replace(/[̀-ͯ]/g,'');
+}
+
+window.toggleChat = function() {
+  var panel = document.getElementById('chat-panel');
+  panel.classList.toggle('open');
+  if (panel.classList.contains('open'))
+    setTimeout(function(){document.getElementById('chat-input').focus();},50);
+};
+
+window.chatSendText = function(txt) {
+  var inp = document.getElementById('chat-input');
+  inp.value = txt;
+  chatSend();
+};
+
+window.chatSend = function() {
+  var inp = document.getElementById('chat-input');
+  var q = inp.value.trim();
+  if (!q) return;
+  inp.value = '';
+  chatAddMsg(q, 'user');
+  // Show typing indicator
+  var typingId = 'cm-typing-' + Date.now();
+  chatAddMsg('<div class="cm-typing"><span></span><span></span><span></span></div>', 'bot', typingId);
+  setTimeout(function() {
+    var typingEl = document.getElementById(typingId);
+    if (typingEl) typingEl.remove();
+    var response = chatProcess(q);
+    chatAddMsg(response, 'bot');
+  }, 300);
+};
+
+function chatAddMsg(content, type, id) {
+  var msgs = document.getElementById('chat-msgs');
+  var div = document.createElement('div');
+  div.className = type === 'user' ? 'cm-user' : 'cm-bot';
+  if (id) div.id = id;
+  div.innerHTML = content;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+}
+
+function chatProcess(q) {
+  var qn = removeAccents(q.toLowerCase().trim());
+
+  // Help
+  if (/^(ayuda|help|que puedo|como se usa|que haces|comandos)/.test(qn)) {
+    return 'Puedo filtrar y resumir los negocios del mapa. Ejemplos:<br>' +
+      '<b>Filtros:</b> delegación, nivel (excelente/alta/media/baja/crítica), sin tx, con menú Bizne/día/carta<br>' +
+      '<b>Top N:</b> "top 10 en Iztapalapa por tasa de aceptación"<br>' +
+      '<b>Conteos:</b> "contar por delegación", "contar por nivel", "contar por etapa"<br>' +
+      '<b>Dormidos:</b> "negocios dormidos en Gustavo A. Madero"<br>' +
+      '<b>Score:</b> "score >= 80", "score menor a 40"';
+  }
+
+  var isDorm = /dormi/.test(qn);
+  var baseData = isDorm
+    ? DORM_DATA.features.map(function(f){return f.properties;})
+    : BIZ_DATA.features.map(function(f){return f.properties;});
+
+  // COUNT BY GROUP
+  if (/conta[r]?\s+por|distribuci[oó]n|por\s+(delegac|nivel|etapa|cohort|estado)/.test(qn)) {
+    var field = 'delegacion';
+    if (/nivel/.test(qn)) field = 'quality_nivel';
+    else if (/etapa/.test(qn)) field = 'etapa';
+    else if (/cohort/.test(qn)) field = 'service_cohort';
+    return buildCountResponse(baseData, field, isDorm);
+  }
+
+  // HOW MANY
+  if (/^(cuantos?|cuantas?|total de|hay )/.test(qn)) {
+    var filtered = applyFilters(baseData, qn);
+    return '📊 <b>' + filtered.length + '</b> de ' + baseData.length +
+      ' negocios' + (isDorm?' dormidos':' activos') + ' con ese criterio.';
+  }
+
+  // DEFAULT: filter + sort + list
+  var filtered = applyFilters(baseData, qn);
+
+  // Sort
+  var sortField = isDorm ? 'tx_historicas' : 'quality_score';
+  var sortLabel = isDorm ? 'tx hist.' : 'score';
+  if (/tasa|aceptac/.test(qn)) { sortField='tasa_acepta'; sortLabel='tasa aceptación'; }
+  if (/transacc|\btx\b|ventas|pedidos|compras/.test(qn) && !isDorm) { sortField='tx_30d'; sortLabel='Tx 30d'; }
+
+  // Limit
+  var topMatch = qn.match(/top\s+(\d+)/);
+  var limit = topMatch ? Math.min(parseInt(topMatch[1]),30) : 10;
+
+  filtered.sort(function(a,b){return (b[sortField]||0)-(a[sortField]||0);});
+  var shown = filtered.slice(0,limit);
+
+  return buildListResponse(shown, filtered.length, sortField, sortLabel, isDorm);
+}
+
+function applyFilters(props, qn) {
+  var result = props.slice();
+
+  // Delegacion
+  var delegaciones = [
+    ['iztapalapa','iztapalapa'],
+    ['alvaro obregon','alvaro obregon'],['obregon','alvaro obregon'],
+    ['gustavo a madero','gustavo a. madero'],['gam','gustavo a'],
+    ['coyoacan','coyoacan'],
+    ['benito juarez','benito juarez'],['bdj','benito juarez'],
+    ['miguel hidalgo','miguel hidalgo'],
+    ['cuauhtemoc','cuauhtemoc'],
+    ['venustiano carranza','venustiano carranza'],
+    ['tlalpan','tlalpan'],
+    ['xochimilco','xochimilco'],
+    ['azcapotzalco','azcapotzalco'],
+    ['iztacalco','iztacalco'],
+    ['milpa alta','milpa alta'],
+    ['magdalena contreras','magdalena contreras'],
+    ['cuajimalpa','cuajimalpa'],
+    ['tlahuac','tlahuac'],
+  ];
+  delegaciones.forEach(function(pair) {
+    if (qn.includes(pair[0])) {
+      result = result.filter(function(p) {
+        return removeAccents((p.delegacion||'').toLowerCase()).includes(pair[1]);
+      });
+    }
+  });
+
+  // Quality nivel
+  ['excelente','alta','media','baja','critica'].forEach(function(n) {
+    if (qn.includes(n)) {
+      result = result.filter(function(p) {
+        return removeAccents((p.quality_nivel||'').toLowerCase()).includes(n);
+      });
+    }
+  });
+
+  // Score threshold
+  var scoreMatch = qn.match(/(score|calidad)\s*(>=|<=|>|<|mayor|menor)\s*(\d+)/);
+  if (scoreMatch) {
+    var op=scoreMatch[2], val=parseInt(scoreMatch[3]);
+    result = result.filter(function(p) {
+      var s=p.quality_score||0;
+      if(op==='>='||op==='mayor') return s>=val;
+      if(op==='<='||op==='menor') return s<=val;
+      if(op==='>') return s>val;
+      if(op==='<') return s<val;
+      return true;
+    });
+  }
+
+  // Menu filters
+  if (/menu\s+bizne|con\s+bizne/.test(qn)) result=result.filter(function(p){return p.menu_bizne;});
+  if (/menu\s+(del?\s+)?dia|menu.*dia/.test(qn)) result=result.filter(function(p){return p.menu_dia;});
+  if (/menu\s+(a\s+la\s+)?carta|con\s+carta/.test(qn)) result=result.filter(function(p){return p.menu_carta;});
+  if (/sin\s+menu/.test(qn)) result=result.filter(function(p){return !p.menu_bizne&&!p.menu_dia&&!p.menu_carta;});
+  if (/sin\s+(tx|transacc|compras|pedidos|ventas)/.test(qn)) result=result.filter(function(p){return (p.tx_30d||0)===0;});
+
+  // Etapa
+  var etapaMatch = qn.match(/etapa\s+([a-z0-9]+)/);
+  if (etapaMatch) {
+    var eq = etapaMatch[1];
+    result = result.filter(function(p){return removeAccents((p.etapa||'').toLowerCase()).includes(eq);});
+  }
+
+  // Service cohort
+  var cohortMatch = qn.match(/cohort\s+([a-z0-9\-_]+)/);
+  if (cohortMatch) {
+    var cq = cohortMatch[1];
+    result = result.filter(function(p){return removeAccents((p.service_cohort||'').toLowerCase()).includes(cq);});
+  }
+
+  return result;
+}
+
+function scoreColor(s) {
+  if (s>=80) return '#22c55e';
+  if (s>=60) return '#00BFA5';
+  if (s>=40) return '#f59e0b';
+  if (s>=20) return '#f97316';
+  return '#ef4444';
+}
+
+function buildListResponse(items, total, sortField, sortLabel, isDorm) {
+  if (items.length===0)
+    return '😕 <b>Sin resultados</b> con ese criterio. Prueba otro filtro o escribe "ayuda" para ver ejemplos.';
+
+  var header = '📋 <b>' + items.length + '</b>' +
+    (total>items.length ? ' de <b>'+total+'</b>' : '') +
+    ' negocio' + (items.length===1?'':'s') + (isDorm?' dormido':'') +
+    ' · por <b>' + sortLabel + '</b>:<br><br>';
+
+  var rows = items.map(function(p,i) {
+    var del = p.delegacion
+      ? ' <span class="cm-tag">'+p.delegacion+'</span>' : '';
+    var sc = isDorm ? '' : ' <b style="color:'+scoreColor(p.quality_score||0)+'">'+Math.round(p.quality_score||0)+'</b>';
+    var txVal = isDorm ? (p.tx_historicas||0)+' tx hist.' : (p.tx_30d||0)+' tx';
+    var extra = ' <span style="color:#475569;font-size:9px">'+txVal+'</span>';
+    var menus = [];
+    if (p.menu_bizne) menus.push('<span style="color:#22c55e;font-size:9px">Bizne</span>');
+    if (p.menu_dia)   menus.push('<span style="color:#00BFA5;font-size:9px">Día</span>');
+    if (p.menu_carta) menus.push('<span style="color:#a78bfa;font-size:9px">Carta</span>');
+    var menuStr = menus.length ? ' '+menus.join(' ') : '';
+    return '<span style="color:#475569">'+(i+1)+'.</span> <b>'+p.nombre+'</b>'+del+sc+extra+menuStr;
+  }).join('<br>');
+
+  var footer = total>items.length
+    ? '<br><span style="color:#334155;font-size:9px">→ escribe "top '+Math.min(total,30)+'" para ver más</span>'
+    : '';
+
+  return header + rows + footer;
+}
+
+function buildCountResponse(props, field, isDorm) {
+  var counts = {};
+  props.forEach(function(p) {
+    var val = p[field] || 'Sin dato';
+    if (!val || val==='nan' || val==='None') val='Sin dato';
+    counts[val] = (counts[val]||0) + 1;
+  });
+
+  var sorted = Object.keys(counts).sort(function(a,b){return counts[b]-counts[a];});
+  var fieldLabels = {
+    delegacion:'delegación', quality_nivel:'nivel de calidad',
+    etapa:'etapa', service_cohort:'cohort'
+  };
+
+  var header = '📊 <b>'+props.length+'</b> negocio'+(props.length===1?'':'s')+
+    (isDorm?' dormidos':'') + ' por <b>'+(fieldLabels[field]||field)+'</b>:<br>';
+
+  var rows = '<table class="cm-count-table">';
+  sorted.forEach(function(k) {
+    var pct = Math.round(counts[k]/props.length*100);
+    var bar = '';
+    for(var b=0;b<Math.round(pct/5);b++) bar+='▪';
+    rows += '<tr><td>'+k+'</td><td>'+bar+' '+counts[k]+
+      ' <span style="color:#334155">('+pct+'%)</span></td></tr>';
+  });
+  rows += '</table>';
+
+  return header + rows;
+}
+
+// Draggable chat panel
+document.addEventListener('DOMContentLoaded', function() {
+  var panel = document.getElementById('chat-panel');
+  var head  = document.getElementById('chat-head');
+  if (!panel || !head) return;
+  head.addEventListener('mousedown', function(e) {
+    if (e.target.id==='chat-close-btn') return;
+    e.preventDefault();
+    var rect = panel.getBoundingClientRect();
+    var ox = e.clientX - rect.left, oy = e.clientY - rect.top;
+    function drag(e2) {
+      panel.style.left   = (e2.clientX-ox)+'px';
+      panel.style.top    = (e2.clientY-oy)+'px';
+      panel.style.right  = 'auto';
+      panel.style.bottom = 'auto';
+    }
+    document.addEventListener('mousemove', drag);
+    document.addEventListener('mouseup', function(){document.removeEventListener('mousemove',drag);},{once:true});
+  });
+});
+
+})();
 </script>
 </body>
 </html>
