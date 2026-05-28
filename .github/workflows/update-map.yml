@@ -16,11 +16,16 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v4
 
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
       - name: Instalar dependencias
         run: |
-          python3 -m venv .venv
-          .venv/bin/pip install --upgrade pip
-          .venv/bin/pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Correr modelo de demanda
         env:
@@ -28,7 +33,7 @@ jobs:
           REDASH_USUARIOS:      ${{ secrets.REDASH_USUARIOS }}
           REDASH_TRANSACCIONES: ${{ secrets.REDASH_TRANSACCIONES }}
           GITHUB_ACTIONS_RUN: "true"
-        run: .venv/bin/python3 bizne_model_ci.py
+        run: python bizne_model_ci.py
 
       - name: Publicar mapa en GitHub Pages
         run: |
