@@ -25,6 +25,7 @@ if _CI:
     SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
     UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # coords ya correctas
     TRX_CSV  = _os.path.join(_DIR, 'redash_transacciones.csv')
+    ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene lat/lng correctos
 else:
     # Local dev paths
@@ -38,6 +39,7 @@ else:
     SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
     UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
     TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_24.csv'
+    ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (2).csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
@@ -215,6 +217,63 @@ for _, row in df_hex.iterrows():
 
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 print(f"  {len(hex_features)} hexes")
+
+# ══════════════════════════════════════════════════════════════════════
+# 2b. PUNTOS DE ACTIVACIÓN — capa nueva + boost demanda en hexes
+# ══════════════════════════════════════════════════════════════════════
+print("Building ACTIV_DATA…")
+ACTIV_ELEMENTOS = 150
+ACTIV_CONV      = 0.30
+ACTIV_TX_DAY    = 6 / 30          # 0.20 tx/usuario/día
+ACTIV_DEM_BASE  = ACTIV_ELEMENTOS * ACTIV_CONV * ACTIV_TX_DAY  # 9 tx/día
+ACTIV_DECAY     = {0: 1.0, 1: 0.65, 2: 0.35}                   # ~2 km radio total
+
+activ_features = []
+activ_dem_hex  = defaultdict(float)   # hex_id → demanda_activacion acumulada
+
+try:
+    df_activ = pd.read_csv(ACTIV_CSV)
+    for _, row in df_activ.iterrows():
+        lat_a, lng_a = float(row['Lat']), float(row['Long'])
+        try:
+            center_hex = h3.latlng_to_cell(lat_a, lng_a, H3_RES)
+        except Exception:
+            continue
+        dem_punto = round(ACTIV_DEM_BASE, 1)
+        # Inyectar demanda con decay por anillo
+        for ring_k, decay in ACTIV_DECAY.items():
+            ring = [center_hex] if ring_k == 0 else list(h3.grid_ring(center_hex, ring_k))
+            for hx in ring:
+                activ_dem_hex[hx] += ACTIV_DEM_BASE * decay
+        # Feature para la capa visual
+        activ_features.append({
+            "type": "Feature",
+            "geometry": {"type":"Point","coordinates":[lng_a, lat_a]},
+            "properties": {
+                "nombre":      str(row['Nombre']),
+                "sector":      str(row['Sector']),
+                "direccion":   str(row.get('Dirección', row.get('Direccion',''))),
+                "elementos_est": ACTIV_ELEMENTOS,
+                "dem_dia_est": dem_punto,
+                "radio_km":    2.0,
+            }
+        })
+    # Boost a hex_features ya construidos
+    hex_by_id = {f['properties']['hex_id']: f for f in hex_features}
+    boosted = 0
+    for hx, dem in activ_dem_hex.items():
+        if hx in hex_by_id:
+            hex_by_id[hx]['properties']['demanda_activacion'] = round(dem, 1)
+            hex_by_id[hx]['properties']['demanda_dia'] = round(
+                hex_by_id[hx]['properties']['demanda_dia'] + dem, 1)
+            boosted += 1
+    print(f"  {len(activ_features)} puntos de activación · {boosted} hexes boosteados")
+except Exception as e:
+    print(f"  ⚠ ACTIV_CSV no cargado: {e}")
+
+ACTIV_DATA = json.dumps({"type":"FeatureCollection","features":activ_features}, ensure_ascii=False)
+# Rebuild HEX_DATA con boost incorporado
+HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 
 # ══════════════════════════════════════════════════════════════════════
 # 3. BIZ DATA — active businesses (colored by kitchen_quality_score)
@@ -758,6 +817,18 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 .sub{font-size:10px;color:#64748b;}
 #guide-close{background:none;border:none;color:#64748b;font-size:20px;cursor:pointer;padding:10px 16px;}
 .gtab-bar{display:flex;justify-content:space-between;align-items:center;background:#1e293b;}
+/* ── Puntos de Activación marker ──────────────────────────────*/
+.activ-marker{position:relative;width:22px;height:22px;}
+.activ-pulse{position:absolute;inset:0;border-radius:50%;
+  background:rgba(232,121,249,.25);animation:activPulse 2s ease-in-out infinite;}
+.activ-core{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:14px;height:14px;border-radius:50%;background:#E879F9;
+  border:2.5px solid #fff;box-shadow:0 0 8px #E879F9;}
+.activ-label{position:absolute;top:-18px;left:50%;transform:translateX(-50%);
+  background:#1a0d1e;color:#E879F9;font-size:9px;font-weight:700;
+  white-space:nowrap;padding:1px 5px;border-radius:4px;
+  border:1px solid #E879F9;pointer-events:none;}
+@keyframes activPulse{0%,100%{transform:scale(1);opacity:.6;}50%{transform:scale(1.7);opacity:0;}}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
 #chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
@@ -891,6 +962,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#7C3AED"></span> UPCs Policía</label>
       <label class="bchk"><input type="checkbox" id="ly_sec"      checked onchange="toggleLayer('sec',this.checked)">
         <span class="bdot" style="background:#06b6d4"></span> Sectores PA</label>
+      <label class="bchk"><input type="checkbox" id="ly_activ"   checked onchange="toggleLayer('activ',this.checked)">
+        <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
     </div>
 
     <hr class="bhr">
@@ -997,6 +1070,8 @@ PANEL_HTML = """
       <label class="bchk"><input type="checkbox" id="hf_gap"          checked onchange="updateHexTT()"> Gap</label>
       <label class="bchk"><input type="checkbox" id="hf_cobertura_pct" checked onchange="updateHexTT()"> Cobertura %</label>
       <label class="bchk"><input type="checkbox" id="hf_D90"          onchange="updateHexTT()"> D90</label>
+      <label class="bchk"><input type="checkbox" id="hf_activ"        onchange="updateHexTT()">
+        <span style="color:#E879F9;font-size:10px">⚡</span> Dem. Activación</label>
     </div>
 
     <hr class="bhr">
@@ -1471,6 +1546,7 @@ var UPC_DATA            = {UPC_DATA};
 var SEC_DATA            = {SEC_DATA};
 var HUNTER_DATA         = {HUNTER_DATA};
 var SESSION_DEMAND_DATA = {SESSION_DEMAND_DATA};
+var ACTIV_DATA          = {ACTIV_DATA};
 var HEAT_TRX_OK         = {HEAT_TRX_OK};
 var HEAT_TRX_FAIL       = {HEAT_TRX_FAIL};
 var HEAT_USERS          = {HEAT_USERS};
@@ -1516,6 +1592,7 @@ var HEX_FIELDS = [
   {{key:"gap",id:"hf_gap",label:"Gap"}},
   {{key:"cobertura_pct",id:"hf_cobertura_pct",label:"Cobertura %"}},
   {{key:"D90",id:"hf_D90",label:"D90"}},
+  {{key:"demanda_activacion",id:"hf_activ",label:"Dem. Activación"}},
 ];
 var BIZ_FIELDS = [
   {{key:"rating",       id:"bf_rating",    label:"Rating",           fmt:function(v){{return "⭐ "+v;}}}},
@@ -1713,6 +1790,37 @@ document.addEventListener("DOMContentLoaded", function() {{
           {{sticky:true,opacity:0.97}});}}
     }}).addTo(theMap);
 
+    // Puntos de Activación
+    window.LYR_ACTIV = L.geoJSON(ACTIV_DATA, {{
+      pointToLayer: function(f, ll) {{
+        var icon = L.divIcon({{
+          className: '',
+          html: '<div class="activ-marker">' +
+                  '<div class="activ-pulse"></div>' +
+                  '<div class="activ-core"></div>' +
+                  '<div class="activ-label">' + f.properties.nombre + '</div>' +
+                '</div>',
+          iconSize: [22, 22],
+          iconAnchor: [11, 11],
+        }});
+        return L.marker(ll, {{icon: icon}});
+      }},
+      onEachFeature: function(f, l) {{
+        var p = f.properties;
+        l.bindTooltip(
+          "<b style='color:#E879F9'>⚡ " + p.nombre + "</b><br>" +
+          "<span style='color:#94a3b8;font-size:9px'>" + p.sector + "</span><br>" +
+          "<i style='color:#64748b;font-size:9px'>" + p.direccion + "</i>" +
+          "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>" +
+          "<b>Elementos estimados:</b> <span style='color:#E879F9'>" + p.elementos_est + "</span><br>" +
+          "<b>Demanda est./día:</b> <span style='color:#E879F9;font-weight:700'>" + p.dem_dia_est + " tx</span><br>" +
+          "<b>Radio de influencia:</b> " + p.radio_km + " km" +
+          "<br><span style='font-size:9px;color:#475569'>Hex vecinos boosteados con decay 65%/35%</span>",
+          {{sticky: true, opacity: 0.97, maxWidth: 260}}
+        );
+      }}
+    }}).addTo(theMap);
+
     // Heat maps (smooth)
     window.LYR_HEAT_OK   = L.heatLayer(HEAT_TRX_OK,  {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
     window.LYR_HEAT_FAIL = L.heatLayer(HEAT_TRX_FAIL,{{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
@@ -1740,7 +1848,8 @@ document.addEventListener("DOMContentLoaded", function() {{
       var m = window.THE_MAP; if (!m) return;
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
-                 metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC}};
+                 metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
+                 activ:window.LYR_ACTIV}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
@@ -1828,7 +1937,7 @@ document.addEventListener("DOMContentLoaded", function() {{
     draggable(document.getElementById('bmap-panel'),document.getElementById('bmap-header'));
     draggable(document.getElementById('hunter-panel'),document.getElementById('hunter-header'));
 
-    console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)}');
+    console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)} · ACTIV:{len(activ_features)}');
   }}, 600);
 }});
 </script>"""
@@ -1889,6 +1998,9 @@ checks = [
     ('flyToHunter', 'flyToHunter'),
     ('draggable', 'Draggable'),
     ('CartoDB', 'CartoDB tiles'),
+    ('ACTIV_DATA', 'Puntos activacion data'),
+    ('activ-pulse', 'Activacion marker CSS'),
+    ('LYR_ACTIV', 'Activacion layer JS'),
     ('chat-panel', 'Chat panel HTML'),
     ('chatProcess', 'Chat engine JS'),
     ('buildCountResponse', 'Chat count fn'),

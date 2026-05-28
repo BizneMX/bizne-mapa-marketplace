@@ -730,6 +730,38 @@ df_hex["est_daily_demand"] = (
     df_hex["sec_dem_metro"]    * CONV_METRO  * TX_PER_USER_DAY
 )
 
+# ── SEÑAL DE DEMANDA: PUNTOS DE ACTIVACIÓN ──────────────────────────────────
+# 150 elementos por punto · 30% conversión · 0.2 tx/día = 9 tx/día base
+# Decay por anillo H3 (res 8 ≈ 800m/anillo): k=0→100%, k=1→65%, k=2→35%
+_ACTIV_CSV = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "puntos_activacion.csv")
+ACTIV_ELEMENTOS  = 150
+ACTIV_CONV       = 0.30
+ACTIV_TX_DAY     = 6 / 30
+ACTIV_DEM_BASE   = ACTIV_ELEMENTOS * ACTIV_CONV * ACTIV_TX_DAY   # 9 tx/día
+ACTIV_DECAY      = {0: 1.0, 1: 0.65, 2: 0.35}                    # ~2 km total
+
+if os.path.exists(_ACTIV_CSV):
+    df_activ = pd.read_csv(_ACTIV_CSV)
+    # Acumular señal por hex
+    _activ_dem = {}
+    for _, _row in df_activ.iterrows():
+        try:
+            _ch = h3.latlng_to_cell(float(_row["Lat"]), float(_row["Long"]), H3_RES)
+        except Exception:
+            continue
+        for _k, _decay in ACTIV_DECAY.items():
+            _ring = [_ch] if _k == 0 else list(h3.grid_ring(_ch, _k))
+            for _hx in _ring:
+                _activ_dem[_hx] = _activ_dem.get(_hx, 0) + ACTIV_DEM_BASE * _decay
+    # Aplicar al DataFrame
+    df_hex["dem_activacion"] = df_hex.index.map(lambda hx: round(_activ_dem.get(hx, 0), 1))
+    df_hex["est_daily_demand"] += df_hex["dem_activacion"]
+    n_boost = (df_hex["dem_activacion"] > 0).sum()
+    print(f"  Puntos de activacion: {len(df_activ)} puntos → {n_boost} hexes boosteados")
+else:
+    df_hex["dem_activacion"] = 0.0
+    print("  ⚠ puntos_activacion.csv no encontrado")
+
 # P90 usando distribución de Poisson (apropiada para datos escasos)
 # Para datos con más historial usar NegBinom
 df_hex["D90_daily"] = df_hex["est_daily_demand"].apply(
@@ -1702,7 +1734,7 @@ kepler_hex = df_hex[[
     "lat", "lng", "zone_tier", "DI",
     "sec_demand", "sec_dem_fijo", "sec_dem_ruta", "sec_dem_patrulla", "sec_dem_metro",
     "su_count", "tx_count", "unf_count",
-    "est_daily_demand", "D90_daily",
+    "est_daily_demand", "dem_activacion", "D90_daily",
     "biz_count", "N_needed", "gap", "coverage",
     "avg_rating", "priority_score",
 ]].rename(columns={
@@ -1717,6 +1749,7 @@ kepler_hex = df_hex[[
     "tx_count":         "transacciones_8d",
     "unf_count":        "tx_incompletas",
     "est_daily_demand": "demanda_estimada_dia",
+    "dem_activacion":   "demanda_activacion",
     "D90_daily":        "D90_diario",
     "biz_count":        "negocios_actuales",
     "N_needed":         "negocios_necesarios",
