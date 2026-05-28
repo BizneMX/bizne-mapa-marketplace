@@ -507,6 +507,25 @@ df_dorm_copy = df_dorm.copy()
 df_dorm_copy['hex_id'] = df_dorm_copy.apply(lambda r: safe_h3(r['lat'],r['lng']), axis=1)
 dorm_per_hex = df_dorm_copy.groupby('hex_id').size().to_dict()
 
+# ── Boost df_hex con demanda de activación ─────────────────────────────────
+# activ_dem_hex viene del bloque ACTIV_DATA ya procesado arriba.
+# Actualizamos demanda_estimada_dia y priority_score para que los hexes
+# cerca de puntos de activación suban de tier en hunter zones.
+if activ_dem_hex:
+    df_hex = df_hex.set_index('hex_id')
+    for _hx, _dem in activ_dem_hex.items():
+        if _hx in df_hex.index:
+            df_hex.at[_hx, 'demanda_estimada_dia'] = round(
+                float(df_hex.at[_hx, 'demanda_estimada_dia']) + _dem, 1)
+            # Recalcular priority_score (demanda / max_offer proxy)
+            _n_neg = max(int(df_hex.at[_hx, 'negocios_actuales']), 1)
+            df_hex.at[_hx, 'priority_score'] = round(
+                float(df_hex.at[_hx, 'demanda_estimada_dia']) / _n_neg, 3)
+    df_hex = df_hex.reset_index()
+    # Recalcular gap: negocios_necesarios - negocios_actuales (mínimo 0)
+    if 'negocios_necesarios' in df_hex.columns:
+        df_hex['gap'] = (df_hex['negocios_necesarios'] - df_hex['negocios_actuales']).clip(lower=0).astype(int)
+
 # Merge with hex demand
 df_hunt = df_hex[df_hex['gap']>0].copy()
 df_hunt = df_hunt.merge(user_hex, on='hex_id', how='left')
@@ -515,12 +534,21 @@ df_hunt['sin_compras'] = df_hunt['sin_compras'].fillna(0).astype(int)
 df_hunt['tasa_conv_pct'] = df_hunt['tasa_conv_pct'].fillna(0).round(1)
 df_hunt['neg_dormidos'] = df_hunt['hex_id'].map(dorm_per_hex).fillna(0).astype(int)
 
-# Combined score
-max_ps = df_hunt['priority_score'].max() if df_hunt['priority_score'].max()>0 else 1
-max_us = max(df_hunt['usuarios'].max(), 1)
+# Señal de activación por hex (cuánta demanda de activación cae en cada hunter hex)
+df_hunt['activ_demand'] = df_hunt['hex_id'].map(activ_dem_hex).fillna(0)
+
+# Combined score — Puntos de Activación como señal explícita (15%)
+max_ps    = df_hunt['priority_score'].max() if df_hunt['priority_score'].max()>0 else 1
+max_us    = max(df_hunt['usuarios'].max(), 1)
+max_activ = max(df_hunt['activ_demand'].max(), 1)
 df_hunt['demand_norm'] = df_hunt['priority_score']/max_ps
 df_hunt['user_norm']   = df_hunt['usuarios']/max_us
-df_hunt['combined_score'] = (0.6*df_hunt['demand_norm'] + 0.4*df_hunt['user_norm']).round(3)
+df_hunt['activ_norm']  = df_hunt['activ_demand']/max_activ
+df_hunt['combined_score'] = (
+    0.50 * df_hunt['demand_norm'] +
+    0.35 * df_hunt['user_norm']   +
+    0.15 * df_hunt['activ_norm']
+).round(3)
 df_hunt = df_hunt.sort_values('combined_score', ascending=False).reset_index(drop=True)
 df_hunt['rank'] = df_hunt.index + 1
 
@@ -560,6 +588,8 @@ for _, row in df_hunt.iterrows():
             "combined_score": float(row['combined_score']),
             "demand_norm": float(row['demand_norm']),
             "user_norm": float(row['user_norm']),
+            "activ_norm": float(row.get('activ_norm', 0)),
+            "activ_demand": round(float(row.get('activ_demand', 0)), 1),
             "gap": int(row['gap']),
             "neg_activos": int(row.get('negocios_actuales',0)),
             "neg_dormidos": int(row.get('neg_dormidos',0)),
@@ -1661,6 +1691,9 @@ function buildHunterTT(p) {{
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     usrBadge+" · "+p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
     "<b>Demanda est.:</b> "+p.demanda_dia+"/día<br>"+
+    (p.activ_demand > 0
+      ? "<span style='color:#E879F9'>⚡ Punto de Activación cercano: +"+p.activ_demand+" tx/día</span><br>"
+      : "")+
     "<span style='color:#64748b;font-size:9px'>Score: "+Math.round(p.combined_score*100)+"/100</span>";
 }}
 function buildHeatHexTT(p, label, color) {{
