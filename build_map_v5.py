@@ -30,15 +30,15 @@ if _CI:
 else:
     # Local dev paths
     OUT      = '/sessions/confident-jolly-pasteur/mnt/outputs/bizne_mapa_v5.html'
-    ANALYTICS= '/sessions/confident-jolly-pasteur/mnt/uploads/analytics_users_por_Organización_2026_05_25.csv'
+    ANALYTICS= '/sessions/confident-jolly-pasteur/mnt/uploads/Analytics_users_por_Organización_2026_05_28.csv'
     HEX_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_hex_demanda.csv'
     NEG_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_negocios.csv'
     DORM_CSV = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_dormidas.csv'
-    QS_CSV   = '/sessions/confident-jolly-pasteur/mnt/uploads/Quality_Socre_-_Gamification_(+_carga_a_Menus)_2026_05_24.csv'
+    QS_CSV   = '/sessions/confident-jolly-pasteur/mnt/uploads/Quality_Socre_-_Gamification_(+_carga_a_Menus)_2026_05_28.csv'
     METRO_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_metro.csv'
     SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
     UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
-    TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_24.csv'
+    TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_28.csv'
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (2).csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
@@ -916,7 +916,7 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 KPI_HTML = f"""
 <div id="kpi-dash">
   <div id="kpi-dash-header">
-    <span>📊 BIZNE PA · KPIs <span style="font-weight:400;opacity:.7">25 mayo 2026</span></span>
+    <span>📊 BIZNE PA · KPIs <span style="font-weight:400;opacity:.7">28 mayo 2026</span></span>
     <button id="kpi-tb" onclick="var b=document.getElementById('kpi-body');b.style.display=b.style.display==='none'?'grid':'none';this.textContent=b.style.display==='none'?'▼':'▲'">▲</button>
   </div>
   <div id="kpi-body">
