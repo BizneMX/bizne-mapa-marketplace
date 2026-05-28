@@ -27,13 +27,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Correr modelo de demanda
+      - name: Paso 1 — Descargar datos frescos de Redash y calcular modelo de demanda
         env:
           REDASH_NEGOCIOS:      ${{ secrets.REDASH_NEGOCIOS }}
           REDASH_USUARIOS:      ${{ secrets.REDASH_USUARIOS }}
           REDASH_TRANSACCIONES: ${{ secrets.REDASH_TRANSACCIONES }}
           GITHUB_ACTIONS_RUN: "true"
         run: python bizne_model_ci.py
+
+      - name: Paso 2 — Generar mapa interactivo v5 con datos frescos
+        env:
+          GITHUB_ACTIONS_RUN: "true"
+        run: python build_map_v5.py
 
       - name: Publicar mapa en GitHub Pages
         run: |

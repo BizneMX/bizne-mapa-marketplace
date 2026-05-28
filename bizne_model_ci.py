@@ -1734,13 +1734,21 @@ kepler_hex.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepl
 print(f"✅ kepler_real_hex_demanda.csv   ({len(kepler_hex):,} hexes)")
 
 # ── CSV 2: Negocios activos (capa Point — supply) ─────────────────────────────
-kepler_biz = df_biz[[
+# Campos base + campos de calidad que necesita build_map_v5.py
+_biz_base_cols = [
     "latitude", "longitude", "name", "delegacion",
     "rating", "etapa_negocio",
     "transacciones_ultimos_30_dias", "ventas_ultimos_30_dias",
     "tasa_aceptacion_ultimos_30_dias", "tasa_no_aceptados_ultimos_30_dias",
     "effective_capacity", "food_types",
-]].rename(columns={
+]
+_biz_quality_cols = [
+    "kitchen_quality_score", "transacciones_historicas",
+    "service_cohort", "menu_bizne", "menu_de_dia", "menu_a_la_carta",
+    "tiempo_p50_aceptacion_min_ultimos_30_dias",
+]
+_biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
+kepler_biz = df_biz[_biz_cols].rename(columns={
     "latitude":                         "lat",
     "longitude":                        "lng",
     "transacciones_ultimos_30_dias":    "tx_30d",
@@ -1748,6 +1756,7 @@ kepler_biz = df_biz[[
     "tasa_aceptacion_ultimos_30_dias":  "tasa_aceptacion",
     "tasa_no_aceptados_ultimos_30_dias":"tasa_rechazo",
     "effective_capacity":               "capacidad_comidas_dia",
+    "tiempo_p50_aceptacion_min_ultimos_30_dias": "tiempo_acepta",
 }).round(4)
 
 kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False)

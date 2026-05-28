@@ -9,16 +9,36 @@ import h3
 from collections import defaultdict
 
 # ── Paths ─────────────────────────────────────────────────────────────
-OUT      = '/sessions/confident-jolly-pasteur/mnt/outputs/bizne_mapa_v5.html'
-ANALYTICS= '/sessions/confident-jolly-pasteur/mnt/uploads/analytics_users_por_Organización_2026_05_25.csv'
-HEX_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_hex_demanda.csv'
-NEG_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_negocios.csv'
-DORM_CSV = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_dormidas.csv'
-QS_CSV   = "/sessions/confident-jolly-pasteur/mnt/uploads/Quality_Socre_-_Gamification_(+_carga_a_Menus)_2026_05_24.csv"
-METRO_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_metro.csv'
-SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
-UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
-TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_24.csv'
+import os as _os
+_CI  = _os.environ.get('GITHUB_ACTIONS_RUN') == 'true'
+_DIR = _os.path.dirname(_os.path.abspath(__file__)) if _CI else None
+
+if _CI:
+    # CI: archivos generados por bizne_model_ci.py en el mismo directorio del repo
+    OUT      = _os.path.join(_DIR, 'index.html')
+    ANALYTICS= _os.path.join(_DIR, 'redash_usuarios_cache.csv')
+    HEX_CSV  = _os.path.join(_DIR, 'kepler_real_hex_demanda.csv')
+    NEG_CSV  = _os.path.join(_DIR, 'kepler_real_negocios.csv')
+    DORM_CSV = _os.path.join(_DIR, 'kepler_real_dormidas.csv')
+    QS_CSV   = None   # CI: campos de calidad vienen directo en NEG_CSV
+    METRO_CSV= _os.path.join(_DIR, 'kepler_real_metro.csv')
+    SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
+    UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # coords ya correctas
+    TRX_CSV  = _os.path.join(_DIR, 'redash_transacciones.csv')
+    UPC_SWAPPED = False   # data/upcs.csv tiene lat/lng correctos
+else:
+    # Local dev paths
+    OUT      = '/sessions/confident-jolly-pasteur/mnt/outputs/bizne_mapa_v5.html'
+    ANALYTICS= '/sessions/confident-jolly-pasteur/mnt/uploads/analytics_users_por_Organización_2026_05_25.csv'
+    HEX_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_hex_demanda.csv'
+    NEG_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_negocios.csv'
+    DORM_CSV = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_dormidas.csv'
+    QS_CSV   = '/sessions/confident-jolly-pasteur/mnt/uploads/Quality_Socre_-_Gamification_(+_carga_a_Menus)_2026_05_24.csv'
+    METRO_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_metro.csv'
+    SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
+    UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
+    TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_24.csv'
+    UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
 # ── Color maps ────────────────────────────────────────────────────────
@@ -54,7 +74,7 @@ df_u['lng'] = pd.to_numeric(df_u['longitude'], errors='coerce')
 df_u['transacciones'] = pd.to_numeric(df_u['transacciones'], errors='coerce').fillna(0)
 df_u['consumo_total'] = pd.to_numeric(df_u['consumo_total'], errors='coerce').fillna(0)
 df_u['days_to_first_trx'] = pd.to_numeric(df_u['days_to_first_trx'], errors='coerce')
-df_u['created_date'] = pd.to_datetime(df_u['created_date'], format='%d/%m/%y %H:%M', errors='coerce')
+df_u['created_date'] = pd.to_datetime(df_u['created_date'], dayfirst=True, errors='coerce')
 
 df_aprov = df_u[df_u['kyc_status']=='APPROVED'].copy()
 
@@ -201,30 +221,59 @@ print(f"  {len(hex_features)} hexes")
 # ══════════════════════════════════════════════════════════════════════
 print("Building BIZ_DATA…")
 
-# Load quality scores and index by name (lowercased for matching)
-df_qs = pd.read_csv(QS_CSV)
-df_qs.columns = df_qs.columns.str.strip()
-df_qs['name_key'] = df_qs['name'].str.strip().str.lower()
-df_qs_active = df_qs[df_qs['dormida']==False].copy()
+def _safe_bool(val):
+    if pd.isna(val): return False
+    if isinstance(val, bool): return val
+    return str(val).strip().lower() in ('true','1','yes','sí','si')
+
+def _qs_nivel(score):
+    if score >= 80: return 'Excelente'
+    if score >= 60: return 'Alta'
+    if score >= 40: return 'Media'
+    if score >= 20: return 'Baja'
+    return 'Crítica'
+
+# Load quality scores — from separate QS CSV (local) or from NEG_CSV (CI)
 qs_lookup = {}
-for _, r in df_qs.iterrows():
-    def _safe_bool(val):
-        if pd.isna(val): return False
-        if isinstance(val, bool): return val
-        return str(val).strip().lower() in ('true','1','yes','sí','si')
-    qs_lookup[r['name_key']] = {
-        'score':          float(r.get('kitchen_quality_score', 0) or 0),
-        'nivel':          str(r.get('kitchen_quality_nivel','') or ''),
-        'etapa':          str(r.get('etapa_negocio','') or ''),
-        'service_cohort': str(r.get('service_cohort','') or ''),
-        'tasa_acepta':    round(float(r.get('tasa_aceptacion_ultimos_30_dias', 0) or 0)*100, 1),
-        'tx_30d':         int(float(r.get('transacciones_ultimos_30_dias', 0) or 0)),
-        'tx_historicas':  int(float(r.get('transacciones_historicas', 0) or 0)),
-        'tiempo_acepta':  round(float(r.get('tiempo_p50_aceptacion_min_ultimos_30_dias', 0) or 0), 1),
-        'menu_bizne':     _safe_bool(r.get('menu_bizne')),
-        'menu_dia':       _safe_bool(r.get('menu_de_dia')),
-        'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
-    }
+if QS_CSV and _os.path.exists(QS_CSV):
+    df_qs = pd.read_csv(QS_CSV)
+    df_qs.columns = df_qs.columns.str.strip()
+    for _, r in df_qs.iterrows():
+        name_key = str(r.get('name','')).strip().lower()
+        qs_lookup[name_key] = {
+            'score':          float(r.get('kitchen_quality_score', 0) or 0),
+            'nivel':          str(r.get('kitchen_quality_nivel','') or ''),
+            'etapa':          str(r.get('etapa_negocio','') or ''),
+            'service_cohort': str(r.get('service_cohort','') or ''),
+            'tasa_acepta':    round(float(r.get('tasa_aceptacion_ultimos_30_dias', 0) or 0)*100, 1),
+            'tx_30d':         int(float(r.get('transacciones_ultimos_30_dias', 0) or 0)),
+            'tx_historicas':  int(float(r.get('transacciones_historicas', 0) or 0)),
+            'tiempo_acepta':  round(float(r.get('tiempo_p50_aceptacion_min_ultimos_30_dias', 0) or 0), 1),
+            'menu_bizne':     _safe_bool(r.get('menu_bizne')),
+            'menu_dia':       _safe_bool(r.get('menu_de_dia')),
+            'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
+        }
+    print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
+else:
+    # CI mode: build QS lookup from NEG_CSV (campos de calidad ya incluidos por bizne_model_ci.py)
+    print("  QS_CSV not available — building QS lookup from NEG_CSV")
+    for _, r in df_neg.iterrows():
+        name_key = str(r.get('name','')).strip().lower()
+        score = float(r.get('kitchen_quality_score', 0) or 0)
+        qs_lookup[name_key] = {
+            'score':          score,
+            'nivel':          _qs_nivel(score),
+            'etapa':          str(r.get('etapa_negocio','') or ''),
+            'service_cohort': str(r.get('service_cohort','') or ''),
+            'tasa_acepta':    round(float(r.get('tasa_aceptacion', 0) or 0)*100, 1),
+            'tx_30d':         int(float(r.get('tx_30d', 0) or 0)),
+            'tx_historicas':  int(float(r.get('tx_historicas', 0) or 0)),
+            'tiempo_acepta':  round(float(r.get('tiempo_acepta', 0) or 0), 1),
+            'menu_bizne':     _safe_bool(r.get('menu_bizne')),
+            'menu_dia':       _safe_bool(r.get('menu_de_dia')),
+            'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
+        }
+    print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
 def qs_color(score):
     if score >= 80: return '#22c55e'   # Excelente — green
@@ -331,9 +380,14 @@ print("Building UPC_DATA…")
 df_upc = pd.read_csv(UPC_CSV)
 upc_features = []
 for _, row in df_upc.iterrows():
-    # latitude col has ~-99 (longitude values), longitude col has ~19 (latitude values)
-    real_lat = float(row['longitude'])   # swapped!
-    real_lng = float(row['latitude'])    # swapped!
+    if UPC_SWAPPED:
+        # CSV original tiene lat/lng intercambiados: latitude≈-99, longitude≈19
+        real_lat = float(row['longitude'])
+        real_lng = float(row['latitude'])
+    else:
+        # data/upcs.csv del repo ya tiene coords correctas
+        real_lat = float(row['latitude'])
+        real_lng = float(row['longitude'])
     if abs(real_lat) < 5 or abs(real_lng) < 5:
         continue
     feat = {
