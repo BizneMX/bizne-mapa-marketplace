@@ -66,7 +66,7 @@ def hex_geojson(hex_id):
     return {"type":"Polygon","coordinates":[coords]}
 
 # ══════════════════════════════════════════════════════════════════════
-# 1. ANALYTICS DATA — May 25
+# 1. ANALYTICS DATA — May 28
 # ══════════════════════════════════════════════════════════════════════
 print("Loading analytics…")
 df_u = pd.read_csv(ANALYTICS)
@@ -89,14 +89,24 @@ ap_pct = round(aprobados/signups_total*100,1) if signups_total > 0 else 0
 df_trx = pd.read_csv(TRX_CSV)
 df_trx.columns = df_trx.columns.str.strip()
 df_trx['status_trx'] = df_trx['status_trx'].fillna('')
-trx_ok   = (df_trx['status_trx'].str.contains('completa', case=False)).sum()
 trx_fail = (df_trx['status_trx'].str.contains('incompleta', case=False)).sum()
+trx_ok   = (df_trx['status_trx'].str.contains('completa', case=False) &
+            ~df_trx['status_trx'].str.contains('incompleta', case=False)).sum()
 
 # Tasa aceptación
 tasa_aceptacion = round(trx_ok/(trx_ok+trx_fail)*100, 1) if (trx_ok+trx_fail) > 0 else 0
 
-# Tiempo promedio de aceptación (approx from analytics)
-tiempo_prom_accept = 8.4  # minutes — from previous calculation
+# Tiempo promedio de aceptación — calculado del QS CSV o NEG_CSV (mediana negocios con dato válido)
+try:
+    _src_t = QS_CSV if (QS_CSV and _os.path.exists(QS_CSV)) else NEG_CSV
+    _df_qs_t = pd.read_csv(_src_t)
+    _df_qs_t.columns = _df_qs_t.columns.str.strip()
+    _tcol = 'tiempo_p50_aceptacion_min_ultimos_30_dias' if 'tiempo_p50_aceptacion_min_ultimos_30_dias' in _df_qs_t.columns else 'tiempo_acepta'
+    _t = pd.to_numeric(_df_qs_t[_tcol], errors='coerce').dropna()
+    _t_clean = _t[(_t > 0) & (_t < 60)]
+    tiempo_prom_accept = round(_t_clean.median(), 1) if len(_t_clean) > 0 else 0.0
+except Exception:
+    tiempo_prom_accept = 0.0
 
 # Conversión primer consumo (approved with at least 1 tx)
 aprov_con_tx = (df_aprov['transacciones'] > 0).sum()
