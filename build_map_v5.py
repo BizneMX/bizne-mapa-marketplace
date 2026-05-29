@@ -245,27 +245,31 @@ try:
     df_activ = pd.read_csv(ACTIV_CSV)
     for _, row in df_activ.iterrows():
         lat_a, lng_a = float(row['Lat']), float(row['Long'])
+        sector_a = str(row.get('Sector', '')).strip()
+        is_admin = sector_a.lower() == 'admin'
         try:
             center_hex = h3.latlng_to_cell(lat_a, lng_a, H3_RES)
         except Exception:
             continue
         dem_punto = round(ACTIV_DEM_BASE, 1)
-        # Inyectar demanda con decay por anillo
-        for ring_k, decay in ACTIV_DECAY.items():
-            ring = [center_hex] if ring_k == 0 else list(h3.grid_ring(center_hex, ring_k))
-            for hx in ring:
-                activ_dem_hex[hx] += ACTIV_DEM_BASE * decay
+        # Solo inyectar demanda en puntos de campo (no Admin)
+        if not is_admin:
+            for ring_k, decay in ACTIV_DECAY.items():
+                ring = [center_hex] if ring_k == 0 else list(h3.grid_ring(center_hex, ring_k))
+                for hx in ring:
+                    activ_dem_hex[hx] += ACTIV_DEM_BASE * decay
         # Feature para la capa visual
         activ_features.append({
             "type": "Feature",
             "geometry": {"type":"Point","coordinates":[lng_a, lat_a]},
             "properties": {
                 "nombre":      str(row['Nombre']),
-                "sector":      str(row['Sector']),
+                "sector":      sector_a,
                 "direccion":   str(row.get('Dirección', row.get('Direccion',''))),
-                "elementos_est": ACTIV_ELEMENTOS,
-                "dem_dia_est": dem_punto,
-                "radio_km":    2.0,
+                "es_admin":    is_admin,
+                "elementos_est": 0 if is_admin else ACTIV_ELEMENTOS,
+                "dem_dia_est": 0.0 if is_admin else dem_punto,
+                "radio_km":    0.0 if is_admin else 2.0,
             }
         })
     # Boost a hex_features ya construidos
@@ -869,6 +873,17 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   white-space:nowrap;padding:1px 5px;border-radius:4px;
   border:1px solid #E879F9;pointer-events:none;}
 @keyframes activPulse{0%,100%{transform:scale(1);opacity:.6;}50%{transform:scale(1.7);opacity:0;}}
+/* ── Edificios Administrativos marker ─────────────────────────*/
+.admin-marker{position:relative;width:26px;height:26px;}
+.admin-icon{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:22px;height:22px;border-radius:4px;background:#1e3a8a;
+  border:2.5px solid #60a5fa;box-shadow:0 0 8px rgba(96,165,250,.5);
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;line-height:1;}
+.admin-label{position:absolute;top:-18px;left:50%;transform:translateX(-50%);
+  background:#0f172a;color:#60a5fa;font-size:9px;font-weight:700;
+  white-space:nowrap;padding:1px 5px;border-radius:4px;
+  border:1px solid #60a5fa;pointer-events:none;}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
 #chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
@@ -1836,31 +1851,54 @@ document.addEventListener("DOMContentLoaded", function() {{
     // Puntos de Activación
     window.LYR_ACTIV = L.geoJSON(ACTIV_DATA, {{
       pointToLayer: function(f, ll) {{
-        var icon = L.divIcon({{
-          className: '',
-          html: '<div class="activ-marker">' +
-                  '<div class="activ-pulse"></div>' +
-                  '<div class="activ-core"></div>' +
-                  '<div class="activ-label">' + f.properties.nombre + '</div>' +
-                '</div>',
-          iconSize: [22, 22],
-          iconAnchor: [11, 11],
-        }});
+        var p = f.properties;
+        var icon;
+        if (p.es_admin) {{
+          icon = L.divIcon({{
+            className: '',
+            html: '<div class="admin-marker">' +
+                    '<div class="admin-icon">🏢</div>' +
+                    '<div class="admin-label">' + p.nombre + '</div>' +
+                  '</div>',
+            iconSize: [26, 26],
+            iconAnchor: [13, 13],
+          }});
+        }} else {{
+          icon = L.divIcon({{
+            className: '',
+            html: '<div class="activ-marker">' +
+                    '<div class="activ-pulse"></div>' +
+                    '<div class="activ-core"></div>' +
+                    '<div class="activ-label">' + p.nombre + '</div>' +
+                  '</div>',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+          }});
+        }}
         return L.marker(ll, {{icon: icon}});
       }},
       onEachFeature: function(f, l) {{
         var p = f.properties;
-        l.bindTooltip(
-          "<b style='color:#E879F9'>⚡ " + p.nombre + "</b><br>" +
-          "<span style='color:#94a3b8;font-size:9px'>" + p.sector + "</span><br>" +
-          "<i style='color:#64748b;font-size:9px'>" + p.direccion + "</i>" +
-          "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>" +
-          "<b>Elementos estimados:</b> <span style='color:#E879F9'>" + p.elementos_est + "</span><br>" +
-          "<b>Demanda est./día:</b> <span style='color:#E879F9;font-weight:700'>" + p.dem_dia_est + " tx</span><br>" +
-          "<b>Radio de influencia:</b> " + p.radio_km + " km" +
-          "<br><span style='font-size:9px;color:#475569'>Hex vecinos boosteados con decay 65%/35%</span>",
-          {{sticky: true, opacity: 0.97, maxWidth: 260}}
-        );
+        if (p.es_admin) {{
+          l.bindTooltip(
+            "<b style='color:#60a5fa'>🏢 " + p.nombre + "</b><br>" +
+            "<span style='color:#94a3b8;font-size:9px'>Edificio Administrativo PA</span><br>" +
+            "<i style='color:#64748b;font-size:9px'>" + p.direccion + "</i>",
+            {{sticky: true, opacity: 0.97, maxWidth: 260}}
+          );
+        }} else {{
+          l.bindTooltip(
+            "<b style='color:#E879F9'>⚡ " + p.nombre + "</b><br>" +
+            "<span style='color:#94a3b8;font-size:9px'>" + p.sector + "</span><br>" +
+            "<i style='color:#64748b;font-size:9px'>" + p.direccion + "</i>" +
+            "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>" +
+            "<b>Elementos estimados:</b> <span style='color:#E879F9'>" + p.elementos_est + "</span><br>" +
+            "<b>Demanda est./día:</b> <span style='color:#E879F9;font-weight:700'>" + p.dem_dia_est + " tx</span><br>" +
+            "<b>Radio de influencia:</b> " + p.radio_km + " km" +
+            "<br><span style='font-size:9px;color:#475569'>Hex vecinos boosteados con decay 65%/35%</span>",
+            {{sticky: true, opacity: 0.97, maxWidth: 260}}
+          );
+        }}
       }}
     }}).addTo(theMap);
 
