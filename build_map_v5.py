@@ -5,6 +5,7 @@ Features: Dashboard KPIs · Dashboard Hunter · Modo Oscuro · Guía · Session 
 import json, math
 import pandas as pd
 import numpy as np
+from math import ceil as import_ceil
 import h3
 from collections import defaultdict
 
@@ -521,27 +522,52 @@ df_dorm_copy = df_dorm.copy()
 df_dorm_copy['hex_id'] = df_dorm_copy.apply(lambda r: safe_h3(r['lat'],r['lng']), axis=1)
 dorm_per_hex = df_dorm_copy.groupby('hex_id').size().to_dict()
 
-# ── Boost df_hex con demanda de activación ─────────────────────────────────
-# activ_dem_hex viene del bloque ACTIV_DATA ya procesado arriba.
-# Actualizamos demanda_estimada_dia y priority_score para que los hexes
-# cerca de puntos de activación suban de tier en hunter zones.
+# ── Boost df_hex con demanda de activación + recálculo completo D90→gap ──────
+# Parámetros del CI model (deben mantenerse sincronizados con bizne_model_ci.py)
+_U_UTIL   = 0.9588
+_C_CAP    = 55
+_SAFETY   = 1.15
+from scipy.stats import poisson as _poisson
+
 if activ_dem_hex:
     df_hex = df_hex.set_index('hex_id')
     for _hx, _dem in activ_dem_hex.items():
         if _hx in df_hex.index:
+            # Sumar demanda de activación
             df_hex.at[_hx, 'demanda_estimada_dia'] = round(
                 float(df_hex.at[_hx, 'demanda_estimada_dia']) + _dem, 1)
-            # Recalcular priority_score (demanda / max_offer proxy)
-            _n_neg = max(int(df_hex.at[_hx, 'negocios_actuales']), 1)
-            df_hex.at[_hx, 'priority_score'] = round(
-                float(df_hex.at[_hx, 'demanda_estimada_dia']) / _n_neg, 3)
+        else:
+            # Hex nuevo (fuera del rango previo del modelo) — crear fila mínima
+            _lat_hx, _lng_hx = h3.cell_to_latlng(_hx)
+            df_hex.loc[_hx] = {
+                'hex_lat': round(_lat_hx, 4), 'hex_lng': round(_lng_hx, 4),
+                'zone_tier': 'D_BAJA', 'DI': 0.0, 'elementos_sector_total': 0.0,
+                'demanda_fijo': 0.0, 'demanda_ruta': 0.0, 'demanda_patrulla': 0.0,
+                'demanda_metro': 0.0, 'usuarios_approved': 0.0,
+                'transacciones_8d': 0.0, 'tx_incompletas': 0.0,
+                'demanda_estimada_dia': round(_dem, 1), 'D90_diario': 0.0,
+                'negocios_actuales': 0.0, 'negocios_necesarios': 0.0,
+                'gap': 0.0, 'cobertura': 0.0, 'rating_promedio': 0.0,
+                'priority_score': 0.0, 'tier_value': 1,
+            }
+    # Recalcular D90 → N_needed → gap para todos los hexes boosteados
+    for _hx in list(activ_dem_hex.keys()):
+        if _hx not in df_hex.index:
+            continue
+        _mu = max(float(df_hex.at[_hx, 'demanda_estimada_dia']), 0.01)
+        _d90 = float(_poisson.ppf(0.90, _mu))
+        _n_need = float(import_ceil(_d90 * _SAFETY / (_U_UTIL * _C_CAP)))
+        _n_act  = float(df_hex.at[_hx, 'negocios_actuales'])
+        _gap    = max(0, int(_n_need - _n_act))
+        df_hex.at[_hx, 'D90_diario']          = round(_d90, 2)
+        df_hex.at[_hx, 'negocios_necesarios'] = _n_need
+        df_hex.at[_hx, 'gap']                 = _gap
+        df_hex.at[_hx, 'priority_score']      = round(_mu / max(_n_act, 1), 3)
     df_hex = df_hex.reset_index()
-    # Recalcular gap: negocios_necesarios - negocios_actuales (mínimo 0)
-    if 'negocios_necesarios' in df_hex.columns:
-        df_hex['gap'] = (df_hex['negocios_necesarios'] - df_hex['negocios_actuales']).clip(lower=0).astype(int)
 
-# Merge with hex demand
-df_hunt = df_hex[df_hex['gap']>0].copy()
+# Incluir hexes con gap>0 O con señal de activación (zonas de desarrollo potencial)
+_activ_hex_set = set(activ_dem_hex.keys()) if activ_dem_hex else set()
+df_hunt = df_hex[(df_hex['gap'] > 0) | (df_hex['hex_id'].isin(_activ_hex_set))].copy()
 df_hunt = df_hunt.merge(user_hex, on='hex_id', how='left')
 df_hunt['usuarios'] = df_hunt['usuarios'].fillna(0).astype(int)
 df_hunt['sin_compras'] = df_hunt['sin_compras'].fillna(0).astype(int)
