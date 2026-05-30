@@ -633,6 +633,9 @@ def hunter_tier(score):
     if score >= 0.10:  return HUNTER_TIER_DEFS[4]
     return HUNTER_TIER_DEFS[5]
 
+# Lookup hex_code por hex_id (asignados al construir hex_features)
+_hex_code_lookup = {f['properties']['hex_id']: f['properties']['hex_code'] for f in hex_features}
+
 hunter_features = []
 for _, row in df_hunt.iterrows():
     try:
@@ -646,7 +649,8 @@ for _, row in df_hunt.iterrows():
         "type":"Feature",
         "geometry": geo,
         "properties":{
-            "hex_id": str(row['hex_id']),
+            "hex_id":   str(row['hex_id']),
+            "hex_code": _hex_code_lookup.get(str(row['hex_id']), ''),
             "rank": int(row['rank']),
             "zona": zona_lbl,
             "delegacion": "CDMX",
@@ -949,10 +953,10 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 #marquee-panel .mp-clear{{background:transparent;color:#64748b;border:1px solid #334155;
   padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}}
 #marquee-panel .mp-clear:hover{{color:#ef4444;border-color:#ef4444;}}
-#marquee-tool-btn{{position:fixed;bottom:136px;right:24px;z-index:1010;
-  background:#0f172a;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
-  border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;}}
+#marquee-tool-btn{{position:fixed;bottom:130px;right:24px;z-index:2002;
+  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
+  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
+  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}}
 #marquee-tool-btn:hover,#marquee-tool-btn.active{{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
@@ -1861,7 +1865,26 @@ document.addEventListener("DOMContentLoaded", function() {{
       style:function(f){{return {{color:f.properties.fill_color,weight:1.2,
         fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"4 3"}};}},
       onEachFeature:function(f,l){{l._p=f.properties;
-        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});}}
+        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});
+        // Label centrado en el hex
+        if (f.properties.hex_code) {{
+          var center = l.getBounds().getCenter();
+          var lbl = L.marker(center, {{
+            pane:'hunterPane',
+            icon: L.divIcon({{
+              className:'',
+              html:"<div style='font-family:monospace;font-size:8px;font-weight:700;"+
+                   "color:#fff;background:rgba(0,0,0,.55);padding:1px 4px;border-radius:3px;"+
+                   "white-space:nowrap;pointer-events:none;text-align:center;"+
+                   "transform:translateX(-50%)'>" + f.properties.hex_code + "</div>",
+              iconSize:[0,0], iconAnchor:[0,0]
+            }})
+          }});
+          lbl._hunterLabel = true;
+          lbl.addTo(theMap);
+          l._codeLabel = lbl;
+        }}
+      }}
     }}).addTo(theMap);
 
     // Demand hexes
@@ -2006,6 +2029,12 @@ document.addEventListener("DOMContentLoaded", function() {{
                  activ:window.LYR_ACTIV}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
+      // Sync hunter hex code labels
+      if (name === 'hunter' && window.LYR_HUNTER) {{
+        window.LYR_HUNTER.eachLayer(function(l) {{
+          if (l._codeLabel) {{ show ? l._codeLabel.addTo(m) : m.removeLayer(l._codeLabel); }}
+        }});
+      }}
     }};
     window.toggleHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
@@ -2299,7 +2328,7 @@ html,body{{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}}
 {CHAT_HTML}
 <!-- Marquee selector -->
 <div id="marquee-rect"></div>
-<button id="marquee-tool-btn" title="Selector de área (arrastra para seleccionar negocios)" onclick="toggleMarqueeTool()">⬚</button>
+<button id="marquee-tool-btn" title="Selector de área — arrastra para seleccionar negocios y exportar CSV" onclick="toggleMarqueeTool()">▭</button>
 <div id="marquee-panel">
   <span class="mp-count" id="mp-count-lbl">0 negocios</span>
   <button class="mp-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>
