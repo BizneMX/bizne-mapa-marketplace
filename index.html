@@ -128,11 +128,11 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 #marquee-panel .mp-clear{{background:transparent;color:#64748b;border:1px solid #334155;
   padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}}
 #marquee-panel .mp-clear:hover{{color:#ef4444;border-color:#ef4444;}}
-#marquee-tool-btn{{position:fixed;bottom:130px;right:24px;z-index:2002;
+#marquee-tool-btn{position:fixed;bottom:118px;right:24px;z-index:2002;
   background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
   border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}}
-#marquee-tool-btn:hover,#marquee-tool-btn.active{{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}}
+  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
+#marquee-tool-btn:hover,#marquee-tool-btn.active{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
 #chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
@@ -1342,21 +1342,24 @@ document.addEventListener('DOMContentLoaded', function() {
 </script>
 <script>
 // ── Marquee selector ─────────────────────────────────────────────────────────
-var _mqActive   = false;   // tool toggled on
+var _mqActive   = false;
 var _mqDragging = false;
-var _mqStart    = null;    // {x,y} screen pixels
-var _mqSelected = [];      // array of biz feature properties
+var _mqStart    = null;
+var _mqSelected = [];
 var _mqHighlightedLayers = [];
 
+function _mqMap() { return window.THE_MAP || null; }
+
 function toggleMarqueeTool() {
+  var m = _mqMap();
   _mqActive = !_mqActive;
   var btn = document.getElementById('marquee-tool-btn');
   if (btn) btn.classList.toggle('active', _mqActive);
   if (_mqActive) {
-    theMap.dragging.disable();
+    if (m) m.dragging.disable();
     document.getElementById('map').style.cursor = 'crosshair';
   } else {
-    theMap.dragging.enable();
+    if (m) m.dragging.enable();
     document.getElementById('map').style.cursor = '';
     clearMarqueeSelection();
   }
@@ -1421,9 +1424,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if ((x2-x1) < 5 || (y2-y1) < 5) return;  // ignorar clicks
 
     // Convertir esquinas a LatLng
+    var m2 = _mqMap(); if (!m2) return;
     var mapRect = mapEl.getBoundingClientRect();
-    var pt1 = theMap.containerPointToLatLng([x1 - mapRect.left, y1 - mapRect.top]);
-    var pt2 = theMap.containerPointToLatLng([x2 - mapRect.left, y2 - mapRect.top]);
+    var pt1 = m2.containerPointToLatLng([x1 - mapRect.left, y1 - mapRect.top]);
+    var pt2 = m2.containerPointToLatLng([x2 - mapRect.left, y2 - mapRect.top]);
     var latMin = Math.min(pt1.lat, pt2.lat);
     var latMax = Math.max(pt1.lat, pt2.lat);
     var lngMin = Math.min(pt1.lng, pt2.lng);
