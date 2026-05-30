@@ -186,6 +186,7 @@ df_hex = pd.read_csv(HEX_CSV)
 df_hex.columns = df_hex.columns.str.strip()
 
 hex_features = []
+_hex_seq = 1   # contador global para HEX-XXXX
 for _, row in df_hex.iterrows():
     tier = str(row['zone_tier'])
     fill = TIER_COLORS.get(tier, '#94a3b8')
@@ -206,7 +207,8 @@ for _, row in df_hex.iterrows():
         "type":"Feature",
         "geometry": geo,
         "properties": {
-            "hex_id": str(row['hex_id']),
+            "hex_id":   str(row['hex_id']),
+            "hex_code": f"HEX-{_hex_seq:04d}",
             "zone_tier": tier,
             "DI": di,
             "demanda_dia": round(float(row.get('demanda_estimada_dia',0)), 1),
@@ -225,6 +227,7 @@ for _, row in df_hex.iterrows():
         }
     }
     hex_features.append(feat)
+    _hex_seq += 1
 
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 print(f"  {len(hex_features)} hexes")
@@ -315,17 +318,28 @@ if QS_CSV and _os.path.exists(QS_CSV):
     for _, r in df_qs.iterrows():
         name_key = str(r.get('name','')).strip().lower()
         qs_lookup[name_key] = {
-            'score':          float(r.get('kitchen_quality_score', 0) or 0),
-            'nivel':          str(r.get('kitchen_quality_nivel','') or ''),
-            'etapa':          str(r.get('etapa_negocio','') or ''),
-            'service_cohort': str(r.get('service_cohort','') or ''),
-            'tasa_acepta':    round(float(r.get('tasa_aceptacion_ultimos_30_dias', 0) or 0)*100, 1),
-            'tx_30d':         int(float(r.get('transacciones_ultimos_30_dias', 0) or 0)),
-            'tx_historicas':  int(float(r.get('transacciones_historicas', 0) or 0)),
-            'tiempo_acepta':  round(float(r.get('tiempo_p50_aceptacion_min_ultimos_30_dias', 0) or 0), 1),
-            'menu_bizne':     _safe_bool(r.get('menu_bizne')),
-            'menu_dia':       _safe_bool(r.get('menu_de_dia')),
-            'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
+            'score':           float(r.get('kitchen_quality_score', 0) or 0),
+            'nivel':           str(r.get('kitchen_quality_nivel','') or ''),
+            'etapa':           str(r.get('etapa_negocio','') or ''),
+            'service_cohort':  str(r.get('service_cohort','') or ''),
+            'tasa_acepta':     round(float(r.get('tasa_aceptacion_ultimos_30_dias', 0) or 0)*100, 1),
+            'tx_30d':          int(float(r.get('transacciones_ultimos_30_dias', 0) or 0)),
+            'tx_90d':          int(float(r.get('transacciones_ultimos_90_dias', 0) or 0)),
+            'tx_historicas':   int(float(r.get('transacciones_historicas', 0) or 0)),
+            'tiempo_acepta':   round(float(r.get('tiempo_p50_aceptacion_min_ultimos_30_dias', 0) or 0), 1),
+            'menu_bizne':      _safe_bool(r.get('menu_bizne')),
+            'menu_dia':        _safe_bool(r.get('menu_de_dia')),
+            'menu_carta':      _safe_bool(r.get('menu_a_la_carta')),
+            # Campos de exportación CSV
+            'service_id':      int(float(r.get('service_id', 0) or 0)),
+            'phone_number':    str(r.get('phone_number','') or ''),
+            'owner_name':      str(r.get('owner_name','') or ''),
+            'hunter':          str(r.get('hunter','') or ''),
+            'address':         str(r.get('address','') or ''),
+            'colonia':         str(r.get('colonia','') or ''),
+            'creation_date':   str(r.get('bizne_creation_date','') or ''),
+            'dias_creacion':   int(float(r.get('dias_desde_creacion', 0) or 0)),
+            'food_types':      str(r.get('food_types','') or ''),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -381,10 +395,21 @@ for _, row in df_neg.iterrows():
             "ventas_30d":     round(float(row.get('ventas_30d', 0) or 0), 0),
             "tasa_acepta":    qs_data.get('tasa_acepta', round(float(row.get('tasa_aceptacion', 0) or 0)*100, 1)),
             "tiempo_acepta":  qs_data.get('tiempo_acepta', 0),
-            "menu_bizne":     qs_data.get('menu_bizne', False),
-            "menu_dia":       qs_data.get('menu_dia', False),
-            "menu_carta":     qs_data.get('menu_carta', False),
-            "fill_color":     fill,
+            "menu_bizne":    qs_data.get('menu_bizne', False),
+            "menu_dia":      qs_data.get('menu_dia', False),
+            "menu_carta":    qs_data.get('menu_carta', False),
+            "fill_color":    fill,
+            # Campos de exportación CSV
+            "service_id":    qs_data.get('service_id', 0),
+            "phone_number":  qs_data.get('phone_number', ''),
+            "owner_name":    qs_data.get('owner_name', ''),
+            "hunter":        qs_data.get('hunter', ''),
+            "address":       qs_data.get('address', ''),
+            "colonia":       qs_data.get('colonia', ''),
+            "tx_90d":        qs_data.get('tx_90d', 0),
+            "creation_date": qs_data.get('creation_date', ''),
+            "dias_creacion": qs_data.get('dias_creacion', 0),
+            "food_types":    qs_data.get('food_types', str(row.get('food_types',''))),
         }
     }
     biz_features.append(feat)
@@ -910,6 +935,25 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   background:#0f172a;color:#60a5fa;font-size:9px;font-weight:700;
   white-space:nowrap;padding:1px 5px;border-radius:4px;
   border:1px solid #60a5fa;pointer-events:none;}
+/* ── Marquee selector ───────────────────────────────────────── */
+#marquee-rect{{position:fixed;border:2px solid #60a5fa;background:rgba(96,165,250,.12);
+  pointer-events:none;z-index:1200;display:none;box-sizing:border-box;}}
+#marquee-panel{{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  z-index:1300;background:#0f172a;border:1.5px solid #60a5fa;border-radius:10px;
+  padding:10px 16px;display:none;align-items:center;gap:10px;
+  box-shadow:0 4px 24px rgba(0,0,0,.6);white-space:nowrap;}}
+#marquee-panel .mp-count{{color:#60a5fa;font-weight:700;font-size:13px;}}
+#marquee-panel .mp-btn{{background:#1e40af;color:#fff;border:none;padding:6px 14px;
+  border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;}}
+#marquee-panel .mp-btn:hover{{background:#2563eb;}}
+#marquee-panel .mp-clear{{background:transparent;color:#64748b;border:1px solid #334155;
+  padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}}
+#marquee-panel .mp-clear:hover{{color:#ef4444;border-color:#ef4444;}}
+#marquee-tool-btn{{position:fixed;bottom:136px;right:24px;z-index:1010;
+  background:#0f172a;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
+  border-radius:8px;cursor:pointer;font-size:16px;display:flex;align-items:center;
+  justify-content:center;transition:all .2s;}}
+#marquee-tool-btn:hover,#marquee-tool-btn.active{{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
 #chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
@@ -1697,7 +1741,10 @@ var SD_TIER_MAP = {{
 }};
 
 function buildHexTT(p) {{
-  var s = "<b style='color:"+p.fill_color+"'>"+p.zone_tier.replace(/_/g," ")+"</b><br>";
+  var s = "<div style='display:flex;justify-content:space-between;align-items:center;gap:12px'>"+
+          "<b style='color:"+p.fill_color+"'>"+p.zone_tier.replace(/_/g," ")+"</b>"+
+          "<span style='font-family:monospace;font-size:9px;background:#0f172a;color:#60a5fa;padding:1px 6px;border-radius:4px;border:1px solid #1e3a52'>"+p.hex_code+"</span>"+
+          "</div>";
   HEX_FIELDS.forEach(function(f) {{
     var cb = document.getElementById(f.id);
     if (cb && cb.checked) s += "<b>"+f.label+":</b> "+p[f.key]+"<br>";
@@ -2049,6 +2096,186 @@ document.addEventListener("DOMContentLoaded", function() {{
 }});
 </script>"""
 
+MARQUEE_JS = """<script>
+// ── Marquee selector ─────────────────────────────────────────────────────────
+var _mqActive   = false;   // tool toggled on
+var _mqDragging = false;
+var _mqStart    = null;    // {x,y} screen pixels
+var _mqSelected = [];      // array of biz feature properties
+var _mqHighlightedLayers = [];
+
+function toggleMarqueeTool() {
+  _mqActive = !_mqActive;
+  var btn = document.getElementById('marquee-tool-btn');
+  if (btn) btn.classList.toggle('active', _mqActive);
+  if (_mqActive) {
+    theMap.dragging.disable();
+    document.getElementById('map').style.cursor = 'crosshair';
+  } else {
+    theMap.dragging.enable();
+    document.getElementById('map').style.cursor = '';
+    clearMarqueeSelection();
+  }
+}
+
+function clearMarqueeSelection() {
+  _mqSelected = [];
+  _mqHighlightedLayers.forEach(function(l) {
+    try { l.setStyle({weight:1.5, color:'#fff', fillOpacity: l._origFillOp || 0.85}); } catch(e){}
+  });
+  _mqHighlightedLayers = [];
+  document.getElementById('marquee-rect').style.display = 'none';
+  document.getElementById('marquee-panel').style.display = 'none';
+}
+
+// Mouse events on map container
+var mapEl = null;
+document.addEventListener('DOMContentLoaded', function() {
+  mapEl = document.getElementById('map');
+  if (!mapEl) return;
+
+  mapEl.addEventListener('mousedown', function(e) {
+    if (!_mqActive) return;
+    if (e.button !== 0) return;
+    _mqDragging = true;
+    _mqStart = {x: e.clientX, y: e.clientY};
+    var rect = document.getElementById('marquee-rect');
+    rect.style.left   = e.clientX + 'px';
+    rect.style.top    = e.clientY + 'px';
+    rect.style.width  = '0px';
+    rect.style.height = '0px';
+    rect.style.display = 'block';
+    e.preventDefault();
+    e.stopPropagation();
+  });
+
+  document.addEventListener('mousemove', function(e) {
+    if (!_mqDragging || !_mqStart) return;
+    var rect = document.getElementById('marquee-rect');
+    var x1 = Math.min(e.clientX, _mqStart.x);
+    var y1 = Math.min(e.clientY, _mqStart.y);
+    var w  = Math.abs(e.clientX - _mqStart.x);
+    var h  = Math.abs(e.clientY - _mqStart.y);
+    rect.style.left   = x1 + 'px';
+    rect.style.top    = y1 + 'px';
+    rect.style.width  = w  + 'px';
+    rect.style.height = h  + 'px';
+  });
+
+  document.addEventListener('mouseup', function(e) {
+    if (!_mqDragging) return;
+    _mqDragging = false;
+    var rect = document.getElementById('marquee-rect');
+    rect.style.display = 'none';
+
+    if (!_mqStart) return;
+    var x1 = Math.min(e.clientX, _mqStart.x);
+    var y1 = Math.min(e.clientY, _mqStart.y);
+    var x2 = Math.max(e.clientX, _mqStart.x);
+    var y2 = Math.max(e.clientY, _mqStart.y);
+    _mqStart = null;
+    if ((x2-x1) < 5 || (y2-y1) < 5) return;  // ignorar clicks
+
+    // Convertir esquinas a LatLng
+    var mapRect = mapEl.getBoundingClientRect();
+    var pt1 = theMap.containerPointToLatLng([x1 - mapRect.left, y1 - mapRect.top]);
+    var pt2 = theMap.containerPointToLatLng([x2 - mapRect.left, y2 - mapRect.top]);
+    var latMin = Math.min(pt1.lat, pt2.lat);
+    var latMax = Math.max(pt1.lat, pt2.lat);
+    var lngMin = Math.min(pt1.lng, pt2.lng);
+    var lngMax = Math.max(pt1.lng, pt2.lng);
+
+    // Limpiar selección anterior
+    _mqHighlightedLayers.forEach(function(l) {
+      try { l.setStyle({weight:1.5, color:'#fff', fillOpacity: l._origFillOp || 0.85}); } catch(e){}
+    });
+    _mqHighlightedLayers = [];
+    _mqSelected = [];
+
+    // Iterar sobre LYR_BIZ y seleccionar los que caen dentro del bounds
+    if (window.LYR_BIZ) {
+      window.LYR_BIZ.eachLayer(function(layer) {
+        var latlng = layer.getLatLng ? layer.getLatLng() : null;
+        if (!latlng) return;
+        if (latlng.lat >= latMin && latlng.lat <= latMax &&
+            latlng.lng >= lngMin && latlng.lng <= lngMax) {
+          var p = layer.feature && layer.feature.properties;
+          if (p) {
+            _mqSelected.push(p);
+            layer._origFillOp = p.fill_opacity || 0.85;
+            try {
+              layer.setStyle({weight:3, color:'#60a5fa', fillOpacity:1.0});
+            } catch(ex) {}
+            _mqHighlightedLayers.push(layer);
+          }
+        }
+      });
+    }
+
+    var panel = document.getElementById('marquee-panel');
+    var lbl   = document.getElementById('mp-count-lbl');
+    if (_mqSelected.length > 0) {
+      lbl.textContent = _mqSelected.length + ' negocio' + (_mqSelected.length !== 1 ? 's' : '') + ' seleccionado' + (_mqSelected.length !== 1 ? 's' : '');
+      panel.style.display = 'flex';
+    } else {
+      panel.style.display = 'none';
+    }
+  });
+
+  // Escape para limpiar
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') {
+      if (_mqActive) { toggleMarqueeTool(); }
+      else { clearMarqueeSelection(); }
+    }
+  });
+});
+
+function downloadSelectionCSV() {
+  if (!_mqSelected.length) return;
+  var headers = [
+    'service_id','nombre','phone_number','owner_name','hunter',
+    'address','colonia','delegacion',
+    'tx_historicas','tx_90d','tx_30d',
+    'rating','quality_score','quality_nivel',
+    'tasa_acepta','tiempo_acepta',
+    'etapa','service_cohort',
+    'menu_bizne','menu_dia','menu_carta',
+    'creation_date','dias_creacion','food_types'
+  ];
+  var rows = [headers.join(',')];
+  _mqSelected.forEach(function(p) {
+    function esc(v) {
+      if (v === null || v === undefined) return '';
+      var s = String(v);
+      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\\n') >= 0) {
+        return '"' + s.replace(/"/g, '""') + '"';
+      }
+      return s;
+    }
+    rows.push([
+      esc(p.service_id), esc(p.nombre),   esc(p.phone_number), esc(p.owner_name),
+      esc(p.hunter),     esc(p.address),  esc(p.colonia),      esc(p.delegacion),
+      esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d),
+      esc(p.rating),     esc(p.quality_score), esc(p.quality_nivel),
+      esc(p.tasa_acepta), esc(p.tiempo_acepta),
+      esc(p.etapa),      esc(p.service_cohort),
+      esc(p.menu_bizne), esc(p.menu_dia), esc(p.menu_carta),
+      esc(p.creation_date), esc(p.dias_creacion), esc(p.food_types)
+    ].join(','));
+  });
+  var blob = new Blob([rows.join('\\n')], {type:'text/csv;charset=utf-8;'});
+  var url  = URL.createObjectURL(blob);
+  var a    = document.createElement('a');
+  a.href   = url;
+  a.download = 'bizne_seleccion_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+</script>"""
+
 # ══════════════════════════════════════════════════════════════════════
 # ASSEMBLE FINAL HTML
 # ══════════════════════════════════════════════════════════════════════
@@ -2070,12 +2297,21 @@ html,body{{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}}
 {PANEL_HTML}
 {GUIDE_HTML}
 {CHAT_HTML}
+<!-- Marquee selector -->
+<div id="marquee-rect"></div>
+<button id="marquee-tool-btn" title="Selector de área (arrastra para seleccionar negocios)" onclick="toggleMarqueeTool()">⬚</button>
+<div id="marquee-panel">
+  <span class="mp-count" id="mp-count-lbl">0 negocios</span>
+  <button class="mp-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>
+  <button class="mp-clear" onclick="clearMarqueeSelection()">✕ Limpiar</button>
+</div>
 <div id="map"></div>
 <script>
 var _bizneMap = L.map('map', {{center:[19.42,-99.13],zoom:11,zoomControl:true}});
 </script>
 {JS}
 {CHAT_JS}
+{MARQUEE_JS}
 </body>
 </html>"""
 
@@ -2108,6 +2344,11 @@ checks = [
     ('ACTIV_DATA', 'Puntos activacion data'),
     ('activ-pulse', 'Activacion marker CSS'),
     ('LYR_ACTIV', 'Activacion layer JS'),
+    ('hex_code', 'HEX-XXXX code en datos'),
+    ('HEX-', 'HEX-XXXX en tooltip'),
+    ('marquee-rect', 'Marquee CSS'),
+    ('downloadSelectionCSV', 'Marquee CSV export JS'),
+    ('toggleMarqueeTool', 'Marquee tool toggle'),
     ('chat-panel', 'Chat panel HTML'),
     ('chatProcess', 'Chat engine JS'),
     ('buildCountResponse', 'Chat count fn'),
