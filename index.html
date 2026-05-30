@@ -115,23 +115,28 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   white-space:nowrap;padding:1px 5px;border-radius:4px;
   border:1px solid #60a5fa;pointer-events:none;}
 /* ── Marquee selector ───────────────────────────────────────── */
-#marquee-rect{{position:fixed;border:2px dashed #60a5fa;background:rgba(96,165,250,.08);
-  pointer-events:none;z-index:1200;display:none;box-sizing:border-box;
+#marquee-rect{position:fixed;border:2px dashed #60a5fa;background:rgba(96,165,250,.08);
+  pointer-events:none;z-index:9999;display:none;box-sizing:border-box;
   box-shadow:0 0 0 1px rgba(96,165,250,.2);
-  animation:marqueeAnim .6s linear infinite;}}
-@keyframes marqueeAnim{{
-  0%{{border-color:#60a5fa;}}50%{{border-color:#93c5fd;}}100%{{border-color:#60a5fa;}}}}
-#marquee-panel{{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
-  z-index:1300;background:#0f172a;border:1.5px solid #60a5fa;border-radius:10px;
+  animation:marqueeAnim .6s linear infinite;}
+@keyframes marqueeAnim{
+  0%{border-color:#60a5fa;}50%{border-color:#93c5fd;}100%{border-color:#60a5fa;}}
+#marquee-panel{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+  z-index:9998;background:#0f172a;border:1.5px solid #60a5fa;border-radius:10px;
   padding:10px 16px;display:none;align-items:center;gap:10px;
-  box-shadow:0 4px 24px rgba(0,0,0,.6);white-space:nowrap;}}
-#marquee-panel .mp-count{{color:#60a5fa;font-weight:700;font-size:13px;}}
-#marquee-panel .mp-btn{{background:#1e40af;color:#fff;border:none;padding:6px 14px;
-  border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;}}
-#marquee-panel .mp-btn:hover{{background:#2563eb;}}
-#marquee-panel .mp-clear{{background:transparent;color:#64748b;border:1px solid #334155;
-  padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}}
-#marquee-panel .mp-clear:hover{{color:#ef4444;border-color:#ef4444;}}
+  box-shadow:0 4px 24px rgba(0,0,0,.6);white-space:nowrap;}
+#marquee-panel .mp-count{color:#60a5fa;font-weight:700;font-size:13px;}
+#marquee-panel .mp-btn{background:#1e40af;color:#fff;border:none;padding:7px 16px;
+  border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;
+  transition:all .2s;display:flex;align-items:center;gap:6px;}
+#marquee-panel .mp-btn:hover{background:#2563eb;transform:scale(1.03);}
+#marquee-panel .mp-btn.downloading{background:#15803d;border-color:#16a34a;animation:dlPulse .5s ease;}
+@keyframes dlPulse{0%{transform:scale(1);}50%{transform:scale(1.08);}100%{transform:scale(1);}}
+#marquee-panel .mp-btn.done{background:#15803d;}
+#marquee-panel .mp-fields{color:#475569;font-size:10px;max-width:200px;line-height:1.4;}
+#marquee-panel .mp-clear{background:transparent;color:#64748b;border:1px solid #334155;
+  padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}
+#marquee-panel .mp-clear:hover{color:#ef4444;border-color:#ef4444;}
 #marquee-tool-btn{position:fixed;bottom:118px;right:24px;z-index:2002;
   background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
   border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
@@ -610,7 +615,7 @@ html,body{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}
 <button id="marquee-tool-btn" title="Selector de área — arrastra para seleccionar negocios y exportar CSV" onclick="toggleMarqueeTool()">▭</button>
 <div id="marquee-panel">
   <span class="mp-count" id="mp-count-lbl">0 negocios</span>
-  <button class="mp-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>
+  <button class="mp-btn" id="mp-dl-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>
   <button class="mp-clear" onclick="clearMarqueeSelection()">✕ Limpiar</button>
 </div>
 <div id="map"></div>
@@ -1396,12 +1401,15 @@ document.addEventListener('DOMContentLoaded', function() {
     rect.style.width  = '0px';
     rect.style.height = '0px';
     rect.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    document.body.style.userSelect = 'none';
     e.preventDefault();
     e.stopPropagation();
   });
 
   document.addEventListener('mousemove', function(e) {
     if (!_mqDragging || !_mqStart) return;
+    e.preventDefault();
     var rect = document.getElementById('marquee-rect');
     var x1 = Math.min(e.clientX, _mqStart.x);
     var y1 = Math.min(e.clientY, _mqStart.y);
@@ -1411,11 +1419,13 @@ document.addEventListener('DOMContentLoaded', function() {
     rect.style.top    = y1 + 'px';
     rect.style.width  = w  + 'px';
     rect.style.height = h  + 'px';
-  });
+  }, {passive: false});
 
   document.addEventListener('mouseup', function(e) {
     if (!_mqDragging) return;
     _mqDragging = false;
+    document.body.style.overflow = '';
+    document.body.style.userSelect = '';
     var rect = document.getElementById('marquee-rect');
     rect.style.display = 'none';
 
@@ -1466,8 +1476,12 @@ document.addEventListener('DOMContentLoaded', function() {
 
     var panel = document.getElementById('marquee-panel');
     var lbl   = document.getElementById('mp-count-lbl');
+    var dlBtn = document.getElementById('mp-dl-btn');
     if (_mqSelected.length > 0) {
-      lbl.textContent = _mqSelected.length + ' negocio' + (_mqSelected.length !== 1 ? 's' : '') + ' seleccionado' + (_mqSelected.length !== 1 ? 's' : '');
+      var n = _mqSelected.length;
+      lbl.textContent = n + ' negocio' + (n !== 1 ? 's' : '') + ' seleccionado' + (n !== 1 ? 's' : '');
+      dlBtn.innerHTML = '⬇ Descargar CSV (' + n + ')';
+      dlBtn.classList.remove('done','downloading');
       panel.style.display = 'flex';
     } else {
       panel.style.display = 'none';
@@ -1485,46 +1499,60 @@ document.addEventListener('DOMContentLoaded', function() {
 
 function downloadSelectionCSV() {
   if (!_mqSelected.length) return;
-  var headers = [
-    'service_id','nombre','phone_number','owner_name','hunter',
-    'address','colonia','delegacion',
-    'tx_historicas','tx_90d','tx_30d',
-    'rating','quality_score','quality_nivel',
-    'tasa_acepta','tiempo_acepta',
-    'etapa','service_cohort',
-    'menu_bizne','menu_dia','menu_carta',
-    'creation_date','dias_creacion','food_types'
-  ];
-  var rows = [headers.join(',')];
-  _mqSelected.forEach(function(p) {
-    function esc(v) {
-      if (v === null || v === undefined) return '';
-      var s = String(v);
-      if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
-        return '"' + s.replace(/"/g, '""') + '"';
+  var btn = document.getElementById('mp-dl-btn');
+  if (btn) { btn.classList.add('downloading'); btn.innerHTML = '⏳ Preparando…'; }
+  setTimeout(function() {
+    var headers = [
+      'service_id','nombre','phone_number','owner_name','hunter',
+      'address','colonia','delegacion',
+      'tx_historicas','tx_90d','tx_30d',
+      'rating','quality_score','quality_nivel',
+      'tasa_acepta','tiempo_acepta',
+      'etapa','service_cohort',
+      'menu_bizne','menu_dia','menu_carta',
+      'creation_date','dias_creacion','food_types'
+    ];
+    var rows = [headers.join(',')];
+    _mqSelected.forEach(function(p) {
+      function esc(v) {
+        if (v === null || v === undefined) return '';
+        var s = String(v);
+        if (s.indexOf(',') >= 0 || s.indexOf('"') >= 0 || s.indexOf('\n') >= 0) {
+          return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
       }
-      return s;
+      rows.push([
+        esc(p.service_id), esc(p.nombre),   esc(p.phone_number), esc(p.owner_name),
+        esc(p.hunter),     esc(p.address),  esc(p.colonia),      esc(p.delegacion),
+        esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d),
+        esc(p.rating),     esc(p.quality_score), esc(p.quality_nivel),
+        esc(p.tasa_acepta), esc(p.tiempo_acepta),
+        esc(p.etapa),      esc(p.service_cohort),
+        esc(p.menu_bizne), esc(p.menu_dia), esc(p.menu_carta),
+        esc(p.creation_date), esc(p.dias_creacion), esc(p.food_types)
+      ].join(','));
+    });
+    var blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
+    var url  = URL.createObjectURL(blob);
+    var a    = document.createElement('a');
+    a.href   = url;
+    var fname = 'bizne_seleccion_' + new Date().toISOString().slice(0,10) + '_' + _mqSelected.length + 'neg.csv';
+    a.download = fname;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    if (btn) {
+      btn.classList.remove('downloading');
+      btn.classList.add('done');
+      btn.innerHTML = '✓ Descargado (' + _mqSelected.length + ')';
+      setTimeout(function() {
+        btn.classList.remove('done');
+        btn.innerHTML = '⬇ Descargar CSV (' + _mqSelected.length + ')';
+      }, 3000);
     }
-    rows.push([
-      esc(p.service_id), esc(p.nombre),   esc(p.phone_number), esc(p.owner_name),
-      esc(p.hunter),     esc(p.address),  esc(p.colonia),      esc(p.delegacion),
-      esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d),
-      esc(p.rating),     esc(p.quality_score), esc(p.quality_nivel),
-      esc(p.tasa_acepta), esc(p.tiempo_acepta),
-      esc(p.etapa),      esc(p.service_cohort),
-      esc(p.menu_bizne), esc(p.menu_dia), esc(p.menu_carta),
-      esc(p.creation_date), esc(p.dias_creacion), esc(p.food_types)
-    ].join(','));
-  });
-  var blob = new Blob([rows.join('\n')], {type:'text/csv;charset=utf-8;'});
-  var url  = URL.createObjectURL(blob);
-  var a    = document.createElement('a');
-  a.href   = url;
-  a.download = 'bizne_seleccion_' + new Date().toISOString().slice(0,10) + '.csv';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  }, 80);
 }
 </script>
 </body>
