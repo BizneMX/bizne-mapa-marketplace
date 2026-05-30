@@ -1377,7 +1377,7 @@ function toggleMarqueeTool() {
 function clearMarqueeSelection() {
   _mqSelected = [];
   _mqHighlightedLayers.forEach(function(l) {
-    try { l.setStyle({weight:1.5, color:'#fff', fillOpacity: l._origFillOp || 0.85}); } catch(e){}
+    try { l.setStyle({weight:1.5, color:'#fff', fillOpacity: l._origFillOp !== undefined ? l._origFillOp : 0.85}); } catch(e){}
   });
   _mqHighlightedLayers = [];
   document.getElementById('marquee-rect').style.display = 'none';
@@ -1454,9 +1454,13 @@ document.addEventListener('DOMContentLoaded', function() {
     _mqHighlightedLayers = [];
     _mqSelected = [];
 
-    // Iterar sobre LYR_BIZ y seleccionar los que caen dentro del bounds
-    if (window.LYR_BIZ) {
-      window.LYR_BIZ.eachLayer(function(layer) {
+    // Iterar sobre capas visibles y seleccionar los que caen dentro del bounds
+    var activosOn  = !document.getElementById('ly_activos')  || document.getElementById('ly_activos').checked;
+    var dormidasOn = !document.getElementById('ly_dormidas') || document.getElementById('ly_dormidas').checked;
+
+    function _mqCheckLayer(lyr, defaultFillOp) {
+      if (!lyr) return;
+      lyr.eachLayer(function(layer) {
         var latlng = layer.getLatLng ? layer.getLatLng() : null;
         if (!latlng) return;
         if (latlng.lat >= latMin && latlng.lat <= latMax &&
@@ -1464,15 +1468,16 @@ document.addEventListener('DOMContentLoaded', function() {
           var p = layer.feature && layer.feature.properties;
           if (p) {
             _mqSelected.push(p);
-            layer._origFillOp = p.fill_opacity || 0.85;
-            try {
-              layer.setStyle({weight:3, color:'#60a5fa', fillOpacity:1.0});
-            } catch(ex) {}
+            layer._origFillOp = p.fill_opacity || defaultFillOp || 0.85;
+            try { layer.setStyle({weight:3, color:'#60a5fa', fillOpacity:1.0}); } catch(ex) {}
             _mqHighlightedLayers.push(layer);
           }
         }
       });
     }
+
+    if (activosOn)  _mqCheckLayer(window.LYR_BIZ,  0.85);
+    if (dormidasOn) _mqCheckLayer(window.LYR_DORM, 0.5);
 
     var panel = document.getElementById('marquee-panel');
     var lbl   = document.getElementById('mp-count-lbl');
