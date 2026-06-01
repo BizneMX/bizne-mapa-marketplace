@@ -325,7 +325,7 @@ final AS (
     FROM scored
 )
 SELECT service_id, name, phone_number, owner_name, hunter, address, cp, colonia, delegacion,
-    latitude, longitude, is_active, sleep AS dormida,
+    latitude, longitude, is_active, sleep,
     transacciones_historicas, transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
     ticket_promedio_ultimos_90_dias, ticket_promedio_ultimos_30_dias,
     comidas_ultimos_30_dias, ventas_ultimos_30_dias, bizne_fee_ultimos_30_dias,
@@ -442,10 +442,14 @@ QUALITY_PATH = None   # mantenido por compatibilidad
 
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
 
-# Normalizar columna dormida (bool) — puede venir como "dormida" o no existir
-if "dormida" not in df_biz_raw.columns:
-    df_biz_raw["dormida"] = False   # fallback: todos activos
-df_biz_raw["dormida"] = df_biz_raw["dormida"].fillna(False).astype(bool)
+# Normalizar columna sleep/dormida (bool)
+# El query devuelve "sleep" directamente desde la BD
+if "sleep" in df_biz_raw.columns:
+    df_biz_raw["dormida"] = df_biz_raw["sleep"].fillna(False).astype(bool)
+elif "dormida" in df_biz_raw.columns:
+    df_biz_raw["dormida"] = df_biz_raw["dormida"].fillna(False).astype(bool)
+else:
+    df_biz_raw["dormida"] = False
 # Alias para compatibilidad con el resto del script
 df_biz_raw["Dormidas"] = df_biz_raw["dormida"]
 
