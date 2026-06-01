@@ -2,8 +2,8 @@ name: Actualizar Mapa Bizne PA
 
 on:
   schedule:
-    # 8am hora México (UTC-6) = 14:00 UTC
-    - cron: '0 14 * * *'
+    # Cada hora en punto (UTC) — datos frescos de Postgres cada 60 min
+    - cron: '0 * * * *'
   workflow_dispatch:  # Permite correrlo manualmente desde GitHub
 
 jobs:
@@ -27,11 +27,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Paso 1 — Descargar datos frescos de Redash y calcular modelo de demanda
+      - name: Paso 1 — Consultar Postgres y calcular modelo de demanda
         env:
-          REDASH_NEGOCIOS:      ${{ secrets.REDASH_NEGOCIOS }}
-          REDASH_USUARIOS:      ${{ secrets.REDASH_USUARIOS }}
-          REDASH_TRANSACCIONES: ${{ secrets.REDASH_TRANSACCIONES }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           GITHUB_ACTIONS_RUN: "true"
         run: python bizne_model_ci.py
 

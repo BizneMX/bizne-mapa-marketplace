@@ -73,61 +73,300 @@ print(f"   H3 resolución       : {H3_RES}  (~{h3.average_hexagon_area(H3_RES,'k
 # ## 1 · Carga y Limpieza de Datos Reales
 
 # %%
-# ── REDASH API — Fuentes de datos automáticas ────────────────────────────────
-REDASH_NEGOCIOS      = os.environ.get("REDASH_NEGOCIOS", "")
-REDASH_USUARIOS      = os.environ.get("REDASH_USUARIOS", "")
-REDASH_TRANSACCIONES = os.environ.get("REDASH_TRANSACCIONES", "")
+# ── POSTGRES — Fuente de datos directa ────────────────────────────────────────
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
+_DIR = os.path.dirname(os.path.abspath(__file__))
 
-def _redash(url, nombre):
-    """Descarga un query de Redash como DataFrame. Falla con mensaje claro."""
-    try:
-        import requests, io as _io
-        print(f"  Descargando {nombre} desde Redash...")
-        r = requests.get(url, timeout=30)
-        r.raise_for_status()
-        df = pd.read_csv(_io.StringIO(r.text))
-        print(f"  ✅ {nombre}: {len(df):,} filas")
-        return df
-    except Exception as e:
-        print(f"  ❌ Error descargando {nombre}: {e}")
-        raise
-
-# ── 1.1 Negocios — desde Redash (query 103) ──────────────────────────────────
-# Se actualiza solo cada vez que corre el script
-QUALITY_PATH = None   # no se usa — mantenido por compatibilidad
-
-try:
-    df_biz_raw = _redash(REDASH_NEGOCIOS, "Negocios")
-    if len(df_biz_raw) > 10:
-        df_biz_raw.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_negocios_cache.csv"), index=False)
+def _query_pg(sql, nombre, cache_file):
+    """
+    Ejecuta un query en Postgres y devuelve DataFrame.
+    Si la BD no está disponible usa el cache local como fallback.
+    Guarda cache nuevo en cada consulta exitosa.
+    """
+    cache_path = os.path.join(_DIR, cache_file)
+    if DATABASE_URL:
+        try:
+            import psycopg2, psycopg2.extras
+            print(f"  Consultando Postgres: {nombre}...")
+            conn = psycopg2.connect(DATABASE_URL)
+            df = pd.read_sql_query(sql, conn)
+            conn.close()
+            print(f"  ✅ {nombre}: {len(df):,} filas")
+            df.to_csv(cache_path, index=False)
+            return df
+        except Exception as e:
+            print(f"  ⚠ Error Postgres ({nombre}): {e}")
+            print(f"  → Usando cache local...")
     else:
-        raise ValueError("Respuesta vacía de Redash")
-except Exception:
-    print("  ⚠ Usando cache local de negocios")
-    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_negocios_cache.csv")
-    if not os.path.exists(cache):
-        print("  ❌ No hay cache de negocios disponible. Verifica el secret REDASH_NEGOCIOS en GitHub Actions.")
+        print(f"  ⚠ DATABASE_URL no configurado — usando cache local para {nombre}")
+
+    if not os.path.exists(cache_path):
+        print(f"  ❌ No hay cache local para {nombre} ({cache_file}).")
+        print(f"     Configura el secret DATABASE_URL en GitHub Actions.")
         raise SystemExit(1)
-    df_biz_raw = pd.read_csv(cache)
+    df = pd.read_csv(cache_path)
+    print(f"  ✅ {nombre} (cache): {len(df):,} filas")
+    return df
 
-# Corregir formato de coordenadas: "197.744.668" → 19.7744668
-# El archivo tiene puntos extra mal colocados (formato regional incorrecto)
-def fix_coord(val, is_lat=True):
-    """Elimina puntos extra y reconstruye el número con decimal correcto."""
-    s = str(val).replace(" ", "").strip()
-    negative = s.startswith("-")
-    digits = s.lstrip("-").replace(".", "")   # quita signo y todos los puntos
-    n_int = 2   # CDMX: lat=19.xxx, lng=98.xxx o 99.xxx — siempre 2 dígitos enteros
-    fixed = digits[:n_int] + "." + digits[n_int:]
-    return float(("-" if negative else "") + fixed)
+# ── SQL Queries ────────────────────────────────────────────────────────────────
+SQL_NEGOCIOS = """
+WITH trx_historicas AS (
+    SELECT ss.id, COUNT(t.id) AS transacciones_historicas
+    FROM transaction_transaction t
+    JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+    JOIN service_service ss ON tt.service_id = ss.id
+    GROUP BY ss.id
+),
+trx_90_dias AS (
+    SELECT ss.id,
+        COUNT(t.id) AS transacciones_ultimos_90_dias,
+        AVG(t.amount)::float AS ticket_promedio_ultimos_90_dias
+    FROM transaction_transaction t
+    JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+    JOIN service_service ss ON tt.service_id = ss.id
+    WHERE t.created_date >= NOW() - INTERVAL '90 days'
+    GROUP BY ss.id
+),
+service_metrics_30d AS (
+    SELECT ss.id,
+        COUNT(t.id) AS transacciones_ultimos_30_dias,
+        COALESCE(SUM(tt.count), 0) AS comidas_ultimos_30_dias,
+        COALESCE(SUM(t.amount), 0) AS ventas_ultimos_30_dias,
+        AVG(t.amount)::float AS ticket_promedio_ultimos_30_dias,
+        COALESCE(SUM(t.service_fee), 0) AS bizne_fee_ultimos_30_dias,
+        COUNT(*) FILTER (WHERE t.hidden IS FALSE AND tt.is_active IS TRUE) AS transacciones_acceptadas_ultimos_30_dias,
+        COUNT(*) FILTER (WHERE t.delivery IS TRUE) AS delivery_ultimos_30_dias,
+        PERCENTILE_CONT(0.5) WITHIN GROUP (
+            ORDER BY EXTRACT(EPOCH FROM (tt.last_modified_date - tt.created_date)) / 60.0
+        ) FILTER (
+            WHERE tt.last_modified_date IS NOT NULL AND tt.created_date IS NOT NULL
+              AND tt.last_modified_date >= tt.created_date
+              AND tt.is_active IS TRUE AND t.hidden IS FALSE
+        ) AS tiempo_p50_aceptacion_min_ultimos_30_dias
+    FROM transaction_transaction t
+    JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+    JOIN service_service ss ON tt.service_id = ss.id
+    WHERE t.created_date >= NOW() - INTERVAL '30 days'
+    GROUP BY ss.id
+),
+latest_menu AS (
+    SELECT DISTINCT ON (sm.service_id, sm.name)
+        sm.service_id, sm.name, sm.created_date
+    FROM service_internmenuservice sm
+    WHERE sm.is_active IS TRUE
+    ORDER BY sm.service_id, sm.name, sm.created_date DESC
+),
+menu_flags AS (
+    SELECT ss.id AS service_id,
+        COALESCE(BOOL_OR(lm.name ILIKE '%carta%' AND ss.menu_image_status = 'approved'), FALSE) AS menu_a_la_carta,
+        COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'), FALSE) AS menu_bizne,
+        COALESCE(BOOL_OR(lm.name ILIKE '%premium%'), FALSE) AS menu_premium,
+        COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'), FALSE) AS menu_de_dia
+    FROM service_service ss
+    LEFT JOIN latest_menu lm ON ss.id = lm.service_id
+    WHERE ss.is_active IS TRUE
+    GROUP BY ss.id
+),
+food_types AS (
+    SELECT csft.service_id,
+        STRING_AGG(DISTINCT sf.name, ', ' ORDER BY sf.name) AS food_types
+    FROM service_service_food_types csft
+    JOIN service_foodtype sf ON sf.id = csft.foodtype_id
+    GROUP BY csft.service_id
+),
+base AS (
+    SELECT
+        s.id AS service_id, s.name, s.phone_number, s.owner_name,
+        a.address,
+        SUBSTRING(a.address FROM '[0-9]{5}') AS cp,
+        NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address, ',', 2), '\m[0-9]{5}\M', '', 'g'))), '') AS colonia,
+        NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address, ',', 3), '\m[0-9]{5}\M', '', 'g'))), '') AS delegacion,
+        ST_Y(a.coordinates) AS latitude,
+        ST_X(a.coordinates) AS longitude,
+        s.is_active, s.allow_delivery, s.max_delivery_distance,
+        ft.food_types,
+        mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
+        COALESCE(th.transacciones_historicas, 0) AS transacciones_historicas,
+        COALESCE(t90.transacciones_ultimos_90_dias, 0) AS transacciones_ultimos_90_dias,
+        t90.ticket_promedio_ultimos_90_dias,
+        COALESCE(sm30.transacciones_ultimos_30_dias, 0) AS transacciones_ultimos_30_dias,
+        COALESCE(sm30.comidas_ultimos_30_dias, 0) AS comidas_ultimos_30_dias,
+        sm30.ticket_promedio_ultimos_30_dias,
+        COALESCE(sm30.bizne_fee_ultimos_30_dias, 0) AS bizne_fee_ultimos_30_dias,
+        COALESCE(sm30.ventas_ultimos_30_dias, 0) AS ventas_ultimos_30_dias,
+        COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias, 0) AS transacciones_acceptadas_ultimos_30_dias,
+        COALESCE(sm30.delivery_ultimos_30_dias, 0) AS delivery_ultimos_30_dias,
+        s.last_transaction_register,
+        s.created_date AS bizne_creation_date,
+        ROUND(sm30.tiempo_p50_aceptacion_min_ultimos_30_dias) AS tiempo_p50_aceptacion_min_ultimos_30_dias,
+        GREATEST(CURRENT_DATE - s.created_date::date, 0) AS dias_desde_creacion,
+        CASE WHEN s.last_transaction_register IS NULL THEN NULL
+             ELSE GREATEST(CURRENT_DATE - s.last_transaction_register::date, 0) END AS dias_desde_ultima_transaccion,
+        ROUND(COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias / NULLIF(sm30.transacciones_ultimos_30_dias, 0)::float, 0)::numeric, 2) AS tasa_aceptacion_ultimos_30_dias,
+        ROUND((1 - COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias / NULLIF(sm30.transacciones_ultimos_30_dias, 0)::float, 0))::numeric, 2) AS tasa_no_aceptados_ultimos_30_dias,
+        ROUND((s.calification_sum / NULLIF(s.calification_count::float, 0))::numeric, 2) AS rating,
+        u.name AS hunter,
+        CASE WHEN COALESCE(sm30.ventas_ultimos_30_dias, 0) < 1500 THEN '5 - Low Critico'
+             WHEN COALESCE(sm30.ventas_ultimos_30_dias, 0) < 5000 THEN '4 - Low'
+             WHEN COALESCE(sm30.ventas_ultimos_30_dias, 0) < 10000 THEN '3 - Growth'
+             WHEN COALESCE(sm30.ventas_ultimos_30_dias, 0) < 25000 THEN '2 - Core'
+             ELSE '1 - Elite' END AS service_cohort,
+        s.sleep
+    FROM service_service s
+    JOIN administrative_division_address a ON s.address_id = a.id
+    LEFT JOIN trx_historicas th ON th.id = s.id
+    LEFT JOIN trx_90_dias t90 ON t90.id = s.id
+    LEFT JOIN service_metrics_30d sm30 ON sm30.id = s.id
+    LEFT JOIN menu_flags mf ON mf.service_id = s.id
+    LEFT JOIN food_types ft ON ft.service_id = s.id
+    LEFT JOIN user_user u ON u.id = s.hunter_id
+    WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
+),
+scored AS (
+    SELECT *,
+        ROUND((COALESCE(rating, 0) / 5.0 * 25)::numeric, 2) AS score_rating,
+        ROUND(GREATEST(0, 15 * (1 - LEAST(COALESCE(tiempo_p50_aceptacion_min_ultimos_30_dias, 15), 15) / 15.0))::numeric, 2) AS score_tiempo_aceptacion,
+        ROUND(GREATEST(0, 10 * (1 - COALESCE(tasa_no_aceptados_ultimos_30_dias, 1)))::numeric, 2) AS score_no_aceptados,
+        CASE WHEN menu_de_dia IS TRUE THEN 20 ELSE 0 END AS score_menu_dia,
+        CASE WHEN menu_a_la_carta IS TRUE THEN 20 ELSE 0 END AS score_menu_carta,
+        CASE WHEN menu_bizne IS TRUE THEN 10 ELSE 0 END AS score_menu_bizne
+    FROM base
+),
+final AS (
+    SELECT *,
+        ROUND((score_rating + score_tiempo_aceptacion + score_no_aceptados + score_menu_dia + score_menu_carta + score_menu_bizne)::numeric, 2) AS kitchen_quality_score,
+        CASE WHEN (score_rating + score_tiempo_aceptacion + score_no_aceptados + score_menu_dia + score_menu_carta + score_menu_bizne) >= 85 THEN 'Excelente'
+             WHEN (score_rating + score_tiempo_aceptacion + score_no_aceptados + score_menu_dia + score_menu_carta + score_menu_bizne) >= 70 THEN 'Alta'
+             WHEN (score_rating + score_tiempo_aceptacion + score_no_aceptados + score_menu_dia + score_menu_carta + score_menu_bizne) >= 50 THEN 'Media'
+             ELSE 'Baja' END AS kitchen_quality_nivel,
+        CASE WHEN dias_desde_creacion <= 30 AND transacciones_historicas = 0 THEN 'Nuevo sin tracción'
+             WHEN dias_desde_creacion <= 30 AND transacciones_historicas > 0 THEN 'Nuevo con tracción'
+             WHEN dias_desde_creacion <= 90 THEN 'En crecimiento'
+             ELSE 'Maduro' END AS etapa_negocio
+    FROM scored
+)
+SELECT service_id, name, phone_number, owner_name, hunter, address, cp, colonia, delegacion,
+    latitude, longitude, is_active, sleep AS dormida,
+    transacciones_historicas, transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
+    ticket_promedio_ultimos_90_dias, ticket_promedio_ultimos_30_dias,
+    comidas_ultimos_30_dias, ventas_ultimos_30_dias, bizne_fee_ultimos_30_dias,
+    transacciones_acceptadas_ultimos_30_dias, delivery_ultimos_30_dias,
+    tasa_aceptacion_ultimos_30_dias, tasa_no_aceptados_ultimos_30_dias,
+    rating, tiempo_p50_aceptacion_min_ultimos_30_dias,
+    dias_desde_creacion, dias_desde_ultima_transaccion,
+    menu_a_la_carta, menu_bizne, menu_premium, menu_de_dia,
+    score_rating, score_tiempo_aceptacion, score_no_aceptados,
+    score_menu_dia, score_menu_carta, score_menu_bizne,
+    kitchen_quality_score, kitchen_quality_nivel, etapa_negocio, service_cohort,
+    food_types, allow_delivery, max_delivery_distance,
+    last_transaction_register, bizne_creation_date
+FROM final
+ORDER BY kitchen_quality_score DESC, ventas_ultimos_30_dias DESC, transacciones_historicas DESC
+"""
 
-df_biz_raw["latitude"]  = df_biz_raw["latitude"].apply(lambda v: fix_coord(v, is_lat=True))
-df_biz_raw["longitude"] = df_biz_raw["longitude"].apply(lambda v: fix_coord(v, is_lat=False))
-# Columna Dormidas: compatible con archivos que la traigan o no
-if "Dormidas" in df_biz_raw.columns:
-    df_biz_raw["Dormidas"] = df_biz_raw["Dormidas"].astype(bool)
-else:
-    df_biz_raw["Dormidas"] = False  # sin distinción: todos activos
+SQL_USUARIOS = """
+WITH users AS (
+    SELECT u.id AS user_id, u.name AS user_name, u.organization_id,
+        oo.name AS organization_name, u.phone_number,
+        u.is_active, u.is_verified, u.created_date,
+        u.last_logging_datetime, u.last_request_datetime, u.type_id,
+        ST_X(u.coordinates) AS longitude_last_session,
+        ST_Y(u.coordinates) AS latitude_last_session,
+        ST_X(signup_coordinates) AS longitude_signup,
+        ST_Y(signup_coordinates) AS latitude_signup
+    FROM user_user u
+    LEFT JOIN organization_organization oo ON oo.id = u.organization_id
+    WHERE oo.name IN ('Policia Auxiliar')
+      AND (u.name IS NULL OR u.name NOT ILIKE '%test%')
+      AND (u.email IS NULL OR u.email NOT ILIKE '%test%')
+),
+kyc_status AS (
+    SELECT user_id, status AS kyc_status, created_date AS kyc_last_update
+    FROM (
+        SELECT k.user_id, k.status, k.created_date,
+            ROW_NUMBER() OVER (
+                PARTITION BY k.user_id
+                ORDER BY CASE WHEN k.status = 'APPROVED' THEN 1 ELSE 0 END DESC,
+                    k.created_date DESC, k.id DESC
+            ) AS rn
+        FROM kyc_kycsession k
+    ) x WHERE rn = 1
+),
+historical_first_trx AS (
+    SELECT tt.user_id, MIN(tt.date) AS first_trx_ever
+    FROM transaction_transactionticket tt
+    LEFT JOIN users u ON tt.user_id = u.user_id
+    WHERE tt.is_active IS TRUE AND tt.hidden IS FALSE
+      AND tt.service_id <> 326 AND u.user_id IS NOT NULL
+    GROUP BY tt.user_id
+),
+transactions AS (
+    SELECT u.user_id, u.user_name, u.organization_name,
+        COUNT(tt.id) FILTER (WHERE tt.service_id <> 326) AS transacciones,
+        COALESCE(SUM(tt.count) FILTER (WHERE tt.service_id <> 326), 0) AS comidas,
+        COALESCE(SUM(tt.amount) FILTER (WHERE tt.service_id <> 326), 0) AS consumo_total,
+        AVG(tt.amount) FILTER (WHERE tt.service_id <> 326) AS ticket_promedio,
+        COUNT(tt.id) FILTER (WHERE tt.service_id = 326) AS membresia_transacciones,
+        COALESCE(SUM(tt.amount) FILTER (WHERE tt.service_id = 326), 0) AS membresia_monto,
+        COUNT(DISTINCT tt.service_id) FILTER (WHERE tt.service_id <> 326) AS biznes_consumo,
+        MIN(tt.date) FILTER (WHERE tt.service_id <> 326) AS first_trx_periodo
+    FROM transaction_transactionticket tt
+    LEFT JOIN users u ON tt.user_id = u.user_id
+    WHERE tt.date >= NOW() - INTERVAL '30 days'
+      AND tt.is_active IS TRUE AND tt.hidden IS FALSE AND u.user_id IS NOT NULL
+    GROUP BY 1, 2, 3
+)
+SELECT u.*, ur.name AS tipo_usuario,
+    ks.kyc_status, ks.kyc_last_update,
+    COALESCE(t.transacciones, 0) AS transacciones,
+    COALESCE(t.comidas, 0) AS comidas,
+    COALESCE(t.consumo_total, 0) AS consumo_total,
+    t.ticket_promedio,
+    COALESCE(t.biznes_consumo, 0) AS biznes_consumo,
+    COALESCE(t.membresia_transacciones, 0) AS "Membresía transacciones",
+    COALESCE(t.membresia_monto, 0) AS "Membresía consumo",
+    t.first_trx_periodo, hft.first_trx_ever,
+    DATE_PART('day', hft.first_trx_ever - u.created_date) AS days_to_first_trx,
+    ST_Y(uu.coordinates) AS latitude,
+    ST_X(uu.coordinates) AS longitude
+FROM users u
+LEFT JOIN kyc_status ks ON ks.user_id = u.user_id
+LEFT JOIN transactions t ON u.user_id = t.user_id
+LEFT JOIN historical_first_trx hft ON hft.user_id = u.user_id
+LEFT JOIN organization_userparticipationtype ur ON ur.id = u.type_id
+LEFT JOIN user_user uu ON uu.id = u.user_id
+ORDER BY transacciones DESC
+"""
+
+SQL_TRANSACCIONES = """
+SELECT
+    t.id, t.created_date,
+    CASE WHEN o.name IS NULL THEN 'B2C' ELSE o.name END AS organizacion,
+    t.amount,
+    ST_X(tt.coordinates) AS longitude,
+    ST_Y(tt.coordinates) AS latitude,
+    tt.service_id, s.name,
+    CASE WHEN t.hidden IS FALSE THEN 'Transacción completa'
+         ELSE 'Transacción incompleta' END AS status_trx
+FROM transaction_transaction t
+JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+JOIN user_user u ON tt.user_id = u.id
+JOIN service_service s ON tt.service_id = s.id
+LEFT JOIN organization_organization o ON u.organization_id = o.id
+WHERE t.created_date >= NOW() - INTERVAL '30 days'
+  AND o.name IN ('Policia Auxiliar')
+  AND tt.service_id <> 326
+"""
+
+# ── 1.1 Negocios — directo desde Postgres ─────────────────────────────────────
+QUALITY_PATH = None   # mantenido por compatibilidad
+
+df_biz_raw = _query_pg(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
+
+# Normalizar columna dormida (bool)
+df_biz_raw["dormida"] = df_biz_raw["dormida"].fillna(False).astype(bool)
+# Alias para compatibilidad con el resto del script
+df_biz_raw["Dormidas"] = df_biz_raw["dormida"]
 
 # Separar: activas vs dormidas
 # Dormidas = True → no aparecen en la app → capacidad efectiva = 0
@@ -228,22 +467,10 @@ print(f"\nEdificios Admin PA    : {len(df_admin)}")
 for _, r in df_admin.iterrows():
     print(f"  {r['Nombre']}: {int(r['Elementos'])} elementos  ({r['lat']:.5f}, {r['lng']:.5f})")
 
-# ── 1.3 Usuarios — analytics (3), ya incluye lat/lng ─────────────────────────
-ANALYTICS_PATH = None   # no se usa — mantenido por compatibilidad
+# ── 1.3 Usuarios — directo desde Postgres ────────────────────────────────────
+ANALYTICS_PATH = None   # mantenido por compatibilidad
 
-try:
-    df_su_raw = _redash(REDASH_USUARIOS, "Usuarios")
-    if len(df_su_raw) > 10:
-        df_su_raw.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_usuarios_cache.csv"), index=False)
-    else:
-        raise ValueError("Respuesta vacía de Redash")
-except Exception:
-    print("  ⚠ Usando cache local de usuarios")
-    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_usuarios_cache.csv")
-    if not os.path.exists(cache):
-        print("  ❌ No hay cache de usuarios disponible. Verifica el secret REDASH_USUARIOS en GitHub Actions.")
-        raise SystemExit(1)
-    df_su_raw = pd.read_csv(cache)
+df_su_raw = _query_pg(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], dayfirst=True)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
@@ -274,18 +501,8 @@ print(f"  IN_PROGRESS/SUBMITTED: {len(df_su_potential):,}")
 print(f"  Ticket promedio      : ${df_su[df_su.transacciones>0].ticket_promedio.median():.0f}")
 print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
-# ── 1.4 Transacciones — archivo actualizado ───────────────────────────────────
-try:
-    df_tx = _redash(REDASH_TRANSACCIONES, "Transacciones")
-    # Guardar cache local tras descarga exitosa
-    df_tx.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_transacciones.csv"), index=False)
-except Exception:
-    print("  ⚠ Usando cache local de transacciones")
-    cache = os.path.join(os.path.dirname(os.path.abspath(__file__)), "redash_transacciones.csv")
-    if not os.path.exists(cache):
-        print("  ❌ No hay cache de transacciones disponible. Verifica el secret REDASH_TRANSACCIONES en GitHub Actions.")
-        raise SystemExit(1)
-    df_tx = pd.read_csv(cache)
+# ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
+df_tx = _query_pg(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], dayfirst=True)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &

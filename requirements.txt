@@ -10,3 +10,4 @@ statsmodels
 requests
 matplotlib
 seaborn
+psycopg2-binary
