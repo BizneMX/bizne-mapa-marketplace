@@ -203,6 +203,149 @@ def _query_mcp(sql, nombre, cache_file):
 
 # ── SQL Queries ────────────────────────────────────────────────────────────────
 SQL_NEGOCIOS = """
+SELECT
+    service_id, name, phone_number, owner_name, hunter, address, cp, colonia, delegacion,
+    latitude, longitude, is_active, sleep,
+    transacciones_historicas, transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
+    ticket_promedio_ultimos_90_dias, ticket_promedio_ultimos_30_dias,
+    comidas_ultimos_30_dias, ventas_ultimos_30_dias, bizne_fee_ultimos_30_dias,
+    transacciones_acceptadas_ultimos_30_dias, delivery_ultimos_30_dias,
+    tasa_aceptacion_ultimos_30_dias, tasa_no_aceptados_ultimos_30_dias,
+    rating, tiempo_p50_aceptacion_min_ultimos_30_dias,
+    dias_desde_creacion, dias_desde_ultima_transaccion,
+    menu_a_la_carta, menu_bizne, menu_premium, menu_de_dia,
+    score_rating, score_tiempo_aceptacion, score_no_aceptados,
+    score_menu_dia, score_menu_carta, score_menu_bizne,
+    ROUND((score_rating+score_tiempo_aceptacion+score_no_aceptados+score_menu_dia+score_menu_carta+score_menu_bizne)::numeric,2) AS kitchen_quality_score,
+    CASE WHEN (score_rating+score_tiempo_aceptacion+score_no_aceptados+score_menu_dia+score_menu_carta+score_menu_bizne)>=85 THEN 'Excelente'
+         WHEN (score_rating+score_tiempo_aceptacion+score_no_aceptados+score_menu_dia+score_menu_carta+score_menu_bizne)>=70 THEN 'Alta'
+         WHEN (score_rating+score_tiempo_aceptacion+score_no_aceptados+score_menu_dia+score_menu_carta+score_menu_bizne)>=50 THEN 'Media'
+         ELSE 'Baja' END AS kitchen_quality_nivel,
+    CASE WHEN dias_desde_creacion<=30 AND transacciones_historicas=0 THEN 'Nuevo sin tracción'
+         WHEN dias_desde_creacion<=30 AND transacciones_historicas>0 THEN 'Nuevo con tracción'
+         WHEN dias_desde_creacion<=90 THEN 'En crecimiento'
+         ELSE 'Maduro' END AS etapa_negocio,
+    service_cohort, food_types, allow_delivery, max_delivery_distance,
+    last_transaction_register, bizne_creation_date
+FROM (
+    SELECT *,
+        ROUND((COALESCE(rating,0)/5.0*25)::numeric,2) AS score_rating,
+        ROUND(GREATEST(0,15*(1-LEAST(COALESCE(tiempo_p50_aceptacion_min_ultimos_30_dias,15),15)/15.0))::numeric,2) AS score_tiempo_aceptacion,
+        ROUND(GREATEST(0,10*(1-COALESCE(tasa_no_aceptados_ultimos_30_dias,1)))::numeric,2) AS score_no_aceptados,
+        CASE WHEN menu_de_dia IS TRUE THEN 20 ELSE 0 END AS score_menu_dia,
+        CASE WHEN menu_a_la_carta IS TRUE THEN 20 ELSE 0 END AS score_menu_carta,
+        CASE WHEN menu_bizne IS TRUE THEN 10 ELSE 0 END AS score_menu_bizne
+    FROM (
+        SELECT
+            s.id AS service_id, s.name, s.phone_number, s.owner_name,
+            a.address,
+            SUBSTRING(a.address FROM '[0-9]{5}') AS cp,
+            NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',2),'\m[0-9]{5}\M','','g'))),'') AS colonia,
+            NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',3),'\m[0-9]{5}\M','','g'))),'') AS delegacion,
+            ST_Y(a.coordinates) AS latitude,
+            ST_X(a.coordinates) AS longitude,
+            s.is_active, s.allow_delivery, s.max_delivery_distance, s.sleep,
+            ft.food_types,
+            mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
+            COALESCE(th.transacciones_historicas,0) AS transacciones_historicas,
+            COALESCE(t90.transacciones_ultimos_90_dias,0) AS transacciones_ultimos_90_dias,
+            t90.ticket_promedio_ultimos_90_dias,
+            COALESCE(sm30.transacciones_ultimos_30_dias,0) AS transacciones_ultimos_30_dias,
+            COALESCE(sm30.comidas_ultimos_30_dias,0) AS comidas_ultimos_30_dias,
+            sm30.ticket_promedio_ultimos_30_dias,
+            COALESCE(sm30.bizne_fee_ultimos_30_dias,0) AS bizne_fee_ultimos_30_dias,
+            COALESCE(sm30.ventas_ultimos_30_dias,0) AS ventas_ultimos_30_dias,
+            COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias,0) AS transacciones_acceptadas_ultimos_30_dias,
+            COALESCE(sm30.delivery_ultimos_30_dias,0) AS delivery_ultimos_30_dias,
+            s.last_transaction_register,
+            s.created_date AS bizne_creation_date,
+            ROUND(sm30.tiempo_p50_aceptacion_min_ultimos_30_dias) AS tiempo_p50_aceptacion_min_ultimos_30_dias,
+            GREATEST(CURRENT_DATE-s.created_date::date,0) AS dias_desde_creacion,
+            CASE WHEN s.last_transaction_register IS NULL THEN NULL
+                 ELSE GREATEST(CURRENT_DATE-s.last_transaction_register::date,0) END AS dias_desde_ultima_transaccion,
+            ROUND(COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0)::numeric,2) AS tasa_aceptacion_ultimos_30_dias,
+            ROUND((1-COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS tasa_no_aceptados_ultimos_30_dias,
+            ROUND((s.calification_sum/NULLIF(s.calification_count::float,0))::numeric,2) AS rating,
+            u.name AS hunter,
+            CASE WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<1500 THEN '5 - Low Critico'
+                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<5000 THEN '4 - Low'
+                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<10000 THEN '3 - Growth'
+                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<25000 THEN '2 - Core'
+                 ELSE '1 - Elite' END AS service_cohort
+        FROM service_service s
+        JOIN administrative_division_address a ON s.address_id = a.id
+        LEFT JOIN (
+            SELECT ss.id, COUNT(t.id) AS transacciones_historicas
+            FROM transaction_transaction t
+            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+            JOIN service_service ss ON tt.service_id = ss.id
+            GROUP BY ss.id
+        ) th ON th.id = s.id
+        LEFT JOIN (
+            SELECT ss.id,
+                COUNT(t.id) AS transacciones_ultimos_90_dias,
+                AVG(t.amount)::float AS ticket_promedio_ultimos_90_dias
+            FROM transaction_transaction t
+            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+            JOIN service_service ss ON tt.service_id = ss.id
+            WHERE t.created_date >= NOW() - INTERVAL '90 days'
+            GROUP BY ss.id
+        ) t90 ON t90.id = s.id
+        LEFT JOIN (
+            SELECT ss.id,
+                COUNT(t.id) AS transacciones_ultimos_30_dias,
+                COALESCE(SUM(tt.count),0) AS comidas_ultimos_30_dias,
+                COALESCE(SUM(t.amount),0) AS ventas_ultimos_30_dias,
+                AVG(t.amount)::float AS ticket_promedio_ultimos_30_dias,
+                COALESCE(SUM(t.service_fee),0) AS bizne_fee_ultimos_30_dias,
+                COUNT(*) FILTER (WHERE t.hidden IS FALSE AND tt.is_active IS TRUE) AS transacciones_acceptadas_ultimos_30_dias,
+                COUNT(*) FILTER (WHERE t.delivery IS TRUE) AS delivery_ultimos_30_dias,
+                PERCENTILE_CONT(0.5) WITHIN GROUP (
+                    ORDER BY EXTRACT(EPOCH FROM (tt.last_modified_date-tt.created_date))/60.0
+                ) FILTER (
+                    WHERE tt.last_modified_date IS NOT NULL AND tt.created_date IS NOT NULL
+                      AND tt.last_modified_date >= tt.created_date
+                      AND tt.is_active IS TRUE AND t.hidden IS FALSE
+                ) AS tiempo_p50_aceptacion_min_ultimos_30_dias
+            FROM transaction_transaction t
+            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+            JOIN service_service ss ON tt.service_id = ss.id
+            WHERE t.created_date >= NOW() - INTERVAL '30 days'
+            GROUP BY ss.id
+        ) sm30 ON sm30.id = s.id
+        LEFT JOIN (
+            SELECT ss2.id AS service_id,
+                COALESCE(BOOL_OR(lm.name ILIKE '%carta%' AND ss2.menu_image_status='approved'),FALSE) AS menu_a_la_carta,
+                COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'),FALSE) AS menu_bizne,
+                COALESCE(BOOL_OR(lm.name ILIKE '%premium%'),FALSE) AS menu_premium,
+                COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'),FALSE) AS menu_de_dia
+            FROM service_service ss2
+            LEFT JOIN (
+                SELECT DISTINCT ON (sm.service_id, sm.name) sm.service_id, sm.name
+                FROM service_internmenuservice sm
+                WHERE sm.is_active IS TRUE
+                ORDER BY sm.service_id, sm.name, sm.created_date DESC
+            ) lm ON ss2.id = lm.service_id
+            WHERE ss2.is_active IS TRUE
+            GROUP BY ss2.id
+        ) mf ON mf.service_id = s.id
+        LEFT JOIN (
+            SELECT csft.service_id,
+                STRING_AGG(DISTINCT sf.name, ', ' ORDER BY sf.name) AS food_types
+            FROM service_service_food_types csft
+            JOIN service_foodtype sf ON sf.id = csft.foodtype_id
+            GROUP BY csft.service_id
+        ) ft ON ft.service_id = s.id
+        LEFT JOIN user_user u ON u.id = s.hunter_id
+        WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
+    ) _base
+) _scored
+ORDER BY kitchen_quality_score DESC, ventas_ultimos_30_dias DESC, transacciones_historicas DESC
+"""
+
+# (bloque CTE legacy eliminado — reemplazado por subqueries en SQL_NEGOCIOS)
+
+_UNUSED = """
 WITH trx_historicas AS (
     SELECT ss.id, COUNT(t.id) AS transacciones_historicas
     FROM transaction_transaction t
@@ -358,43 +501,69 @@ ORDER BY kitchen_quality_score DESC, ventas_ultimos_30_dias DESC, transacciones_
 """
 
 SQL_USUARIOS = """
-WITH users AS (
-    SELECT u.id AS user_id, u.name AS user_name, u.organization_id,
-        oo.name AS organization_name, u.phone_number,
-        u.is_active, u.is_verified, u.created_date,
-        u.last_logging_datetime, u.last_request_datetime, u.type_id,
-        ST_X(u.coordinates) AS longitude_last_session,
-        ST_Y(u.coordinates) AS latitude_last_session,
-        ST_X(signup_coordinates) AS longitude_signup,
-        ST_Y(signup_coordinates) AS latitude_signup
-    FROM user_user u
-    LEFT JOIN organization_organization oo ON oo.id = u.organization_id
+SELECT
+    u.user_id, u.user_name, u.organization_id, u.organization_name,
+    u.phone_number, u.is_active, u.is_verified, u.created_date,
+    u.last_logging_datetime, u.last_request_datetime, u.type_id,
+    u.longitude_last_session, u.latitude_last_session,
+    u.longitude_signup, u.latitude_signup,
+    ur.name AS tipo_usuario,
+    ks.kyc_status, ks.kyc_last_update,
+    COALESCE(t.transacciones, 0) AS transacciones,
+    COALESCE(t.comidas, 0) AS comidas,
+    COALESCE(t.consumo_total, 0) AS consumo_total,
+    t.ticket_promedio,
+    COALESCE(t.biznes_consumo, 0) AS biznes_consumo,
+    COALESCE(t.membresia_transacciones, 0) AS membresia_transacciones,
+    COALESCE(t.membresia_monto, 0) AS membresia_consumo,
+    t.first_trx_periodo,
+    hft.first_trx_ever,
+    DATE_PART('day', hft.first_trx_ever - u.created_date) AS days_to_first_trx,
+    ST_Y(uu.coordinates) AS latitude,
+    ST_X(uu.coordinates) AS longitude
+FROM (
+    SELECT
+        uu2.id AS user_id, uu2.name AS user_name, uu2.organization_id,
+        oo.name AS organization_name, uu2.phone_number,
+        uu2.is_active, uu2.is_verified, uu2.created_date,
+        uu2.last_logging_datetime, uu2.last_request_datetime, uu2.type_id,
+        ST_X(uu2.coordinates) AS longitude_last_session,
+        ST_Y(uu2.coordinates) AS latitude_last_session,
+        ST_X(uu2.signup_coordinates) AS longitude_signup,
+        ST_Y(uu2.signup_coordinates) AS latitude_signup
+    FROM user_user uu2
+    LEFT JOIN organization_organization oo ON oo.id = uu2.organization_id
     WHERE oo.name IN ('Policia Auxiliar')
-      AND (u.name IS NULL OR u.name NOT ILIKE '%test%')
-      AND (u.email IS NULL OR u.email NOT ILIKE '%test%')
-),
-kyc_status AS (
+      AND (uu2.name IS NULL OR uu2.name NOT ILIKE '%test%')
+      AND (uu2.email IS NULL OR uu2.email NOT ILIKE '%test%')
+) u
+LEFT JOIN (
     SELECT user_id, status AS kyc_status, created_date AS kyc_last_update
     FROM (
         SELECT k.user_id, k.status, k.created_date,
             ROW_NUMBER() OVER (
                 PARTITION BY k.user_id
-                ORDER BY CASE WHEN k.status = 'APPROVED' THEN 1 ELSE 0 END DESC,
+                ORDER BY CASE WHEN k.status='APPROVED' THEN 1 ELSE 0 END DESC,
                     k.created_date DESC, k.id DESC
             ) AS rn
         FROM kyc_kycsession k
-    ) x WHERE rn = 1
-),
-historical_first_trx AS (
+    ) _kyc WHERE rn = 1
+) ks ON ks.user_id = u.user_id
+LEFT JOIN (
     SELECT tt.user_id, MIN(tt.date) AS first_trx_ever
     FROM transaction_transactionticket tt
-    LEFT JOIN users u ON tt.user_id = u.user_id
-    WHERE tt.is_active IS TRUE AND tt.hidden IS FALSE
-      AND tt.service_id <> 326 AND u.user_id IS NOT NULL
+    JOIN (
+        SELECT uu3.id AS user_id FROM user_user uu3
+        LEFT JOIN organization_organization oo2 ON oo2.id = uu3.organization_id
+        WHERE oo2.name IN ('Policia Auxiliar')
+          AND (uu3.name IS NULL OR uu3.name NOT ILIKE '%test%')
+          AND (uu3.email IS NULL OR uu3.email NOT ILIKE '%test%')
+    ) _valid ON tt.user_id = _valid.user_id
+    WHERE tt.is_active IS TRUE AND tt.hidden IS FALSE AND tt.service_id <> 326
     GROUP BY tt.user_id
-),
-transactions AS (
-    SELECT u.user_id, u.user_name, u.organization_name,
+) hft ON hft.user_id = u.user_id
+LEFT JOIN (
+    SELECT _u.user_id,
         COUNT(tt.id) FILTER (WHERE tt.service_id <> 326) AS transacciones,
         COALESCE(SUM(tt.count) FILTER (WHERE tt.service_id <> 326), 0) AS comidas,
         COALESCE(SUM(tt.amount) FILTER (WHERE tt.service_id <> 326), 0) AS consumo_total,
@@ -404,28 +573,17 @@ transactions AS (
         COUNT(DISTINCT tt.service_id) FILTER (WHERE tt.service_id <> 326) AS biznes_consumo,
         MIN(tt.date) FILTER (WHERE tt.service_id <> 326) AS first_trx_periodo
     FROM transaction_transactionticket tt
-    LEFT JOIN users u ON tt.user_id = u.user_id
+    JOIN (
+        SELECT uu4.id AS user_id FROM user_user uu4
+        LEFT JOIN organization_organization oo3 ON oo3.id = uu4.organization_id
+        WHERE oo3.name IN ('Policia Auxiliar')
+          AND (uu4.name IS NULL OR uu4.name NOT ILIKE '%test%')
+          AND (uu4.email IS NULL OR uu4.email NOT ILIKE '%test%')
+    ) _u ON tt.user_id = _u.user_id
     WHERE tt.date >= NOW() - INTERVAL '30 days'
-      AND tt.is_active IS TRUE AND tt.hidden IS FALSE AND u.user_id IS NOT NULL
-    GROUP BY 1, 2, 3
-)
-SELECT u.*, ur.name AS tipo_usuario,
-    ks.kyc_status, ks.kyc_last_update,
-    COALESCE(t.transacciones, 0) AS transacciones,
-    COALESCE(t.comidas, 0) AS comidas,
-    COALESCE(t.consumo_total, 0) AS consumo_total,
-    t.ticket_promedio,
-    COALESCE(t.biznes_consumo, 0) AS biznes_consumo,
-    COALESCE(t.membresia_transacciones, 0) AS "Membresía transacciones",
-    COALESCE(t.membresia_monto, 0) AS "Membresía consumo",
-    t.first_trx_periodo, hft.first_trx_ever,
-    DATE_PART('day', hft.first_trx_ever - u.created_date) AS days_to_first_trx,
-    ST_Y(uu.coordinates) AS latitude,
-    ST_X(uu.coordinates) AS longitude
-FROM users u
-LEFT JOIN kyc_status ks ON ks.user_id = u.user_id
-LEFT JOIN transactions t ON u.user_id = t.user_id
-LEFT JOIN historical_first_trx hft ON hft.user_id = u.user_id
+      AND tt.is_active IS TRUE AND tt.hidden IS FALSE
+    GROUP BY _u.user_id
+) t ON u.user_id = t.user_id
 LEFT JOIN organization_userparticipationtype ur ON ur.id = u.type_id
 LEFT JOIN user_user uu ON uu.id = u.user_id
 ORDER BY transacciones DESC
