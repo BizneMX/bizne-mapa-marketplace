@@ -90,12 +90,14 @@ def _query_mcp(sql, nombre, cache_file):
     if MCP_API_KEY:
         try:
             print(f"  Consultando MCP: {nombre}...")
+            # Headers requeridos por MCP Streamable HTTP transport
             headers = {
                 "Content-Type": "application/json",
+                "Accept": "application/json, text/event-stream",
                 "Authorization": f"Bearer {MCP_API_KEY}",
             }
 
-            # 1 — Inicializar sesión MCP
+            # 1 — Inicializar sesión y obtener session-id
             init_payload = {
                 "jsonrpc": "2.0", "id": 0, "method": "initialize",
                 "params": {
@@ -106,9 +108,19 @@ def _query_mcp(sql, nombre, cache_file):
             }
             r = requests.post(MCP_URL, json=init_payload, headers=headers, timeout=60)
             r.raise_for_status()
+
+            # Propagar session-id si el servidor lo devuelve
             session_id = r.headers.get("mcp-session-id", "")
             if session_id:
                 headers["mcp-session-id"] = session_id
+
+            # Notificar initialized (requerido por spec)
+            notif_payload = {
+                "jsonrpc": "2.0",
+                "method": "notifications/initialized",
+                "params": {}
+            }
+            requests.post(MCP_URL, json=notif_payload, headers=headers, timeout=30)
 
             # 2 — Llamar run_sql en modo export (hasta 50k filas)
             tool_payload = {
@@ -118,17 +130,34 @@ def _query_mcp(sql, nombre, cache_file):
                     "arguments": {"query": sql, "mode": "export"}
                 }
             }
-            r = requests.post(MCP_URL, json=tool_payload, headers=headers, timeout=120)
+            r = requests.post(MCP_URL, json=tool_payload, headers=headers, timeout=180)
             r.raise_for_status()
-            result = r.json()
 
-            # 3 — Parsear resultado → DataFrame
+            # 3 — Parsear respuesta (JSON directo o SSE stream)
+            content_type = r.headers.get("Content-Type", "")
+            if "text/event-stream" in content_type:
+                # SSE: extraer líneas data:
+                result = None
+                for line in r.text.splitlines():
+                    if line.startswith("data:"):
+                        payload = line[5:].strip()
+                        if payload and payload != "[DONE]":
+                            try:
+                                result = _json.loads(payload)
+                            except Exception:
+                                pass
+            else:
+                result = r.json()
+
+            if not result:
+                raise ValueError("Respuesta vacía del MCP")
+
             content = result.get("result", {}).get("content", [])
             text = next((c["text"] for c in content if c.get("type") == "text"), None)
             if not text:
-                raise ValueError("MCP no devolvió contenido de texto")
+                raise ValueError(f"MCP no devolvió datos. Respuesta: {str(result)[:300]}")
 
-            # Intentar CSV primero, luego JSON
+            # Intentar CSV primero, luego JSON array
             try:
                 df = pd.read_csv(_io.StringIO(text))
             except Exception:
