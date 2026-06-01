@@ -73,36 +73,81 @@ print(f"   H3 resolución       : {H3_RES}  (~{h3.average_hexagon_area(H3_RES,'k
 # ## 1 · Carga y Limpieza de Datos Reales
 
 # %%
-# ── POSTGRES — Fuente de datos directa ────────────────────────────────────────
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
-_DIR = os.path.dirname(os.path.abspath(__file__))
+# ── BIZNE MCP — Fuente de datos via API ───────────────────────────────────────
+MCP_URL     = os.environ.get("MCP_URL", "https://mcp.bizne.com.mx/mcp")
+MCP_API_KEY = os.environ.get("MCP_API_KEY", "")
+_DIR        = os.path.dirname(os.path.abspath(__file__))
 
-def _query_pg(sql, nombre, cache_file):
+def _query_mcp(sql, nombre, cache_file):
     """
-    Ejecuta un query en Postgres y devuelve DataFrame.
-    Si la BD no está disponible usa el cache local como fallback.
-    Guarda cache nuevo en cada consulta exitosa.
+    Ejecuta un query SQL via el MCP bizne (tool: run_sql, mode: export).
+    Parsea la respuesta a DataFrame. Fallback a cache local si falla.
+    Guarda cache nuevo tras cada consulta exitosa.
     """
+    import requests, io as _io, json as _json
     cache_path = os.path.join(_DIR, cache_file)
-    if DATABASE_URL:
+
+    if MCP_API_KEY:
         try:
-            import psycopg2, psycopg2.extras
-            print(f"  Consultando Postgres: {nombre}...")
-            conn = psycopg2.connect(DATABASE_URL)
-            df = pd.read_sql_query(sql, conn)
-            conn.close()
+            print(f"  Consultando MCP: {nombre}...")
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {MCP_API_KEY}",
+            }
+
+            # 1 — Inicializar sesión MCP
+            init_payload = {
+                "jsonrpc": "2.0", "id": 0, "method": "initialize",
+                "params": {
+                    "protocolVersion": "2024-11-05",
+                    "clientInfo": {"name": "bizne-ci", "version": "1.0"},
+                    "capabilities": {}
+                }
+            }
+            r = requests.post(MCP_URL, json=init_payload, headers=headers, timeout=60)
+            r.raise_for_status()
+            session_id = r.headers.get("mcp-session-id", "")
+            if session_id:
+                headers["mcp-session-id"] = session_id
+
+            # 2 — Llamar run_sql en modo export (hasta 50k filas)
+            tool_payload = {
+                "jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                "params": {
+                    "name": "run_sql",
+                    "arguments": {"query": sql, "mode": "export"}
+                }
+            }
+            r = requests.post(MCP_URL, json=tool_payload, headers=headers, timeout=120)
+            r.raise_for_status()
+            result = r.json()
+
+            # 3 — Parsear resultado → DataFrame
+            content = result.get("result", {}).get("content", [])
+            text = next((c["text"] for c in content if c.get("type") == "text"), None)
+            if not text:
+                raise ValueError("MCP no devolvió contenido de texto")
+
+            # Intentar CSV primero, luego JSON
+            try:
+                df = pd.read_csv(_io.StringIO(text))
+            except Exception:
+                rows = _json.loads(text)
+                df = pd.DataFrame(rows)
+
             print(f"  ✅ {nombre}: {len(df):,} filas")
             df.to_csv(cache_path, index=False)
             return df
+
         except Exception as e:
-            print(f"  ⚠ Error Postgres ({nombre}): {e}")
+            print(f"  ⚠ Error MCP ({nombre}): {e}")
             print(f"  → Usando cache local...")
     else:
-        print(f"  ⚠ DATABASE_URL no configurado — usando cache local para {nombre}")
+        print(f"  ⚠ MCP_API_KEY no configurado — usando cache local para {nombre}")
 
     if not os.path.exists(cache_path):
         print(f"  ❌ No hay cache local para {nombre} ({cache_file}).")
-        print(f"     Configura el secret DATABASE_URL en GitHub Actions.")
+        print(f"     Configura el secret MCP_API_KEY en GitHub Actions.")
         raise SystemExit(1)
     df = pd.read_csv(cache_path)
     print(f"  ✅ {nombre} (cache): {len(df):,} filas")
@@ -361,7 +406,7 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
 # ── 1.1 Negocios — directo desde Postgres ─────────────────────────────────────
 QUALITY_PATH = None   # mantenido por compatibilidad
 
-df_biz_raw = _query_pg(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
+df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
 
 # Normalizar columna dormida (bool)
 df_biz_raw["dormida"] = df_biz_raw["dormida"].fillna(False).astype(bool)
@@ -470,7 +515,7 @@ for _, r in df_admin.iterrows():
 # ── 1.3 Usuarios — directo desde Postgres ────────────────────────────────────
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
-df_su_raw = _query_pg(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
+df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], dayfirst=True)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
@@ -502,7 +547,7 @@ print(f"  Ticket promedio      : ${df_su[df_su.transacciones>0].ticket_promedio.
 print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
 # ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
-df_tx = _query_pg(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
+df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], dayfirst=True)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &

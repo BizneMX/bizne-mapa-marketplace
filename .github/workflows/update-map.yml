@@ -27,9 +27,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Paso 1 — Consultar Postgres y calcular modelo de demanda
+      - name: Paso 1 — Consultar BD via MCP y calcular modelo de demanda
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+          MCP_URL: "https://mcp.bizne.com.mx/mcp"
           GITHUB_ACTIONS_RUN: "true"
         run: python bizne_model_ci.py
 
