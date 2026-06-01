@@ -164,6 +164,11 @@ def _query_mcp(sql, nombre, cache_file):
                 rows = _json.loads(text)
                 df = pd.DataFrame(rows)
 
+            if len(df) == 0:
+                print(f"  ⚠ MCP devolvió 0 filas para {nombre}.")
+                print(f"  → Respuesta recibida (primeros 500 chars): {text[:500]!r}")
+                raise ValueError("0 filas — posible error en query o response mal parseado")
+
             print(f"  ✅ {nombre}: {len(df):,} filas")
             df.to_csv(cache_path, index=False)
             return df
@@ -437,7 +442,9 @@ QUALITY_PATH = None   # mantenido por compatibilidad
 
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
 
-# Normalizar columna dormida (bool)
+# Normalizar columna dormida (bool) — puede venir como "dormida" o no existir
+if "dormida" not in df_biz_raw.columns:
+    df_biz_raw["dormida"] = False   # fallback: todos activos
 df_biz_raw["dormida"] = df_biz_raw["dormida"].fillna(False).astype(bool)
 # Alias para compatibilidad con el resto del script
 df_biz_raw["Dormidas"] = df_biz_raw["dormida"]
