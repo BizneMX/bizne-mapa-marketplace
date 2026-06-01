@@ -154,15 +154,29 @@ def _query_mcp(sql, nombre, cache_file):
 
             content = result.get("result", {}).get("content", [])
             text = next((c["text"] for c in content if c.get("type") == "text"), None)
-            if not text:
+            # El MCP puede devolver {"rows":[...],"count":N} directamente
+            # o el formato estándar MCP con content[].text
+            if text:
+                try:
+                    parsed = _json.loads(text)
+                    # Formato bizne MCP: {"rows": [...], "count": N, "error": "..."}
+                    if isinstance(parsed, dict):
+                        if parsed.get("error"):
+                            raise ValueError(f"MCP error: {parsed['error']}")
+                        if "rows" in parsed:
+                            df = pd.DataFrame(parsed["rows"])
+                        else:
+                            df = pd.DataFrame([parsed])
+                    elif isinstance(parsed, list):
+                        df = pd.DataFrame(parsed)
+                    else:
+                        df = pd.read_csv(_io.StringIO(text))
+                except ValueError:
+                    raise
+                except Exception:
+                    df = pd.read_csv(_io.StringIO(text))
+            else:
                 raise ValueError(f"MCP no devolvió datos. Respuesta: {str(result)[:300]}")
-
-            # Intentar CSV primero, luego JSON array
-            try:
-                df = pd.read_csv(_io.StringIO(text))
-            except Exception:
-                rows = _json.loads(text)
-                df = pd.DataFrame(rows)
 
             if len(df) == 0:
                 print(f"  ⚠ MCP devolvió 0 filas para {nombre}.")
