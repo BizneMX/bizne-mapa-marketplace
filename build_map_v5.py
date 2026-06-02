@@ -879,6 +879,14 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;
   cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:system-ui,sans-serif;}
 #mode-btn:hover{background:#334155;}
+/* ── Refresh button ─────────────────────────────────────────── */
+#refresh-btn{position:fixed;top:10px;right:160px;z-index:1006;background:#0f4c81;
+  color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:12px;
+  cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.3);font-family:system-ui,sans-serif;
+  display:flex;align-items:center;gap:6px;}
+#refresh-btn:hover{background:#1a65a3;}
+#refresh-btn.spinning svg{animation:spin .8s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 /* ── Hunter panel ──────────────────────────────────────────── */
 #hunter-panel{position:fixed;bottom:20px;left:10px;z-index:1004;background:#0f172a;
   border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.5);font-family:system-ui,sans-serif;
@@ -1076,6 +1084,13 @@ HUNTER_HTML = f"""
 """
 
 PANEL_HTML = """
+<button id="refresh-btn" onclick="refreshMap()" title="Recargar datos">
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <polyline points="23 4 23 10 17 10"></polyline>
+    <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+  </svg>
+  Actualizar
+</button>
 <button id="mode-btn" onclick="toggleMode()">☀️ Modo claro</button>
 
 <div id="bmap-panel">
@@ -1710,6 +1725,13 @@ function switchTab(name, btn) {{
 
 function toggleMode() {{
   IS_DARK = !IS_DARK;
+  function refreshMap(){
+    var btn = document.getElementById('refresh-btn');
+    btn.classList.add('spinning');
+    btn.disabled = true;
+    // Fuerza recarga sin caché
+    setTimeout(function(){ location.reload(true); }, 300);
+  }
   var btn = document.getElementById('mode-btn');
   if (IS_DARK) {{
     btn.textContent = '☀️ Modo claro';
@@ -2401,6 +2423,7 @@ checks = [
     ('kpi-dash', 'Dashboard KPIs'),
     ('bmap-panel', 'Cartboard'),
     ('hunter-panel', 'Panel Hunter'),
+    ('refresh-btn', 'Actualizar'),
     ('mode-btn', 'Modo oscuro'),
     ('guide-btn-wrap', 'Guía ?'),
     ('switchTab', 'Tabs guía'),
