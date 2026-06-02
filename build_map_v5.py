@@ -673,6 +673,8 @@ for _, row in df_hunt.iterrows():
             "tasa_conv_pct": float(row['tasa_conv_pct']),
             "fill_color": fill,
             "fill_opacity": fill_op,
+            "lat": round(h3.cell_to_latlng(str(row['hex_id']))[0], 5),
+            "lng": round(h3.cell_to_latlng(str(row['hex_id']))[1], 5),
         }
     }
     hunter_features.append(feat)
