@@ -1723,15 +1723,14 @@ function switchTab(name, btn) {{
   if(btn) btn.classList.add('active');
 }}
 
+function refreshMap(){{
+  var btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  btn.disabled = true;
+  setTimeout(function(){{ location.reload(true); }}, 300);
+}}
 function toggleMode() {{
   IS_DARK = !IS_DARK;
-  function refreshMap(){
-    var btn = document.getElementById('refresh-btn');
-    btn.classList.add('spinning');
-    btn.disabled = true;
-    // Fuerza recarga sin caché
-    setTimeout(function(){ location.reload(true); }, 300);
-  }
   var btn = document.getElementById('mode-btn');
   if (IS_DARK) {{
     btn.textContent = '☀️ Modo claro';
