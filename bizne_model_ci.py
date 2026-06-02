@@ -746,7 +746,7 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
-df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], dayfirst=True)
+df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
 _valid = df_su_raw.dropna(subset=["latitude","longitude"])
@@ -778,7 +778,7 @@ print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
 # ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
 df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
-df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], dayfirst=True)
+df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &
     df_tx["longitude"].between(LNG_MIN, LNG_MAX)
