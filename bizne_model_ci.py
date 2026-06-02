@@ -640,6 +640,9 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
 QUALITY_PATH = None   # mantenido por compatibilidad
 
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
+for _col in df_biz_raw.select_dtypes(include="object").columns:
+    if _col not in {"name","phone_number","owner_name","hunter","address","cp","colonia","delegacion","food_types","service_cohort","etapa_negocio","kitchen_quality_nivel","last_transaction_register","bizne_creation_date","service_id","sleep","is_active"}:
+        df_biz_raw[_col] = pd.to_numeric(df_biz_raw[_col], errors="coerce").fillna(0)
 df_biz_raw = _coerce_numeric(df_biz_raw)
 
 # Normalizar columna sleep/dormida (bool)
@@ -756,6 +759,9 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
+for _col in df_su_raw.select_dtypes(include="object").columns:
+    if _col not in {"kyc_status","organization_id","name","email","phone","created_date"}:
+        df_su_raw[_col] = pd.to_numeric(df_su_raw[_col], errors="coerce").fillna(0)
 df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
@@ -789,6 +795,9 @@ print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
 # ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
 df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
+for _col in df_tx.select_dtypes(include="object").columns:
+    if _col not in {"status_trx","organization_id","service_id","created_date"}:
+        df_tx[_col] = pd.to_numeric(df_tx[_col], errors="coerce").fillna(0)
 df_tx = _coerce_numeric(df_tx)
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 df_tx = df_tx[
