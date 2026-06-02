@@ -201,6 +201,33 @@ def _query_mcp(sql, nombre, cache_file):
     print(f"  ✅ {nombre} (cache): {len(df):,} filas")
     return df
 
+
+def _coerce_numeric(df):
+    """
+    Convierte automáticamente a numérico todas las columnas que parecen números.
+    El MCP devuelve todo como strings — este helper lo corrige de una vez.
+    Columnas de texto conocidas se dejan como están.
+    """
+    _text_cols = {
+        "name", "phone_number", "owner_name", "hunter", "address", "cp", "colonia",
+        "delegacion", "kyc_status", "status_trx", "organization_id", "email", "phone",
+        "food_types", "service_cohort", "etapa_negocio", "kitchen_quality_nivel",
+        "last_transaction_register", "bizne_creation_date", "created_date",
+        "allow_delivery", "menu_a_la_carta", "menu_bizne", "menu_premium", "menu_de_dia",
+        "service_id", "sleep", "dormida", "is_active",
+    }
+    for col in df.columns:
+        if col in _text_cols:
+            continue
+        if df[col].dtype == object:
+            converted = pd.to_numeric(df[col], errors="coerce")
+            # Solo reemplazar si al menos 50% de valores no-nulos son numéricos
+            non_null = df[col].notna().sum()
+            if non_null > 0 and converted.notna().sum() / non_null >= 0.5:
+                df[col] = converted
+    return df
+
+
 # ── SQL Queries ────────────────────────────────────────────────────────────────
 SQL_NEGOCIOS = """
 SELECT
@@ -613,25 +640,8 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
 QUALITY_PATH = None   # mantenido por compatibilidad
 
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
+df_biz_raw = _coerce_numeric(df_biz_raw)
 
-# Castear columnas numéricas — el MCP devuelve todo como strings
-_biz_numeric_cols = [
-    "latitude", "longitude",
-    "transacciones_historicas", "transacciones_ultimos_90_dias",
-    "transacciones_ultimos_30_dias", "ticket_promedio_ultimos_90_dias",
-    "ticket_promedio_ultimos_30_dias", "comidas_ultimos_30_dias",
-    "ventas_ultimos_30_dias", "bizne_fee_ultimos_30_dias",
-    "transacciones_acceptadas_ultimos_30_dias", "delivery_ultimos_30_dias",
-    "tasa_aceptacion_ultimos_30_dias", "tasa_no_aceptados_ultimos_30_dias",
-    "rating", "tiempo_p50_aceptacion_min_ultimos_30_dias",
-    "dias_desde_creacion", "dias_desde_ultima_transaccion",
-    "score_rating", "score_tiempo_aceptacion", "score_no_aceptados",
-    "score_menu_dia", "score_menu_carta", "score_menu_bizne",
-    "kitchen_quality_score",
-]
-for _c in _biz_numeric_cols:
-    if _c in df_biz_raw.columns:
-        df_biz_raw[_c] = pd.to_numeric(df_biz_raw[_c], errors="coerce").fillna(0)
 # Normalizar columna sleep/dormida (bool)
 # El query devuelve "sleep" directamente desde la BD
 if "sleep" in df_biz_raw.columns:
@@ -746,6 +756,7 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
+df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
@@ -778,6 +789,7 @@ print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
 # ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
 df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
+df_tx = _coerce_numeric(df_tx)
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &
