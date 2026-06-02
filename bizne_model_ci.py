@@ -659,7 +659,7 @@ df_biz_raw["Dormidas"] = df_biz_raw["dormida"]
 df_biz_raw["effective_capacity"] = df_biz_raw.apply(
     lambda r: 0.0 if r["Dormidas"]
     else (C_CAPACITY * r["tasa_aceptacion_ultimos_30_dias"]
-          if r["tasa_aceptacion_ultimos_30_dias"] > 0
+          if float(r["tasa_aceptacion_ultimos_30_dias"] or 0) > 0
           else CAPACITY_INACTIVE),
     axis=1
 )
