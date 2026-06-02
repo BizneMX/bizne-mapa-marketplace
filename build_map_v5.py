@@ -753,7 +753,7 @@ _su_numeric_cols = ["latitude", "longitude", "transacciones", "consumo_total",
 for _c in _su_numeric_cols:
     if _c in df_su_raw.columns:
         df_su_raw[_c] = pd.to_numeric(df_su_raw[_c], errors="coerce")
-df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], dayfirst=True, errors="coerce")
+df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
 # Centroide admin para usuarios sin coordenadas (fallback)
 _valid = df_su_raw.dropna(subset=["latitude","longitude"])
@@ -790,7 +790,7 @@ _tx_numeric_cols = ["latitude", "longitude", "total_amount", "bizne_fee"]
 for _c in _tx_numeric_cols:
     if _c in df_tx.columns:
         df_tx[_c] = pd.to_numeric(df_tx[_c], errors="coerce")
-df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], dayfirst=True, errors="coerce")
+df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &
     df_tx["longitude"].between(LNG_MIN, LNG_MAX)
