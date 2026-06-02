@@ -1830,7 +1830,18 @@ function buildHunterTT(p) {{
     (p.activ_demand > 0
       ? "<span style='color:#E879F9'>⚡ Punto de Activación cercano: +"+p.activ_demand+" tx/día</span><br>"
       : "")+
-    "<span style='color:#64748b;font-size:9px'>Score: "+Math.round(p.combined_score*100)+"/100</span>";
+    "<span style='color:#64748b;font-size:9px'>Score: "+Math.round(p.combined_score*100)+"/100</span>"+
+    "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
+    "<span style='color:#94a3b8;font-size:10px'>📍 Centroide: "+
+    "<span id='coord-"+p.hex_code+"' style='font-family:monospace;color:#e2e8f0'>"+
+    p.lat.toFixed(5)+", "+p.lng.toFixed(5)+
+    "</span>"+
+    " <button onclick=\"navigator.clipboard.writeText('"+p.lat.toFixed(5)+", "+p.lng.toFixed(5)+"').then(function(){{"+
+    "var b=document.querySelector('.coord-copy-"+p.hex_code+"');"+
+    "b.textContent='✅';setTimeout(function(){{b.textContent='📋';}},1200);}})\" "+
+    "class='coord-copy-"+p.hex_code+"' "+
+    "style='background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;"+
+    "font-size:10px;padding:1px 5px;margin-left:4px;'>📋</button></span>";
 }}
 function buildHeatHexTT(p, label, color) {{
   return "<b style='color:"+color+"'>⬡ "+label+"</b><br>"+
