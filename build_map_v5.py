@@ -2036,7 +2036,7 @@ fg_activar = folium.FeatureGroup(
     show=True
 )
 for _, su in su_sin_compra.iterrows():
-    dias = (pd.Timestamp.now() - pd.to_datetime(su.created_date, dayfirst=True)).days
+    dias = (pd.Timestamp.now() - pd.to_datetime(su.created_date, utc=True, errors='coerce').tz_convert(None)).days
     tiene_coords = su.get("tiene_coords_reales", False)
     # Diferenciar visualmente: coords reales = círculo normal, centroide = más pequeño y transparente
     radio   = 7 if tiene_coords else 5
