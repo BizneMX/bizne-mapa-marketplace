@@ -1725,6 +1725,54 @@ function switchTab(name, btn) {{
   if(btn) btn.classList.add('active');
 }}
 
+// ── Hunter popup fijo (click) con reverse geocode ────────────────
+var _hunterPopup = L.popup({{maxWidth:320, className:'hunter-popup'}});
+
+function _copyBtn(value, label) {{
+  return '<button onclick="var b=this;navigator.clipboard.writeText(\''+value+'\').then(function(){{b.textContent=\'✅\';setTimeout(function(){{b.textContent=\''+label+'\';}},1200);}});" '+
+    'style="background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;'+
+    'cursor:pointer;font-size:10px;padding:1px 6px;margin-left:4px;">'+label+'</button>';
+}}
+
+function openHunterPopup(p, latlng) {{
+  var coordStr = p.lat.toFixed(5)+', '+p.lng.toFixed(5);
+  var html =
+    '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:240px">'+
+    '<b style="color:'+p.fill_color+'">'+p.zona+'</b> · <b>Rank #'+p.rank+'</b>'+
+    '<hr style="border:none;border-top:1px solid #334155;margin:6px 0">'+
+    '<div style="margin-bottom:4px">'+
+    '<span style="color:#94a3b8">📍 Coordenadas:</span><br>'+
+    '<span style="font-family:monospace;font-size:11px">'+coordStr+'</span>'+
+    _copyBtn(coordStr, '📋 Copiar coords')+
+    '</div>'+
+    '<div id="hunter-addr-'+p.hex_code+'" style="color:#94a3b8;font-size:11px;margin-top:4px">'+
+    '🔍 Buscando dirección...</div>'+
+    '</div>';
+  _hunterPopup.setLatLng(latlng).setContent(html).openOn(window.THE_MAP);
+
+  // Reverse geocode con Nominatim
+  fetch('https://nominatim.openstreetmap.org/reverse?lat='+p.lat+'&lon='+p.lng+'&format=json&addressdetails=1')
+    .then(function(r){{ return r.json(); }})
+    .then(function(d){{
+      var addr = d.display_name || 'Dirección no disponible';
+      // Versión corta: colonia + delegación
+      var a = d.address || {{}};
+      var short = [a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough, a.city||a.town]
+        .filter(Boolean).join(', ') || addr;
+      var el = document.getElementById('hunter-addr-'+p.hex_code);
+      if (el) {{
+        el.innerHTML = '<span style="color:#94a3b8">🏘 Dirección:</span><br>'+
+          '<span style="font-size:11px">'+short+'</span>'+
+          _copyBtn(short, '📋 Copiar dir.')+
+          '<br><span style="font-size:9px;color:#475569">'+addr+'</span>';
+      }}
+    }})
+    .catch(function(){{
+      var el = document.getElementById('hunter-addr-'+p.hex_code);
+      if (el) el.textContent = 'Dirección no disponible';
+    }});
+}}
+
 // Copiar coordenadas — delegación de eventos para botones en tooltips
 document.addEventListener('click', function(e){{
   var btn = e.target.closest('.copy-coord-btn');
@@ -1918,6 +1966,10 @@ document.addEventListener("DOMContentLoaded", function() {{
         fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"4 3"}};}},
       onEachFeature:function(f,l){{l._p=f.properties;
         l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});
+        l.on('click', function(e){{
+          L.DomEvent.stopPropagation(e);
+          openHunterPopup(f.properties, e.latlng);
+        }});
         // Label centrado en el hex
         if (f.properties.hex_code) {{
           var center = l.getBounds().getCenter();
