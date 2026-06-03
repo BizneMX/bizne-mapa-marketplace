@@ -1729,7 +1729,7 @@ function switchTab(name, btn) {{
 var _hunterPopup = L.popup({{maxWidth:320, className:'hunter-popup'}});
 
 function _copyBtn(value, label) {{
-  return '<button onclick="var b=this;navigator.clipboard.writeText(\''+value+'\').then(function(){{b.textContent=\'✅\';setTimeout(function(){{b.textContent=\''+label+'\';}},1200);}});" '+
+  return '<button class="hpop-copy" data-val="'+encodeURIComponent(value)+'" data-lbl="'+encodeURIComponent(label)+'" '+
     'style="background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;'+
     'cursor:pointer;font-size:10px;padding:1px 6px;margin-left:4px;">'+label+'</button>';
 }}
@@ -1773,15 +1773,25 @@ function openHunterPopup(p, latlng) {{
     }});
 }}
 
-// Copiar coordenadas — delegación de eventos para botones en tooltips
+// Copiar — delegación de eventos para .hpop-copy y .copy-coord-btn
 document.addEventListener('click', function(e){{
-  var btn = e.target.closest('.copy-coord-btn');
-  if (!btn) return;
-  var coord = btn.getAttribute('data-coord');
-  navigator.clipboard.writeText(coord).then(function(){{
-    btn.textContent = '✅';
-    setTimeout(function(){{ btn.textContent = '📋'; }}, 1200);
-  }});
+  var btn = e.target.closest('.hpop-copy');
+  if (btn) {{
+    var val = decodeURIComponent(btn.getAttribute('data-val'));
+    var lbl = decodeURIComponent(btn.getAttribute('data-lbl'));
+    navigator.clipboard.writeText(val).then(function(){{
+      btn.textContent = '✅';
+      setTimeout(function(){{ btn.textContent = lbl; }}, 1400);
+    }});
+    return;
+  }}
+  var btn2 = e.target.closest('.copy-coord-btn');
+  if (btn2) {{
+    navigator.clipboard.writeText(btn2.getAttribute('data-coord')).then(function(){{
+      btn2.textContent = '✅';
+      setTimeout(function(){{ btn2.textContent = '📋'; }}, 1200);
+    }});
+  }}
 }});
 function refreshMap(){{
   var btn = document.getElementById('refresh-btn');
