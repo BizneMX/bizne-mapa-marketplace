@@ -364,6 +364,9 @@ else:
             'menu_bizne':     _safe_bool(r.get('menu_bizne')),
             'menu_dia':       _safe_bool(r.get('menu_de_dia')),
             'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
+            'dias_creacion':  int(float(r.get('dias_desde_creacion', r.get('dias_creacion', 9999)) or 9999)),
+            'hunter':         str(r.get('hunter', '') or ''),
+            'tx_90d':         int(float(r.get('tx_90d', 0) or 0)),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -681,6 +684,77 @@ for _, row in df_hunt.iterrows():
 
 HUNTER_DATA = json.dumps({"type":"FeatureCollection","features":hunter_features}, ensure_ascii=False)
 print(f"  {len(hunter_features)} hunter zones")
+
+# ══════════════════════════════════════════════════════════════════════
+# GAP GLOBAL — cobertura del modelo estructural
+# ══════════════════════════════════════════════════════════════════════
+_df_hex_gap = df_hex if isinstance(df_hex, pd.DataFrame) else pd.DataFrame()
+_gap_ok = 'gap' in _df_hex_gap.columns and 'negocios_necesarios' in _df_hex_gap.columns and 'negocios_actuales' in _df_hex_gap.columns
+if _gap_ok:
+    total_gap_global        = int(_df_hex_gap['gap'].fillna(0).clip(lower=0).sum())
+    total_necesarios_global = max(1, int(_df_hex_gap['negocios_necesarios'].fillna(0).sum()))
+    total_actuales_global   = int(_df_hex_gap['negocios_actuales'].fillna(0).sum())
+    cobertura_global_pct    = round(min(100.0, total_actuales_global / total_necesarios_global * 100), 1)
+else:
+    total_gap_global = 0
+    total_necesarios_global = 1
+    total_actuales_global = k['negocios_activos']
+    cobertura_global_pct = 0.0
+print(f"  Gap global: {total_gap_global} | Cobertura: {cobertura_global_pct}%")
+
+# ══════════════════════════════════════════════════════════════════════
+# NEGOCIOS NUEVOS — últimos 7 y 30 días + por hunter
+# ══════════════════════════════════════════════════════════════════════
+def _safe_dias(p):
+    try: return int(p.get('dias_creacion', 9999) or 9999)
+    except: return 9999
+
+_nuevos_7  = [f for f in biz_features if _safe_dias(f['properties']) <= 7]
+_nuevos_30 = [f for f in biz_features if _safe_dias(f['properties']) <= 30]
+
+neg_nuevos_7  = len(_nuevos_7)
+neg_nuevos_30 = len(_nuevos_30)
+
+# Negocios con transacción: si dias_creacion<=7 y tx_historicas>0 → tuvieron tx en sus primeros 7 días
+def _has_tx(p):
+    return (int(p.get('tx_historicas', 0) or 0) + int(p.get('tx_30d', 0) or 0)) > 0
+
+_n7_con_tx  = sum(1 for f in _nuevos_7  if _has_tx(f['properties']))
+_n30_con_tx = sum(1 for f in _nuevos_30 if _has_tx(f['properties']))
+
+pct_nuevos_7_activos = round(_n7_con_tx  / neg_nuevos_7  * 100, 1) if neg_nuevos_7  > 0 else 0.0
+pct_nuevos_7_tx_7d   = pct_nuevos_7_activos   # misma lógica: son ≤7d, cualquier tx es en primeros 7 días
+pct_nuevos_30_con_tx = round(_n30_con_tx / neg_nuevos_30 * 100, 1) if neg_nuevos_30 > 0 else 0.0
+
+# Negocios por hunter en 7d y 30d
+_hunter_7  = defaultdict(int)
+_hunter_30 = defaultdict(int)
+for f in biz_features:
+    p  = f['properties']
+    h  = str(p.get('hunter', '') or '').strip()
+    if not h or h in ('nan', 'None'): h = 'Sin asignar'
+    d  = _safe_dias(p)
+    if d <= 7:  _hunter_7[h]  += 1
+    if d <= 30: _hunter_30[h] += 1
+
+_all_hunters = sorted(
+    set(list(_hunter_7.keys()) + list(_hunter_30.keys())),
+    key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
+    reverse=True
+)
+hunter_actividad_rows = ''
+for h in _all_hunters:
+    n7  = _hunter_7.get(h, 0)
+    n30 = _hunter_30.get(h, 0)
+    clr7 = '#22c55e' if n7 > 0 else '#475569'
+    hunter_actividad_rows += (
+        f'<tr>'
+        f'<td style="padding:3px 8px;color:#e2e8f0">{h}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:{clr7};font-weight:700">{n7}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:#94a3b8">{n30}</td>'
+        f'</tr>\n'
+    )
+print(f"  Nuevos 7d: {neg_nuevos_7} | 30d: {neg_nuevos_30} | %tx7d: {pct_nuevos_7_tx_7d}%")
 
 # Hunter table top 30
 hunt_rows_json = []
@@ -1059,6 +1133,21 @@ KPI_HTML = f"""
     <div class="kc"><div class="kl">Negocios dormidos</div><div class="kv y">{k['negocios_dormidos']} <span style="font-size:10px;color:#94a3b8">({k['dormidos_pct_total']}%)</span></div></div>
     <div class="kc"><div class="kl">Sin transacciones 30d</div><div class="kv {st_col}">{k['pct_sin_tx']}%</div><div class="ks">{k['sin_tx_n']} negocios</div></div>
     <div class="kc full"><div class="kl">Mediana / Promedio tx negocio</div><div class="kv s">{k['mediana_tx_negocio']} / {k['promedio_tx_negocio']} <span style="font-size:9px;color:#64748b">tx/mes</span></div></div>
+    <div class="kdiv"></div>
+    <div class="kc full">
+      <div class="kl">📐 Cobertura modelo estructural (negocios necesarios)</div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <div style="flex:1;height:10px;background:#1e3a52;border-radius:5px;overflow:hidden">
+          <div style="width:{cobertura_global_pct}%;height:100%;background:linear-gradient(90deg,#22c55e,#00BFA5);border-radius:5px;transition:width .5s"></div>
+        </div>
+        <span style="font-size:13px;color:#22c55e;font-weight:700;min-width:38px;text-align:right">{cobertura_global_pct}%</span>
+      </div>
+      <div class="ks" style="margin-top:3px">{total_actuales_global} activos · {total_necesarios_global} necesarios · Gap: <span style="color:#ef4444;font-weight:700">{total_gap_global} 🍽</span></div>
+    </div>
+    <div class="kdiv"></div>
+    <div class="kc"><div class="kl">🆕 Nuevos últimos 7d</div><div class="kv t">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx activa</div></div>
+    <div class="kc"><div class="kl">🆕 Nuevos últimos 30d</div><div class="kv">{neg_nuevos_30}</div><div class="ks">{pct_nuevos_30_con_tx}% con tx activa</div></div>
+    <div class="kc full"><div class="kl">% con 1ª transacción en primeros 7 días</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div><div class="ks">de negocios con menos de 7 días de creación</div></div>
   </div>
 </div>
 """
@@ -1066,9 +1155,32 @@ KPI_HTML = f"""
 HUNTER_HTML = f"""
 <div id="hunter-panel">
   <div id="hunter-header">
-    <span>🎯 ZONAS HUNTER — Top 30 por Prioridad</span>
+    <span>🎯 ZONAS HUNTER — Top 30</span>
     <button onclick="document.getElementById('hunter-panel').style.display='none';document.getElementById('hunter-toggle').style.display='block'"
       style="border:none;background:none;cursor:pointer;color:#fff;font-size:14px">✕</button>
+  </div>
+  <!-- Barra de actividad nuevos negocios -->
+  <div style="background:#0d1117;padding:5px 10px;display:flex;gap:14px;align-items:center;
+    font-size:10px;border-bottom:1px solid #1e2d40;flex-wrap:wrap">
+    <span style="color:#94a3b8">Nuevos <b style="color:#22c55e">{neg_nuevos_7}</b> 7d
+      · <b style="color:#00BFA5">{neg_nuevos_30}</b> 30d</span>
+    <span style="color:#94a3b8">1ªTx≤7d: <b style="color:{'#22c55e' if pct_nuevos_7_tx_7d>=50 else '#f59e0b'}">{pct_nuevos_7_tx_7d}%</b></span>
+    <button onclick="var s=document.getElementById('h-act');s.style.display=s.style.display==='none'?'block':'none';this.textContent=s.style.display==='none'?'📊 Por hunter':'▲ Cerrar'"
+      style="margin-left:auto;background:#1e3a52;border:none;color:#94a3b8;padding:2px 8px;
+      border-radius:4px;cursor:pointer;font-size:9px;white-space:nowrap">📊 Por hunter</button>
+  </div>
+  <!-- Desglose negocios por hunter -->
+  <div id="h-act" style="display:none;max-height:130px;overflow-y:auto;background:#080d14;border-bottom:1px solid #1e2d40">
+    <table style="width:100%;border-collapse:collapse;font-size:10px">
+      <thead><tr style="position:sticky;top:0;background:#0f172a">
+        <th style="padding:4px 8px;color:#64748b;text-align:left;font-size:9px;letter-spacing:.3px">HUNTER</th>
+        <th style="padding:4px 8px;color:#22c55e;text-align:right;font-size:9px">7d</th>
+        <th style="padding:4px 8px;color:#00BFA5;text-align:right;font-size:9px">30d</th>
+      </tr></thead>
+      <tbody style="color:#e2e8f0">
+{hunter_actividad_rows}
+      </tbody>
+    </table>
   </div>
   <div id="hunter-body">
     <table>
