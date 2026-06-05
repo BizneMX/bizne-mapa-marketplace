@@ -118,6 +118,9 @@ aprov_con_tx = (df_aprov['transacciones'] > 0).sum()
 conv_primer = round(aprov_con_tx/aprobados*100,1) if aprobados > 0 else 0
 aprov_sin_conv = round(100 - conv_primer, 1)
 
+# Conversión registrados → 1ª transacción (sobre total de signups)
+conv_registrados_tx = round(aprov_con_tx/signups_total*100,1) if signups_total > 0 else 0
+
 # Días promedio al primer consumo (post April 20)
 cutoff = pd.Timestamp('2026-04-20')
 df_post = df_aprov[(df_aprov['created_date'] >= cutoff) & (df_aprov['transacciones'] > 0)]
@@ -163,6 +166,7 @@ k = {
     'tiempo_prom_aceptacion': tiempo_prom_accept,
     'conv_primer_consumo': conv_primer,
     'aprobados_sin_convertir': aprov_sin_conv,
+    'conv_registrados_tx': conv_registrados_tx,
     'dias_prom_primer_consumo': dias_prom,
     'pct_sin_supply': pct_sin_supply,
     'negocios_activos': neg_activos,
@@ -981,16 +985,22 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 /* ── Hunter panel ──────────────────────────────────────────── */
 #hunter-panel{position:fixed;bottom:20px;left:10px;z-index:1004;background:#0f172a;
   border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.5);font-family:system-ui,sans-serif;
-  width:380px;max-height:300px;display:flex;flex-direction:column;user-select:none;overflow:hidden;}
+  width:420px;height:300px;min-height:140px;max-height:85vh;
+  display:flex;flex-direction:column;user-select:none;overflow:hidden;
+  resize:vertical;}
 #hunter-header{background:#dc2626;color:#fff;padding:8px 12px;cursor:move;
-  display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;}
-#hunter-body{overflow-y:auto;flex:1;}
+  display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;
+  flex-shrink:0;}
+#hunter-body{overflow-y:auto;flex:1;min-height:0;}
 #hunter-body table{width:100%;border-collapse:collapse;font-size:10px;}
 #hunter-body th{background:#1e293b;color:#94a3b8;padding:5px 8px;text-align:right;
   font-weight:600;letter-spacing:.3px;font-size:9px;position:sticky;top:0;}
 #hunter-body th:first-child{text-align:center;}
 #hunter-body td{padding:4px 8px;border-bottom:1px solid #1e293b;color:#e2e8f0;}
 #hunter-body tr:hover td{background:#1e3a52!important;}
+#hunter-expand-btn{background:none;border:none;color:#fff;cursor:pointer;font-size:12px;
+  padding:0 4px;opacity:.8;line-height:1;}
+#hunter-expand-btn:hover{opacity:1;}
 #hunter-toggle{display:none;position:fixed;bottom:20px;left:10px;z-index:1003;
   background:#dc2626;color:#fff;border:none;border-radius:8px;
   padding:7px 12px;font-size:11px;cursor:pointer;}
@@ -1136,10 +1146,35 @@ KPI_HTML = f"""
     <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">👤 USUARIOS</div></div>
     <div class="kc"><div class="kl">Signups totales</div><div class="kv t">{k['signups_totales']}</div></div>
     <div class="kc"><div class="kl">Aprobados</div><div class="kv">{k['usuarios_aprobados']}</div><div class="ks">{ap_pct}% del total</div></div>
-    <div class="kc"><div class="kl">Conv. primer consumo</div><div class="kv {cv_col}">{k['conv_primer_consumo']}%</div><div class="ks">excluye membresías</div></div>
-    <div class="kc"><div class="kl">Sin convertir</div><div class="kv {as_col}">{k['aprobados_sin_convertir']}%</div><div class="ks">aprobados sin compra</div></div>
+    <div class="kc full">
+      <div class="kl">Embudo de conversión (excluye membresías)</div>
+      <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px">
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="font-size:9px;color:#475569;width:80px">Registrados</div>
+          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
+            <div style="width:100%;height:100%;background:#64748b;border-radius:3px"></div>
+          </div>
+          <div style="font-size:10px;font-weight:700;color:#0f172a;min-width:32px;text-align:right">{k['signups_totales']}</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="font-size:9px;color:#475569;width:80px">Aprobados</div>
+          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
+            <div style="width:{ap_pct}%;height:100%;background:#00897B;border-radius:3px"></div>
+          </div>
+          <div style="font-size:10px;font-weight:700;color:#00897B;min-width:32px;text-align:right">{ap_pct}%</div>
+        </div>
+        <div style="display:flex;align-items:center;gap:6px">
+          <div style="font-size:9px;color:#475569;width:80px">1ª compra</div>
+          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
+            <div style="width:{k['conv_registrados_tx']}%;height:100%;background:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};border-radius:3px"></div>
+          </div>
+          <div style="font-size:10px;font-weight:700;color:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};min-width:32px;text-align:right">{k['conv_registrados_tx']}%</div>
+        </div>
+      </div>
+      <div class="ks" style="margin-top:3px">Conv. aprobados→1ª compra: <b>{k['conv_primer_consumo']}%</b> · Sin convertir: <b style="color:#dc2626">{k['aprobados_sin_convertir']}%</b></div>
+    </div>
     <div class="kc"><div class="kl">T. primer consumo</div><div class="kv s">{k['dias_prom_primer_consumo']} días</div><div class="ks">post 20-abr · excluye membresías</div></div>
-    <div class="kc"><div class="kl">Últ. sesión sin supply</div><div class="kv {ss_col}">{k['pct_sin_supply']}%</div></div>
+    <div class="kc"><div class="kl">Sin supply</div><div class="kv {ss_col}">{k['pct_sin_supply']}%</div><div class="ks">usuarios activos sin negocio cerca</div></div>
     <div class="kc"><div class="kl">Tx completadas</div><div class="kv g">{k['trx_completadas']}</div></div>
     <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r">{k['trx_incompletas']}</div></div>
     <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}">{k['tasa_aceptacion']}%</div></div>
@@ -1175,8 +1210,13 @@ HUNTER_HTML = f"""
 <div id="hunter-panel">
   <div id="hunter-header">
     <span>🎯 ZONAS HUNTER — Top 30</span>
-    <button onclick="document.getElementById('hunter-panel').style.display='none';document.getElementById('hunter-toggle').style.display='block'"
-      style="border:none;background:none;cursor:pointer;color:#fff;font-size:14px">✕</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <button id="hunter-expand-btn" title="Expandir/Colapsar"
+        onclick="(function(){{var p=document.getElementById('hunter-panel');var exp=p._expanded;p.style.height=exp?'300px':'80vh';p._expanded=!exp;document.getElementById('hunter-expand-btn').textContent=exp?'⤢':'⤡';}})()"
+        >⤢</button>
+      <button onclick="document.getElementById('hunter-panel').style.display='none';document.getElementById('hunter-toggle').style.display='block'"
+        style="border:none;background:none;cursor:pointer;color:#fff;font-size:14px">✕</button>
+    </div>
   </div>
   <!-- Barra de actividad nuevos negocios -->
   <div style="background:#0d1117;padding:5px 10px;display:flex;gap:14px;align-items:center;
