@@ -647,6 +647,22 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
   AND tt.service_id <> 326
 """
 
+SQL_UPCS = """
+SELECT
+    ut.id,
+    ut.name,
+    add.address,
+    ST_Y(add.coordinates)::text AS latitude,
+    ST_X(add.coordinates)::text AS longitude
+FROM organization_organization o
+JOIN organization_organizationrole orr   ON o.id = orr.organization_id
+JOIN organization_userparticipationtype ut ON ut.organization_role_id = orr.id
+JOIN administrative_division_address add  ON add.id = ut.address_id
+WHERE o.id = 1
+  AND add.coordinates IS NOT NULL
+LIMIT 500
+"""
+
 # ── 1.1 Negocios — directo desde Postgres ─────────────────────────────────────
 QUALITY_PATH = None   # mantenido por compatibilidad
 
@@ -837,6 +853,25 @@ df_tx_complete   = df_tx[df_tx["status_trx"] == "Transacción completa"]
 df_tx_incomplete = df_tx[df_tx["status_trx"] == "Transacción incompleta"]
 
 days_data = (df_tx["created_date"].max() - df_tx["created_date"].min()).days
+
+# ── 1.5 UPCs — desde Postgres ──────────────────────────────────────────────
+df_upcs_raw = _query_mcp(SQL_UPCS, "UPCs", "pg_upcs_cache.csv")
+df_upcs_raw = _coerce_numeric(df_upcs_raw)
+# Validar coordenadas en bbox CDMX
+for _c in ["latitude", "longitude"]:
+    if _c in df_upcs_raw.columns:
+        df_upcs_raw[_c] = pd.to_numeric(df_upcs_raw[_c], errors="coerce")
+df_upcs_raw = df_upcs_raw[
+    df_upcs_raw["latitude"].between(LAT_MIN, LAT_MAX) &
+    df_upcs_raw["longitude"].between(LNG_MIN, LNG_MAX)
+].copy()
+# Guardar CSV limpio para build_map_v5.py (columnas: id, name, address, latitude, longitude)
+_upc_out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+os.makedirs(_upc_out_dir, exist_ok=True)
+df_upcs_raw[["id","name","address","latitude","longitude"]].to_csv(
+    os.path.join(_upc_out_dir, "upcs.csv"), index=False, encoding="utf-8"
+)
+print(f"✅ upcs (data/upcs.csv) actualizado desde BD: {len(df_upcs_raw):,} UPCs")
 
 print(f"\nTransacciones         : {len(df_tx):,} en {days_data} días")
 print(f"  Completas            : {len(df_tx_complete):,}")

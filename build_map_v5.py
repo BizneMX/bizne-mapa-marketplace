@@ -24,10 +24,10 @@ if _CI:
     QS_CSV   = None   # CI: campos de calidad vienen directo en NEG_CSV
     METRO_CSV= _os.path.join(_DIR, 'kepler_real_metro.csv')
     SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
-    UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # coords ya correctas
+    UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # actualizado por bizne_model_ci.py desde BD
     TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
-    UPC_SWAPPED = False   # data/upcs.csv tiene lat/lng correctos
+    UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
     # Local dev paths
     OUT      = '/sessions/confident-jolly-pasteur/mnt/outputs/bizne_mapa_v5.html'
