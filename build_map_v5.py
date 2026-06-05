@@ -2206,79 +2206,88 @@ function _setBg(id, val) {{ var e=document.getElementById(id); if(e) e.style.bac
 
 // ── Actualizar KPI metrics de usuarios ────────────────────────────
 function updateKPIMetrics() {{
-  var orgData = ORG_DATE_KPI_DATA[_currentOrg];
-  if (!orgData) return;
-  var d = orgData[_currentRange] || orgData['todo'];
-  if (!d) return;
+  try {{
+    var orgData = ORG_DATE_KPI_DATA[_currentOrg];
+    if (!orgData) {{ console.warn('Org no encontrada:', _currentOrg, Object.keys(ORG_DATE_KPI_DATA)); return; }}
+    var d = orgData[_currentRange] || orgData['todo'];
+    if (!d) {{ console.warn('Rango no encontrado:', _currentRange); return; }}
+    console.log('updateKPIMetrics:', _currentOrg, _currentRange, d);
 
-  var convColor = d.conv_reg >= 20 ? '#16a34a' : '#d97706';
-  var supColor  = d.pct_sin_supply < 10 ? '#16a34a' : '#dc2626';
+    var convColor = (d.conv_reg||0) >= 20 ? '#16a34a' : '#d97706';
+    var supColor  = (d.pct_sin_supply||0) < 10 ? '#16a34a' : '#dc2626';
 
-  _setText('kpi-signups',    d.signups);
-  _setText('kpi-aprobados',  d.aprobados);
-  _setText('kpi-ap-pct',     d.ap_pct + '%');
-  _setText('kpi-ap-pct2',    d.ap_pct + '%');
-  _setColor('kpi-ap-pct2',   '#00897B');
-  _setText('kpi-conv-reg',   d.conv_reg + '%');
-  _setColor('kpi-conv-reg',  convColor);
-  _setText('kpi-conv-primer', d.conv_primer + '%');
-  _setText('kpi-aprov-sin',  d.aprov_sin + '%');
-  _setText('kpi-dias-prom',  d.dias_prom + 'd');
-  _setText('kpi-sin-supply', d.pct_sin_supply + '%');
-  _setColor('kpi-sin-supply', supColor);
-  // Barras verticales del embudo
-  var H = 32, total = Math.max(d.signups||1, 1);
-  var apH   = Math.round((d.aprobados||0) / total * H);
-  var convH = Math.round((d.conv_reg||0)  / 100 * H);
-  var apEl   = document.getElementById('kpi-bar-ap-v');
-  var convEl = document.getElementById('kpi-bar-conv-v');
-  if (apEl)   apEl.style.height   = Math.max(2, apH) + 'px';
-  if (convEl) {{ convEl.style.height = Math.max(2, convH) + 'px'; convEl.style.background = convColor; }}
+    _setText('kpi-signups',     d.signups);
+    _setText('kpi-aprobados',   d.aprobados);
+    _setText('kpi-ap-pct',      d.ap_pct + '%');
+    _setText('kpi-ap-pct2',     d.ap_pct + '%');
+    _setColor('kpi-ap-pct2',    '#00897B');
+    _setText('kpi-conv-reg',    d.conv_reg + '%');
+    _setColor('kpi-conv-reg',   convColor);
+    _setText('kpi-conv-primer', d.conv_primer + '%');
+    _setText('kpi-aprov-sin',   d.aprov_sin + '%');
+    _setText('kpi-dias-prom',   d.dias_prom + 'd');
+    _setText('kpi-sin-supply',  d.pct_sin_supply + '%');
+    _setColor('kpi-sin-supply', supColor);
 
-  // Label organización activa
-  var lbl = document.getElementById('kpi-org-label');
-  if (lbl) {{
+    // Barras verticales del embudo
+    var H = 32, total = Math.max(d.signups||1, 1);
+    var apH   = Math.max(2, Math.round((d.aprobados||0) / total * H));
+    var convH = Math.max(2, Math.round((d.conv_reg||0) / 100 * H));
+    var apEl  = document.getElementById('kpi-bar-ap-v');
+    var cvEl  = document.getElementById('kpi-bar-conv-v');
+    if (apEl) apEl.style.height = apH + 'px';
+    if (cvEl) {{ cvEl.style.height = convH + 'px'; cvEl.style.background = convColor; }}
+
+    // Indicador visual en el header
+    var hdr = document.getElementById('kpi-dash-header');
+    var lbl = document.getElementById('kpi-org-label');
     var parts = [];
     if (_currentOrg !== 'Todas') parts.push(_currentOrg);
-    if (_currentRange !== 'todo') parts.push('últimos ' + _currentRange);
-    lbl.textContent = parts.length ? '· ' + parts.join(' · ') : '';
-  }}
+    if (_currentRange !== 'todo') parts.push(_currentRange);
+    var isFiltered = parts.length > 0;
+    if (hdr) hdr.style.background = isFiltered ? '#0077b6' : '#00BFA5';
+    if (lbl) lbl.textContent = isFiltered ? '· ' + parts.join(' · ') : '';
 
-  // Resaltar botón de rango activo
-  document.querySelectorAll('.dr-btn').forEach(function(b) {{
-    b.classList.toggle('active', b.dataset.range === _currentRange);
-  }});
+    // Resaltar botón de rango activo
+    document.querySelectorAll('.dr-btn').forEach(function(b) {{
+      b.classList.toggle('active', b.getAttribute('data-range') === _currentRange);
+    }});
+  }} catch(e) {{ console.error('updateKPIMetrics error:', e); }}
 }}
 
 // ── Cambiar organización ──────────────────────────────────────────
 function switchOrg(org) {{
+  console.log('switchOrg called:', org);
   _currentOrg = org;
   updateKPIMetrics();
 
   // Heat users por org
-  var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
-  if (window.THE_MAP) {{
-    if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
-    window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
-      gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
-    var htCb = document.getElementById('ht_users');
-    if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
-  }}
+  try {{
+    var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
+    if (window.THE_MAP) {{
+      if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
+      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
+        gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
+      var htCb = document.getElementById('ht_users');
+      if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
+    }}
+  }} catch(e) {{ console.error('switchOrg heat error:', e); }}
 
   // Session demand por org
-  _rebuildSessionDemand(org);
+  try {{ _rebuildSessionDemand(org); }} catch(e) {{ console.error('switchOrg SD error:', e); }}
 }}
 
 // ── Cambiar rango de fecha ────────────────────────────────────────
 function switchDateRange(range) {{
+  console.log('switchDateRange:', range);
   _currentRange = range;
   updateKPIMetrics();
 }}
 
 // ── Reconstruir capa session demand ──────────────────────────────
 function _rebuildSessionDemand(org) {{
-  if (!window.THE_MAP) return;
-  var sdData = (SESSION_DEMAND_BY_ORG && SESSION_DEMAND_BY_ORG[org]) || SESSION_DEMAND_BY_ORG['Todas'];
+  if (!window.THE_MAP || typeof SESSION_DEMAND_BY_ORG === 'undefined') return;
+  var sdData = SESSION_DEMAND_BY_ORG[org] || SESSION_DEMAND_BY_ORG['Todas'];
   if (!sdData) return;
   var wasVisible = window.LYR_SESSION_DEMAND && window.THE_MAP.hasLayer(window.LYR_SESSION_DEMAND);
   if (window.LYR_SESSION_DEMAND) window.THE_MAP.removeLayer(window.LYR_SESSION_DEMAND);
@@ -2286,14 +2295,12 @@ function _rebuildSessionDemand(org) {{
     pane:'heatHexPane',
     style:function(f){{
       return {{color:f.properties.fill_color,weight:0.5,
-              fillColor:f.properties.fill_color,
-              fillOpacity:f.properties.fill_opacity,dashArray:"3 2"}};
+               fillColor:f.properties.fill_color,
+               fillOpacity:f.properties.fill_opacity,dashArray:"3 2"}};
     }},
     onEachFeature:function(f,l){{
       var p=f.properties, c=p.fill_color;
-      var nc = p.n_cercanos===0
-        ? "<span style='color:#ef4444'>Sin negocios cerca</span>"
-        : "<span style='color:#22c55e'>"+p.n_cercanos+" cerca</span>";
+      var nc = p.n_cercanos===0 ? "Sin negocios cerca" : p.n_cercanos+" cerca";
       l.bindTooltip(
         "<b style='color:"+c+"'>"+p.tier_label+"</b><br>"+
         "Usuarios: "+p.n_users+" · Con tx: "+p.n_con_tx+"<br>"+
