@@ -2173,7 +2173,7 @@ function buildSessionDemandTT(p) {{
 }}
 
 window.flyToHunter = function(lat,lng) {{
-  if (window.THE_MAP) window.THE_MAP.setView([lat,lng], 14, {{animate:true}});
+  if (window.THE_MAP) window.THE_MAP.flyTo([lat,lng], 15, {{animate:true,duration:0.8}});
 }};
 
 document.addEventListener("DOMContentLoaded", function() {{
@@ -2220,7 +2220,9 @@ document.addEventListener("DOMContentLoaded", function() {{
         l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});
         l.on('click', function(e){{
           L.DomEvent.stopPropagation(e);
-          openHunterPopup(f.properties, e.latlng);
+          var p = f.properties;
+          window.THE_MAP.flyTo([p.lat, p.lng], 15, {{animate:true, duration:0.8}});
+          setTimeout(function(){{ openHunterPopup(p, e.latlng); }}, 400);
         }});
         // Label centrado en el hex
         if (f.properties.hex_code) {{
