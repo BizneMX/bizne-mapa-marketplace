@@ -142,6 +142,44 @@ df_aprov_loc['n_biz'] = df_aprov_loc['hex_id'].apply(biz_nearby)
 sin_supply = (df_aprov_loc['n_biz'] == 0).sum()
 pct_sin_supply = round(sin_supply/len(df_aprov_loc)*100,1) if len(df_aprov_loc) > 0 else 0
 
+# ── KPI por organización ──────────────────────────────────────────────────────
+_ORG_COL = 'organization_name' if 'organization_name' in df_u.columns else None
+_orgs_list = sorted(df_u[_ORG_COL].dropna().unique().tolist()) if _ORG_COL else []
+_all_orgs  = ['Todas'] + _orgs_list
+
+def _kpi_for_group(df_grp):
+    df_ap = df_grp[df_grp['kyc_status'] == 'APPROVED'].copy()
+    n_sig = len(df_grp)
+    n_ap  = len(df_ap)
+    n_tx  = int((df_ap['transacciones'] > 0).sum())
+    conv_p = round(n_tx/n_ap*100, 1) if n_ap > 0 else 0.0
+    cutoff_o = pd.Timestamp('2026-04-20')
+    df_post_o = df_ap[(df_ap['created_date'] >= cutoff_o) & (df_ap['transacciones'] > 0)] if 'created_date' in df_ap.columns else pd.DataFrame()
+    dias_o = round(df_post_o['days_to_first_trx'].dropna().mean(), 1) if len(df_post_o) > 0 else 0.0
+    if pd.isna(dias_o): dias_o = 0.0
+    # pct sin supply
+    df_loc_o = df_ap[df_ap['lat'].notna() & (df_ap['lat'] != 0)].copy()
+    df_loc_o['hex_id'] = df_loc_o.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
+    df_loc_o['n_biz']  = df_loc_o['hex_id'].apply(biz_nearby)
+    pct_sup_o = round((df_loc_o['n_biz'] == 0).sum() / len(df_loc_o) * 100, 1) if len(df_loc_o) > 0 else 0.0
+    return {
+        'signups':        n_sig,
+        'aprobados':      n_ap,
+        'ap_pct':         round(n_ap/n_sig*100, 1) if n_sig > 0 else 0.0,
+        'conv_primer':    conv_p,
+        'aprov_sin':      round(100 - conv_p, 1),
+        'conv_reg':       round(n_tx/n_sig*100, 1) if n_sig > 0 else 0.0,
+        'dias_prom':      float(dias_o),
+        'pct_sin_supply': pct_sup_o,
+    }
+
+_org_kpi_dict = {'Todas': _kpi_for_group(df_u)}
+for _org in _orgs_list:
+    _org_kpi_dict[_org] = _kpi_for_group(df_u[df_u[_ORG_COL] == _org])
+ORG_KPI_DATA = json.dumps(_org_kpi_dict, ensure_ascii=False)
+ORG_LIST_JSON = json.dumps(_all_orgs, ensure_ascii=False)
+print(f"  Orgs: {_all_orgs}")
+
 # Businesses KPIs
 df_dorm = pd.read_csv(DORM_CSV)
 neg_activos = len(df_neg)
@@ -968,6 +1006,56 @@ HEX_HEAT_FAIL  = build_hex_heat(heat_fail, 'Tx Fail')
 HEX_HEAT_USERS = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts], 'Usuarios')
 print("  Hex heat maps built")
 
+# ── Heat users y Session Demand por organización ──────────────────────────────
+_heat_users_by_org = {'Todas': heat_users_pts}
+_sd_by_org         = {'Todas': json.loads(SESSION_DEMAND_DATA)}
+
+if _ORG_COL and _orgs_list:
+    for _org in _orgs_list:
+        # Heat users por org
+        _df_org_loc = df_aprov_loc2[df_aprov_loc2.get(_ORG_COL, pd.Series()) == _org] \
+            if _ORG_COL in df_aprov_loc2.columns else pd.DataFrame()
+        _heat_org = [[round(r['lat'],5), round(r['lng'],5), 1.0]
+                     for _, r in _df_org_loc.iterrows() if abs(r.get('lat',0))>5]
+        _heat_users_by_org[_org] = _heat_org
+
+        # Session demand por org
+        if len(_df_org_loc) == 0:
+            _sd_by_org[_org] = {"type":"FeatureCollection","features":[]}
+            continue
+        _hex_org = _df_org_loc.groupby('hex_id').agg(
+            n_users=('user_id','count'),
+            n_con_tx=('transacciones', lambda x: (x>0).sum()),
+            consumo=('consumo_total','sum'),
+        ).reset_index()
+        _hex_org['tasa_conv_pct'] = (_hex_org['n_con_tx']/_hex_org['n_users']*100).round(1)
+        _hex_org['sin_compras']   = _hex_org['n_users'] - _hex_org['n_con_tx']
+        _hex_org['n_cercanos']    = _hex_org['hex_id'].apply(biz_nearby)
+        _max_s = max((_hex_org['n_users']+_hex_org['n_con_tx']).max(), 1)
+        _hex_org['score_norm_pct'] = ((_hex_org['n_users']+_hex_org['n_con_tx'])/_max_s*100).round(0).astype(int)
+        _hex_org['tier_id'] = _hex_org.apply(
+            lambda r: session_tier(r['n_users'], r['n_cercanos'], r['tasa_conv_pct']), axis=1)
+        _feats_org = []
+        for _, _row in _hex_org.iterrows():
+            _tid = _row['tier_id']
+            _fill, _tlbl, _base_op = SESSION_TIER_DEFS[_tid]
+            _fop = round(min(0.80, _base_op + _row['n_users']*0.03), 2)
+            try: _geo = hex_geojson(str(_row['hex_id']))
+            except: continue
+            _feats_org.append({"type":"Feature","geometry":_geo,"properties":{
+                "hex_id":str(_row['hex_id']),"tier_id":_tid,"tier_label":_tlbl,
+                "n_users":int(_row['n_users']),"n_con_tx":int(_row['n_con_tx']),
+                "sin_compras":int(_row['sin_compras']),"tasa_conv_pct":float(_row['tasa_conv_pct']),
+                "n_cercanos":int(_row['n_cercanos']),"consumo":int(_row['consumo']),
+                "score_norm_pct":int(_row['score_norm_pct']),
+                "fill_color":_fill,"fill_opacity":_fop,
+            }})
+        _sd_by_org[_org] = {"type":"FeatureCollection","features":_feats_org}
+
+HEAT_USERS_BY_ORG = json.dumps(_heat_users_by_org, ensure_ascii=False)
+SESSION_DEMAND_BY_ORG = json.dumps(_sd_by_org, ensure_ascii=False)
+print(f"  Org layers built: {list(_heat_users_by_org.keys())}")
+
 # ══════════════════════════════════════════════════════════════════════
 # 11. ASSEMBLE HTML
 # ══════════════════════════════════════════════════════════════════════
@@ -1179,47 +1267,61 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 </style>
 """
 
+_org_options_html = ''.join(
+    f'<option value="{o}">{o}</option>' for o in _all_orgs
+)
+
 KPI_HTML = f"""
 <div id="kpi-dash">
   <div id="kpi-dash-header">
     <span>📊 BIZNE PA · KPIs</span>
-    <button id="kpi-tb" onclick="var b=document.getElementById('kpi-body');b.style.display=b.style.display==='none'?'grid':'none';this.textContent=b.style.display==='none'?'▼':'▲'">▲</button>
+    <div style="display:flex;align-items:center;gap:6px">
+      <select id="org-select" onchange="switchOrg(this.value)"
+        style="font-size:9px;background:#00766C;color:#fff;border:1px solid rgba(255,255,255,.3);
+               border-radius:4px;padding:2px 5px;cursor:pointer;max-width:110px">
+        {_org_options_html}
+      </select>
+      <button id="kpi-tb" onclick="var b=document.getElementById('kpi-body');b.style.display=b.style.display==='none'?'grid':'none';this.textContent=b.style.display==='none'?'▼':'▲'">▲</button>
+    </div>
   </div>
   <div id="kpi-body">
 
     <!-- ── USUARIOS ─────────────────────────────────────── -->
-    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">👤 USUARIOS</div></div>
-    <div class="kc"><div class="kl">Signups totales</div><div class="kv t">{k['signups_totales']}</div></div>
-    <div class="kc"><div class="kl">Aprobados</div><div class="kv">{k['usuarios_aprobados']}</div><div class="ks">{ap_pct}% del total</div></div>
-    <div class="kc full">
+    <div class="kc full" style="background:none;padding:3px 2px 0">
+      <div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">👤 USUARIOS <span id="kpi-org-label" style="color:#94a3b8;font-weight:400"></span></div>
+    </div>
+    <div class="kc"><div class="kl">Signups totales</div><div class="kv t" id="kpi-signups">{k['signups_totales']}</div></div>
+    <div class="kc"><div class="kl">Aprobados</div><div class="kv" id="kpi-aprobados">{k['usuarios_aprobados']}</div><div class="ks" id="kpi-ap-pct">{ap_pct}% del total</div></div>
+    <div class="kc full" id="kpi-funnel-card">
       <div class="kl">Embudo de conversión (excluye membresías)</div>
-      <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px">
+      <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px" id="kpi-funnel-bars">
         <div style="display:flex;align-items:center;gap:6px">
           <div style="font-size:9px;color:#475569;width:80px">Registrados</div>
           <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
             <div style="width:100%;height:100%;background:#64748b;border-radius:3px"></div>
           </div>
-          <div style="font-size:10px;font-weight:700;color:#0f172a;min-width:32px;text-align:right">{k['signups_totales']}</div>
+          <div class="kv" style="font-size:10px;font-weight:700;color:#0f172a;min-width:32px;text-align:right" id="kpi-sig-n">{k['signups_totales']}</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <div style="font-size:9px;color:#475569;width:80px">Aprobados</div>
           <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
-            <div style="width:{ap_pct}%;height:100%;background:#00897B;border-radius:3px"></div>
+            <div id="kpi-bar-ap" style="width:{ap_pct}%;height:100%;background:#00897B;border-radius:3px"></div>
           </div>
-          <div style="font-size:10px;font-weight:700;color:#00897B;min-width:32px;text-align:right">{ap_pct}%</div>
+          <div style="font-size:10px;font-weight:700;color:#00897B;min-width:32px;text-align:right" id="kpi-ap-pct2">{ap_pct}%</div>
         </div>
         <div style="display:flex;align-items:center;gap:6px">
           <div style="font-size:9px;color:#475569;width:80px">1ª compra</div>
           <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
-            <div style="width:{k['conv_registrados_tx']}%;height:100%;background:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};border-radius:3px"></div>
+            <div id="kpi-bar-conv" style="width:{k['conv_registrados_tx']}%;height:100%;background:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};border-radius:3px"></div>
           </div>
-          <div style="font-size:10px;font-weight:700;color:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};min-width:32px;text-align:right">{k['conv_registrados_tx']}%</div>
+          <div style="font-size:10px;font-weight:700;min-width:32px;text-align:right" id="kpi-conv-reg"
+            style="color:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'}">{k['conv_registrados_tx']}%</div>
         </div>
       </div>
-      <div class="ks" style="margin-top:3px">Conv. aprobados→1ª compra: <b>{k['conv_primer_consumo']}%</b> · Sin convertir: <b style="color:#dc2626">{k['aprobados_sin_convertir']}%</b></div>
+      <div class="ks" style="margin-top:3px" id="kpi-conv-detail">Conv. aprobados→1ª compra: <b id="kpi-conv-primer">{k['conv_primer_consumo']}%</b> · Sin convertir: <b style="color:#dc2626" id="kpi-aprov-sin">{k['aprobados_sin_convertir']}%</b></div>
     </div>
-    <div class="kc"><div class="kl">T. primer consumo</div><div class="kv s">{k['dias_prom_primer_consumo']} días</div><div class="ks">post 20-abr · excluye membresías</div></div>
-    <div class="kc"><div class="kl">Sin supply</div><div class="kv {ss_col}">{k['pct_sin_supply']}%</div><div class="ks">usuarios activos sin negocio cerca</div></div>
+    <div class="kc"><div class="kl">T. primer consumo</div><div class="kv s" id="kpi-dias-prom">{k['dias_prom_primer_consumo']} días</div><div class="ks">post 20-abr · excluye membresías</div></div>
+    <div class="kc"><div class="kl">Sin supply</div><div class="kv" id="kpi-sin-supply">{k['pct_sin_supply']}%</div><div class="ks">usuarios sin negocio cerca</div></div>
     <div class="kc"><div class="kl">Tx completadas</div><div class="kv g">{k['trx_completadas']}</div></div>
     <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r">{k['trx_incompletas']}</div></div>
     <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}">{k['tasa_aceptacion']}%</div></div>
@@ -1934,6 +2036,12 @@ var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
 
+// ── Datos por organización ───────────────────────────────────────
+var ORG_KPI_DATA        = {ORG_KPI_DATA};
+var HEAT_USERS_BY_ORG   = {HEAT_USERS_BY_ORG};
+var SESSION_DEMAND_BY_ORG = {SESSION_DEMAND_BY_ORG};
+var _currentOrg         = 'Todas';
+
 var IS_DARK  = false;
 var TILE_DARK  = "https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png";
 var TILE_LIGHT = "https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png";
@@ -2020,6 +2128,74 @@ function refreshMap(){{
   btn.disabled = true;
   setTimeout(function(){{ location.reload(true); }}, 300);
 }}
+// ── Selector de organización ─────────────────────────────────────
+function switchOrg(org) {{
+  _currentOrg = org;
+  var d = ORG_KPI_DATA[org] || ORG_KPI_DATA['Todas'];
+  if (!d) return;
+
+  // ── Actualizar KPI cards de usuarios ──
+  var convColor = d.conv_reg >= 20 ? '#16a34a' : '#d97706';
+  var supColor  = d.pct_sin_supply < 10 ? '#16a34a' : '#dc2626';
+
+  function setText(id, val) {{ var el=document.getElementById(id); if(el) el.textContent=val; }}
+  function setStyle(id, prop, val) {{ var el=document.getElementById(id); if(el) el.style[prop]=val; }}
+  function setWidth(id, w) {{ var el=document.getElementById(id); if(el) el.style.width=Math.min(100,w)+'%'; }}
+
+  setText('kpi-signups',    d.signups);
+  setText('kpi-aprobados',  d.aprobados);
+  setText('kpi-ap-pct',     d.ap_pct + '% del total');
+  setText('kpi-sig-n',      d.signups);
+  setWidth('kpi-bar-ap',    d.ap_pct);
+  setText('kpi-ap-pct2',    d.ap_pct + '%');
+  setWidth('kpi-bar-conv',  d.conv_reg);
+  setStyle('kpi-bar-conv', 'background', convColor);
+  setText('kpi-conv-reg',   d.conv_reg + '%');
+  setStyle('kpi-conv-reg', 'color', convColor);
+  setText('kpi-conv-primer', d.conv_primer + '%');
+  setText('kpi-aprov-sin',  d.aprov_sin + '%');
+  setText('kpi-dias-prom',  d.dias_prom + ' días');
+  setText('kpi-sin-supply', d.pct_sin_supply + '%');
+  setStyle('kpi-sin-supply', 'color', supColor);
+  var lbl = document.getElementById('kpi-org-label');
+  if (lbl) lbl.textContent = org === 'Todas' ? '' : '· ' + org;
+
+  // ── Actualizar heat users ──
+  var pts = HEAT_USERS_BY_ORG[org] || HEAT_USERS_BY_ORG['Todas'];
+  if (window.LYR_HEAT_USERS && window.THE_MAP) {{
+    window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
+    window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
+      gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}})
+    if (document.getElementById('ht_users') && document.getElementById('ht_users').checked)
+      window.LYR_HEAT_USERS.addTo(window.THE_MAP);
+  }}
+
+  // ── Actualizar session demand ──
+  var sdData = SESSION_DEMAND_BY_ORG[org] || SESSION_DEMAND_BY_ORG['Todas'];
+  if (window.LYR_SESSION_DEMAND && window.THE_MAP) {{
+    var wasVisible = window.THE_MAP.hasLayer(window.LYR_SESSION_DEMAND);
+    window.THE_MAP.removeLayer(window.LYR_SESSION_DEMAND);
+    window.LYR_SESSION_DEMAND = L.geoJSON(sdData, {{
+      pane:'heatHexPane',
+      style:function(f){{return{{color:f.properties.fill_color,weight:0.5,
+        fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"3 2"}};}}
+      ,onEachFeature:function(f,l){{l._p=f.properties;
+        var p=f.properties; var c=p.fill_color;
+        var ncTxt = p.n_cercanos===0
+          ? "<span style='color:#ef4444;font-weight:700'>⚠ Sin negocios cerca</span>"
+          : "<span style='color:#22c55e'>"+p.n_cercanos+" negocios cerca</span>";
+        l.bindTooltip(
+          "<b style='color:"+c+"'>"+p.tier_label+"</b><br>"+
+          "<b>Usuarios:</b> "+p.n_users+" · <b>Con tx:</b> "+p.n_con_tx+"<br>"+
+          ncTxt+"<br>"+
+          "<b>Score señal:</b> <span style='color:"+c+";font-weight:700'>"+p.score_norm_pct+"%</span>",
+          {{sticky:true,opacity:0.97}});
+      }}
+    }});
+    if (wasVisible) window.LYR_SESSION_DEMAND.addTo(window.THE_MAP);
+  }}
+}}
+
 function toggleMode() {{
   IS_DARK = !IS_DARK;
   var btn = document.getElementById('mode-btn');
