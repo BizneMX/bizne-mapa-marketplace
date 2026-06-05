@@ -363,6 +363,7 @@ else:
             'tasa_acepta':    round(float(r.get('tasa_aceptacion', 0) or 0)*100, 1),
             'tx_30d':         int(float(r.get('tx_30d', 0) or 0)),
             'tx_historicas':  int(float(r.get('tx_historicas', 0) or 0)),
+            'tx_hist_real':   int(float(r.get('tx_hist_real', r.get('tx_historicas', 0)) or 0)),
             'tx_90d':         int(float(r.get('tx_90d', 0) or 0)),
             'tiempo_acepta':  round(float(r.get('tiempo_acepta', 0) or 0), 1),
             'menu_bizne':     _safe_bool(r.get('menu_bizne')),
@@ -409,6 +410,7 @@ for _, row in df_neg.iterrows():
             "capacidad":      int(float(row.get('capacidad_comidas_dia', 0) or 0)),
             "tx_30d":         qs_data.get('tx_30d', int(row.get('tx_30d', 0))),
             "tx_historicas":  qs_data.get('tx_historicas', 0),
+            "tx_hist_real":   qs_data.get('tx_hist_real', qs_data.get('tx_historicas', 0)),
             "ventas_30d":     round(float(row.get('ventas_30d', 0) or 0), 0),
             "tasa_acepta":    qs_data.get('tasa_acepta', round(float(row.get('tasa_aceptacion', 0) or 0)*100, 1)),
             "tiempo_acepta":  qs_data.get('tiempo_acepta', 0),
@@ -727,7 +729,10 @@ neg_nuevos_30 = len(_nuevos_30)
 
 # Negocios con transacción: si dias_creacion<=7 y tx_historicas>0 → tuvieron tx en sus primeros 7 días
 def _has_tx(p):
-    return (int(p.get('tx_historicas', 0) or 0) + int(p.get('tx_30d', 0) or 0)) > 0
+    # Usa tx_hist_real (excluye usuarios internos 108608,109497,108604,108609,108585)
+    # Fallback a tx_historicas si tx_hist_real no está disponible
+    real = int(p.get('tx_hist_real', p.get('tx_historicas', 0)) or 0)
+    return real > 0
 
 _n7_con_tx  = sum(1 for f in _nuevos_7  if _has_tx(f['properties']))
 _n30_con_tx = sum(1 for f in _nuevos_30 if _has_tx(f['properties']))
@@ -1284,7 +1289,11 @@ PANEL_HTML = """
         style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:5px;
                font-size:11px;box-sizing:border-box;outline:none;color:#1e293b;background:#f8fafc">
       <div id="biz-count" style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right"></div>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value=''"
+      <label class="bchk" style="margin-top:5px">
+        <input type="checkbox" id="biz-nuevos-filter" onchange="filterBizNuevos(this.checked)">
+        <span style="font-size:10px;color:#0f172a">🆕 Solo negocios ≤ 30 días</span>
+      </label>
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-filter').checked=false;filterBizNuevos(false)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
     </div>
@@ -2327,18 +2336,28 @@ document.addEventListener("DOMContentLoaded", function() {{
                          opacity:show?1:0,interactive:show}});
       }});
     }};
+    window._bizNuevosOnly = false;
+    window.filterBizNuevos = function(onlyNew) {{
+      window._bizNuevosOnly = onlyNew;
+      var q = (document.getElementById('biz-search')||{{}}).value||'';
+      window.searchNegocios(q);
+    }};
     window.searchNegocios = function(q) {{
       if (!window.LYR_BIZ) return;
       q = q.toLowerCase().trim();
       var vis=0, tot=0;
+      var onlyNew = window._bizNuevosOnly;
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
-        var show = q==='' || (layer._p && layer._p.nombre.toLowerCase().indexOf(q)>=0);
+        var p = layer._p || {{}};
+        var matchQ  = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+        var matchNew = !onlyNew || (parseInt(p.dias_creacion||9999) <= 30);
+        var show = matchQ && matchNew;
         layer.setStyle({{fillOpacity:show?0.8:0,opacity:show?1:0,interactive:show}});
         if(show) vis++;
       }});
       var el=document.getElementById('biz-count');
-      if(el){{el.textContent=q===''?'':vis+' de '+tot+' negocios';
+      if(el){{el.textContent=vis+' de '+tot+' negocios'+(onlyNew?' (≤30d)':'');
               el.style.color=vis===0?'#dc2626':'#64748b';}}
     }};
     window.updateHexTT = function() {{

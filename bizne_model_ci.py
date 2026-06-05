@@ -233,7 +233,8 @@ SQL_NEGOCIOS = """
 SELECT
     service_id, name, phone_number, owner_name, hunter, address, cp, colonia, delegacion,
     latitude, longitude, is_active, sleep,
-    transacciones_historicas, transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
+    transacciones_historicas, transacciones_hist_real,
+    transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
     ticket_promedio_ultimos_90_dias, ticket_promedio_ultimos_30_dias,
     comidas_ultimos_30_dias, ventas_ultimos_30_dias, bizne_fee_ultimos_30_dias,
     transacciones_acceptadas_ultimos_30_dias, delivery_ultimos_30_dias,
@@ -308,6 +309,15 @@ FROM (
             JOIN service_service ss ON tt.service_id = ss.id
             GROUP BY ss.id
         ) th ON th.id = s.id
+        LEFT JOIN (
+            -- Tx históricas excluyendo usuarios internos/test (para métrica de activación real)
+            SELECT ss.id, COUNT(t.id) AS transacciones_hist_real
+            FROM transaction_transaction t
+            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+            JOIN service_service ss ON tt.service_id = ss.id
+            WHERE tt.user_id NOT IN (108608, 109497, 108604, 108609, 108585)
+            GROUP BY ss.id
+        ) th_real ON th_real.id = s.id
         LEFT JOIN (
             SELECT ss.id,
                 COUNT(t.id) AS transacciones_ultimos_90_dias,
@@ -645,7 +655,8 @@ df_biz_raw = _coerce_numeric(df_biz_raw)
 # Forzar conversión explícita de columnas numéricas críticas (MCP devuelve todo como string)
 for _col in [
     "tasa_aceptacion_ultimos_30_dias", "tasa_no_aceptados_ultimos_30_dias",
-    "transacciones_historicas", "transacciones_ultimos_90_dias", "transacciones_ultimos_30_dias",
+    "transacciones_historicas", "transacciones_hist_real",
+    "transacciones_ultimos_90_dias", "transacciones_ultimos_30_dias",
     "ventas_ultimos_30_dias", "rating", "kitchen_quality_score",
     "tiempo_p50_aceptacion_min_ultimos_30_dias", "dias_desde_creacion",
     "dias_desde_ultima_transaccion", "latitude", "longitude",
@@ -2306,7 +2317,7 @@ _biz_base_cols = [
 ]
 _biz_quality_cols = [
     "kitchen_quality_score", "kitchen_quality_nivel",
-    "transacciones_historicas", "transacciones_ultimos_90_dias",
+    "transacciones_historicas", "transacciones_hist_real", "transacciones_ultimos_90_dias",
     "service_cohort", "menu_bizne", "menu_de_dia", "menu_a_la_carta",
     "tiempo_p50_aceptacion_min_ultimos_30_dias",
     "service_id", "phone_number", "owner_name", "hunter",
@@ -2319,6 +2330,7 @@ kepler_biz = df_biz[_biz_cols].rename(columns={
     "transacciones_ultimos_30_dias":             "tx_30d",
     "transacciones_ultimos_90_dias":             "tx_90d",
     "transacciones_historicas":                  "tx_historicas",
+    "transacciones_hist_real":                   "tx_hist_real",
     "ventas_ultimos_30_dias":                    "ventas_30d",
     "tasa_aceptacion_ultimos_30_dias":           "tasa_aceptacion",
     "tasa_no_aceptados_ultimos_30_dias":         "tasa_rechazo",
