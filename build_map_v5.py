@@ -2272,6 +2272,12 @@ document.addEventListener("DOMContentLoaded", function() {{
         }});
       }}
     }};
+    // ── Aplicar visibilidad inicial según checkboxes ───────────────
+    ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ'].forEach(function(name) {{
+      var el = document.getElementById('ly_'+name);
+      if (!el || !el.checked) window.toggleLayer(name, false);
+    }});
+
     window.toggleHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
       var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS}};
