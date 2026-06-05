@@ -770,6 +770,15 @@ df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
 df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
+# Forzar conversión numérica explícita en columnas de usuarios
+for _col in [
+    "transacciones", "consumo_total", "ticket_promedio", "days_to_first_trx",
+    "latitude", "longitude", "latitude_last_session", "longitude_last_session",
+    "latitude_signup", "longitude_signup",
+]:
+    if _col in df_su_raw.columns:
+        df_su_raw[_col] = pd.to_numeric(df_su_raw[_col], errors="coerce").fillna(0)
+
 # Centroide admin para usuarios sin coordenadas (fallback)
 _valid = df_su_raw.dropna(subset=["latitude","longitude"])
 _valid = _valid[_valid.latitude.between(LAT_MIN, LAT_MAX) & _valid.longitude.between(LNG_MIN, LNG_MAX)]
@@ -802,6 +811,11 @@ print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
 df_tx = _coerce_numeric(df_tx)
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
+
+# Forzar conversión numérica explícita en columnas de transacciones
+for _col in ["latitude", "longitude", "amount", "service_fee"]:
+    if _col in df_tx.columns:
+        df_tx[_col] = pd.to_numeric(df_tx[_col], errors="coerce").fillna(0)
 df_tx = df_tx[
     df_tx["latitude"].between(LAT_MIN, LAT_MAX) &
     df_tx["longitude"].between(LNG_MIN, LNG_MAX)
