@@ -925,21 +925,21 @@ HEAD = """
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
 <style>
 /* ── KPI dashboard ─────────────────────────────────────────── */
-#kpi-dash{position:fixed;top:10px;left:10px;z-index:1005;background:#0f172a;
-  border-radius:12px;box-shadow:0 4px 22px rgba(0,0,0,.6);
+#kpi-dash{position:fixed;top:10px;left:10px;z-index:1005;background:#f8fafc;
+  border-radius:12px;box-shadow:0 4px 22px rgba(0,0,0,.18);
   font-family:system-ui,sans-serif;width:320px;user-select:none;overflow:hidden;}
 #kpi-dash-header{background:#00BFA5;color:#fff;padding:9px 14px;font-size:11px;
   font-weight:700;letter-spacing:.6px;display:flex;justify-content:space-between;
   align-items:center;cursor:move;}
 #kpi-body{padding:10px 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.kc{background:#1e293b;border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;}
+.kc{background:#e2e8f0;border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;}
 .kc.full{grid-column:1/-1;}
-.kl{font-size:8px;color:#64748b;font-weight:600;letter-spacing:.3px;text-transform:uppercase;line-height:1.2;}
-.kv{font-size:17px;font-weight:700;color:#f1f5f9;line-height:1.1;}
-.kv.g{color:#22c55e;}.kv.r{color:#ef4444;}.kv.y{color:#f59e0b;}
-.kv.t{color:#00BFA5;}.kv.s{font-size:13px;}
-.ks{font-size:8px;color:#475569;}
-.kdiv{grid-column:1/-1;height:1px;background:#1e3a52;margin:2px 0;}
+.kl{font-size:8px;color:#475569;font-weight:600;letter-spacing:.3px;text-transform:uppercase;line-height:1.2;}
+.kv{font-size:17px;font-weight:700;color:#0f172a;line-height:1.1;}
+.kv.g{color:#16a34a;}.kv.r{color:#dc2626;}.kv.y{color:#d97706;}
+.kv.t{color:#00897B;}.kv.s{font-size:13px;}
+.ks{font-size:8px;color:#64748b;}
+.kdiv{grid-column:1/-1;height:1px;background:#cbd5e1;margin:2px 0;}
 #kpi-tb{background:none;border:none;color:#fff;cursor:pointer;font-size:14px;padding:0;}
 /* ── Cartboard ─────────────────────────────────────────────── */
 #bmap-panel{position:fixed;top:80px;right:20px;z-index:1001;background:#fff;
@@ -1215,7 +1215,7 @@ PANEL_HTML = """
   </svg>
   Actualizar
 </button>
-<button id="mode-btn" onclick="toggleMode()">☀️ Modo claro</button>
+<button id="mode-btn" onclick="toggleMode()">🌙 Modo oscuro</button>
 
 <div id="bmap-panel">
   <div id="bmap-header">
@@ -1227,23 +1227,23 @@ PANEL_HTML = """
 
     <div class="bs">
       <div class="bs-title">📍 Capas del mapa</div>
-      <label class="bchk"><input type="checkbox" id="ly_hexes"    checked onchange="toggleLayer('hexes',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_hexes"    onchange="toggleLayer('hexes',this.checked)">
         <span class="bdot" style="background:#3b82f6"></span> Hexágonos demanda PA</label>
       <label class="bchk"><input type="checkbox" id="ly_activos"  checked onchange="toggleLayer('activos',this.checked)">
         <span style="display:inline-flex;gap:2px;margin-right:2px"><span class="bdot" style="background:#22c55e"></span><span class="bdot" style="background:#00BFA5"></span><span class="bdot" style="background:#f59e0b"></span><span class="bdot" style="background:#ef4444"></span></span> Negocios Activos</label>
-      <label class="bchk"><input type="checkbox" id="ly_dormidas" checked onchange="toggleLayer('dormidas',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_dormidas" onchange="toggleLayer('dormidas',this.checked)">
         <span class="bdot" style="background:#9ca3af"></span> Negocios Dormidos</label>
-      <label class="bchk"><input type="checkbox" id="ly_hunter"   checked onchange="toggleLayer('hunter',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_hunter"   onchange="toggleLayer('hunter',this.checked)">
         <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter</label>
       <label class="bchk"><input type="checkbox" id="ly_sdemand"  onchange="toggleLayer('sdemand',this.checked)">
         <span class="bdot" style="background:#7c3aed;border-radius:50%"></span> Demanda por Sesiones</label>
-      <label class="bchk"><input type="checkbox" id="ly_metro"    checked onchange="toggleLayer('metro',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_metro"    onchange="toggleLayer('metro',this.checked)">
         <span class="bdot" style="background:#e91e63"></span> Estaciones Metro</label>
-      <label class="bchk"><input type="checkbox" id="ly_upcs"     checked onchange="toggleLayer('upcs',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_upcs"     onchange="toggleLayer('upcs',this.checked)">
         <span class="bdot" style="background:#7C3AED"></span> UPCs Policía</label>
-      <label class="bchk"><input type="checkbox" id="ly_sec"      checked onchange="toggleLayer('sec',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_sec"      onchange="toggleLayer('sec',this.checked)">
         <span class="bdot" style="background:#06b6d4"></span> Sectores PA</label>
-      <label class="bchk"><input type="checkbox" id="ly_activ"   checked onchange="toggleLayer('activ',this.checked)">
+      <label class="bchk"><input type="checkbox" id="ly_activ"    onchange="toggleLayer('activ',this.checked)">
         <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
     </div>
 
@@ -1835,7 +1835,7 @@ var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
 
-var IS_DARK  = true;
+var IS_DARK  = false;
 var TILE_DARK  = "https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png";
 var TILE_LIGHT = "https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png";
 
@@ -2068,7 +2068,7 @@ document.addEventListener("DOMContentLoaded", function() {{
 
     // Replace tile with dark CartoDB
     theMap.eachLayer(function(l) {{ if (l._url) theMap.removeLayer(l); }});
-    window.TILE_LAYER = L.tileLayer(TILE_DARK,
+    window.TILE_LAYER = L.tileLayer(IS_DARK ? TILE_DARK : TILE_LIGHT,
       {{attribution:'&copy; CartoDB',maxZoom:20}}).addTo(theMap);
 
     // Panes
