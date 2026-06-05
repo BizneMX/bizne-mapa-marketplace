@@ -142,43 +142,66 @@ df_aprov_loc['n_biz'] = df_aprov_loc['hex_id'].apply(biz_nearby)
 sin_supply = (df_aprov_loc['n_biz'] == 0).sum()
 pct_sin_supply = round(sin_supply/len(df_aprov_loc)*100,1) if len(df_aprov_loc) > 0 else 0
 
-# ── KPI por organización ──────────────────────────────────────────────────────
-_ORG_COL = 'organization_name' if 'organization_name' in df_u.columns else None
+# ── KPI por organización × rango de fecha ─────────────────────────────────────
+_ORG_COL   = 'organization_name' if 'organization_name' in df_u.columns else None
 _orgs_list = sorted(df_u[_ORG_COL].dropna().unique().tolist()) if _ORG_COL else []
 _all_orgs  = ['Todas'] + _orgs_list
 
+# Rangos de fecha: filtro por created_date del usuario
+_now_ts = pd.Timestamp.now().tz_localize(None)
+_DATE_RANGES = {
+    '7d':   _now_ts - pd.Timedelta(days=7),
+    '30d':  _now_ts - pd.Timedelta(days=30),
+    '90d':  _now_ts - pd.Timedelta(days=90),
+    '180d': _now_ts - pd.Timedelta(days=180),
+    'todo': None,
+}
+
 def _kpi_for_group(df_grp):
-    df_ap = df_grp[df_grp['kyc_status'] == 'APPROVED'].copy()
+    """Calcula métricas de usuarios para un subset ya filtrado (org × fecha)."""
+    df_ap = df_grp[df_grp['kyc_status'] == 'APPROVED']
     n_sig = len(df_grp)
     n_ap  = len(df_ap)
     n_tx  = int((df_ap['transacciones'] > 0).sum())
-    conv_p = round(n_tx/n_ap*100, 1) if n_ap > 0 else 0.0
-    cutoff_o = pd.Timestamp('2026-04-20')
-    df_post_o = df_ap[(df_ap['created_date'] >= cutoff_o) & (df_ap['transacciones'] > 0)] if 'created_date' in df_ap.columns else pd.DataFrame()
-    dias_o = round(df_post_o['days_to_first_trx'].dropna().mean(), 1) if len(df_post_o) > 0 else 0.0
-    if pd.isna(dias_o): dias_o = 0.0
-    # pct sin supply
-    df_loc_o = df_ap[df_ap['lat'].notna() & (df_ap['lat'] != 0)].copy()
-    df_loc_o['hex_id'] = df_loc_o.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
-    df_loc_o['n_biz']  = df_loc_o['hex_id'].apply(biz_nearby)
-    pct_sup_o = round((df_loc_o['n_biz'] == 0).sum() / len(df_loc_o) * 100, 1) if len(df_loc_o) > 0 else 0.0
+    conv_p = round(n_tx / n_ap * 100, 1) if n_ap > 0 else 0.0
+    cutoff_first = pd.Timestamp('2026-04-20')
+    df_post = df_ap[(df_ap['created_date'] >= cutoff_first) & (df_ap['transacciones'] > 0)] \
+              if 'created_date' in df_ap.columns else pd.DataFrame()
+    dias_v = float(round(df_post['days_to_first_trx'].dropna().mean(), 1)) if len(df_post) > 0 else 0.0
+    if pd.isna(dias_v): dias_v = 0.0
+    df_loc = df_ap[df_ap['lat'].notna() & (df_ap['lat'] != 0)].copy()
+    if len(df_loc) > 0:
+        df_loc['_hx'] = df_loc.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
+        df_loc['_nb'] = df_loc['_hx'].apply(biz_nearby)
+        pct_sup = round((df_loc['_nb'] == 0).sum() / len(df_loc) * 100, 1)
+    else:
+        pct_sup = 0.0
     return {
         'signups':        n_sig,
         'aprobados':      n_ap,
-        'ap_pct':         round(n_ap/n_sig*100, 1) if n_sig > 0 else 0.0,
+        'ap_pct':         round(n_ap / n_sig * 100, 1) if n_sig > 0 else 0.0,
         'conv_primer':    conv_p,
         'aprov_sin':      round(100 - conv_p, 1),
-        'conv_reg':       round(n_tx/n_sig*100, 1) if n_sig > 0 else 0.0,
-        'dias_prom':      float(dias_o),
-        'pct_sin_supply': pct_sup_o,
+        'conv_reg':       round(n_tx / n_sig * 100, 1) if n_sig > 0 else 0.0,
+        'dias_prom':      dias_v,
+        'pct_sin_supply': pct_sup,
     }
 
-_org_kpi_dict = {'Todas': _kpi_for_group(df_u)}
-for _org in _orgs_list:
-    _org_kpi_dict[_org] = _kpi_for_group(df_u[df_u[_ORG_COL] == _org])
-ORG_KPI_DATA = json.dumps(_org_kpi_dict, ensure_ascii=False)
-ORG_LIST_JSON = json.dumps(_all_orgs, ensure_ascii=False)
-print(f"  Orgs: {_all_orgs}")
+# Pre-computar ORG_DATE_KPI_DATA[org][dateRange]
+_org_date_kpi = {}
+for _org in _all_orgs:
+    _df_org = df_u if _org == 'Todas' else df_u[df_u[_ORG_COL] == _org]
+    _org_date_kpi[_org] = {}
+    for _rng, _cutoff in _DATE_RANGES.items():
+        if _cutoff is not None and 'created_date' in _df_org.columns:
+            _df_rng = _df_org[_df_org['created_date'] >= _cutoff]
+        else:
+            _df_rng = _df_org
+        _org_date_kpi[_org][_rng] = _kpi_for_group(_df_rng)
+
+ORG_DATE_KPI_DATA = json.dumps(_org_date_kpi, ensure_ascii=False)
+ORG_LIST_JSON     = json.dumps(_all_orgs, ensure_ascii=False)
+print(f"  Orgs: {_all_orgs} | Rangos: {list(_DATE_RANGES.keys())}")
 
 # Businesses KPIs
 df_dorm = pd.read_csv(DORM_CSV)
@@ -1083,20 +1106,29 @@ HEAD = """
 /* ── KPI dashboard ─────────────────────────────────────────── */
 #kpi-dash{position:fixed;top:10px;left:10px;z-index:1005;background:#f8fafc;
   border-radius:12px;box-shadow:0 4px 22px rgba(0,0,0,.18);
-  font-family:system-ui,sans-serif;width:320px;user-select:none;overflow:hidden;}
-#kpi-dash-header{background:#00BFA5;color:#fff;padding:9px 14px;font-size:11px;
+  font-family:system-ui,sans-serif;width:360px;max-height:90vh;
+  display:flex;flex-direction:column;user-select:none;overflow:hidden;}
+#kpi-dash-header{background:#00BFA5;color:#fff;padding:7px 12px;font-size:11px;
   font-weight:700;letter-spacing:.6px;display:flex;justify-content:space-between;
-  align-items:center;cursor:move;}
-#kpi-body{padding:10px 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:5px;}
-.kc{background:#e2e8f0;border-radius:8px;padding:7px 10px;display:flex;flex-direction:column;gap:2px;}
-.kc.full{grid-column:1/-1;}
-.kl{font-size:8px;color:#475569;font-weight:600;letter-spacing:.3px;text-transform:uppercase;line-height:1.2;}
-.kv{font-size:17px;font-weight:700;color:#0f172a;line-height:1.1;}
+  align-items:center;cursor:move;flex-shrink:0;}
+#kpi-body{padding:8px 10px 10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;
+  overflow-y:auto;flex:1;}
+.kc{background:#e2e8f0;border-radius:6px;padding:5px 8px;display:flex;flex-direction:column;gap:1px;}
+.kc.full{grid-column:1/-1;}.kc.half{grid-column:span 2;}
+.kl{font-size:7.5px;color:#475569;font-weight:600;letter-spacing:.2px;text-transform:uppercase;line-height:1.2;}
+.kv{font-size:15px;font-weight:700;color:#0f172a;line-height:1.1;}
 .kv.g{color:#16a34a;}.kv.r{color:#dc2626;}.kv.y{color:#d97706;}
-.kv.t{color:#00897B;}.kv.s{font-size:13px;}
-.ks{font-size:8px;color:#64748b;}
-.kdiv{grid-column:1/-1;height:1px;background:#cbd5e1;margin:2px 0;}
+.kv.t{color:#00897B;}.kv.s{font-size:11px;}
+.ks{font-size:7.5px;color:#64748b;line-height:1.2;}
+.kdiv{grid-column:1/-1;height:1px;background:#cbd5e1;margin:1px 0;}
+.ksec{grid-column:1/-1;background:none;padding:2px 1px 0;display:flex;align-items:center;gap:6px;}
+.ksec-lbl{font-size:8.5px;color:#00897B;font-weight:700;letter-spacing:.5px;text-transform:uppercase;}
 #kpi-tb{background:none;border:none;color:#fff;cursor:pointer;font-size:14px;padding:0;}
+/* ── Date range buttons ─────────────────────────────────────── */
+.dr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;
+  font-size:8px;padding:2px 5px;border-radius:3px;cursor:pointer;font-weight:600;}
+.dr-btn.active{background:#fff;color:#00897B;}
+.dr-btn:hover:not(.active){{background:rgba(255,255,255,.25);}}
 /* ── Cartboard ─────────────────────────────────────────────── */
 #bmap-panel{position:fixed;top:80px;right:20px;z-index:1001;background:#fff;
   border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.18);font-family:system-ui,sans-serif;
@@ -1281,18 +1313,28 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 </style>
 """
 
-_org_options_html = ''.join(
-    f'<option value="{o}">{o}</option>' for o in _all_orgs
-)
+_org_options_html = ''.join(f'<option value="{o}">{o}</option>' for o in _all_orgs)
+_cv_color = '#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'
+_qs_color = 'g' if _qs_avg>=60 else ('y' if _qs_avg>=40 else 'r')
+_qs_sal_color = 'g' if _qs_pct_saludables>=50 else 'y'
 
 KPI_HTML = f"""
 <div id="kpi-dash">
   <div id="kpi-dash-header">
-    <span>📊 BIZNE PA · KPIs</span>
-    <div style="display:flex;align-items:center;gap:6px">
+    <div style="display:flex;flex-direction:column;gap:3px">
+      <span style="font-size:11px">📊 BIZNE PA · KPIs</span>
+      <div style="display:flex;gap:3px">
+        <button class="dr-btn active" data-range="todo"   onclick="switchDateRange('todo')">Todo</button>
+        <button class="dr-btn"        data-range="180d"   onclick="switchDateRange('180d')">6m</button>
+        <button class="dr-btn"        data-range="90d"    onclick="switchDateRange('90d')">90d</button>
+        <button class="dr-btn"        data-range="30d"    onclick="switchDateRange('30d')">30d</button>
+        <button class="dr-btn"        data-range="7d"     onclick="switchDateRange('7d')">7d</button>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:5px">
       <select id="org-select" onchange="switchOrg(this.value)"
         style="font-size:9px;background:#00766C;color:#fff;border:1px solid rgba(255,255,255,.3);
-               border-radius:4px;padding:2px 5px;cursor:pointer;max-width:110px">
+               border-radius:4px;padding:2px 5px;cursor:pointer;max-width:105px">
         {_org_options_html}
       </select>
       <button id="kpi-tb" onclick="var b=document.getElementById('kpi-body');b.style.display=b.style.display==='none'?'grid':'none';this.textContent=b.style.display==='none'?'▼':'▲'">▲</button>
@@ -1301,85 +1343,75 @@ KPI_HTML = f"""
   <div id="kpi-body">
 
     <!-- ── USUARIOS ─────────────────────────────────────── -->
-    <div class="kc full" style="background:none;padding:3px 2px 0">
-      <div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">👤 USUARIOS <span id="kpi-org-label" style="color:#94a3b8;font-weight:400"></span></div>
-    </div>
-    <div class="kc"><div class="kl">Signups totales</div><div class="kv t" id="kpi-signups">{k['signups_totales']}</div></div>
-    <div class="kc"><div class="kl">Aprobados</div><div class="kv" id="kpi-aprobados">{k['usuarios_aprobados']}</div><div class="ks" id="kpi-ap-pct">{ap_pct}% del total</div></div>
-    <div class="kc full" id="kpi-funnel-card">
-      <div class="kl">Embudo de conversión (excluye membresías)</div>
-      <div style="margin-top:5px;display:flex;flex-direction:column;gap:3px" id="kpi-funnel-bars">
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="font-size:9px;color:#475569;width:80px">Registrados</div>
-          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
-            <div style="width:100%;height:100%;background:#64748b;border-radius:3px"></div>
-          </div>
-          <div class="kv" style="font-size:10px;font-weight:700;color:#0f172a;min-width:32px;text-align:right" id="kpi-sig-n">{k['signups_totales']}</div>
+    <div class="ksec"><span class="ksec-lbl">👤 Usuarios</span><span id="kpi-org-label" style="font-size:8px;color:#94a3b8"></span></div>
+    <div class="kc"><div class="kl">Signups</div><div class="kv t" id="kpi-signups">{k['signups_totales']}</div></div>
+    <div class="kc"><div class="kl">Aprobados</div><div class="kv" id="kpi-aprobados">{k['usuarios_aprobados']}</div><div class="ks" id="kpi-ap-pct">{ap_pct}%</div></div>
+    <div class="kc"><div class="kl">Sin supply</div><div class="kv {ss_col}" id="kpi-sin-supply">{k['pct_sin_supply']}%</div><div class="ks">sin negocio cerca</div></div>
+    <!-- Embudo compacto -->
+    <div class="kc full">
+      <div class="kl" style="margin-bottom:3px">Embudo conversión <span style="font-weight:400;color:#94a3b8">(excluye membresías)</span></div>
+      <div style="display:flex;gap:3px;align-items:flex-end;height:32px;margin-bottom:2px">
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">
+          <div style="width:100%;background:#64748b;border-radius:2px" id="kpi-bar-reg-v" style="height:32px"></div>
+          <div style="font-size:7px;color:#475569">Reg.</div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="font-size:9px;color:#475569;width:80px">Aprobados</div>
-          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
-            <div id="kpi-bar-ap" style="width:{ap_pct}%;height:100%;background:#00897B;border-radius:3px"></div>
-          </div>
-          <div style="font-size:10px;font-weight:700;color:#00897B;min-width:32px;text-align:right" id="kpi-ap-pct2">{ap_pct}%</div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">
+          <div id="kpi-bar-ap-v" style="width:100%;background:#00897B;border-radius:2px"></div>
+          <div style="font-size:7px;color:#475569">Apro.</div>
         </div>
-        <div style="display:flex;align-items:center;gap:6px">
-          <div style="font-size:9px;color:#475569;width:80px">1ª compra</div>
-          <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
-            <div id="kpi-bar-conv" style="width:{k['conv_registrados_tx']}%;height:100%;background:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'};border-radius:3px"></div>
-          </div>
-          <div style="font-size:10px;font-weight:700;min-width:32px;text-align:right" id="kpi-conv-reg"
-            style="color:{'#16a34a' if k['conv_registrados_tx']>=20 else '#d97706'}">{k['conv_registrados_tx']}%</div>
+        <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:1px">
+          <div id="kpi-bar-conv-v" style="width:100%;background:{_cv_color};border-radius:2px"></div>
+          <div style="font-size:7px;color:#475569">1ª tx</div>
+        </div>
+        <div style="flex:2;padding-left:6px;font-size:9px;color:#475569;display:flex;flex-direction:column;gap:2px;justify-content:center">
+          <div><span style="font-weight:700;color:#00897B" id="kpi-ap-pct2">{ap_pct}%</span> aprobados</div>
+          <div><span style="font-weight:700;color:{_cv_color}" id="kpi-conv-reg">{k['conv_registrados_tx']}%</span> 1ª compra</div>
+          <div style="font-size:8px;color:#94a3b8">Ap→compra: <b id="kpi-conv-primer">{k['conv_primer_consumo']}%</b></div>
         </div>
       </div>
-      <div class="ks" style="margin-top:3px" id="kpi-conv-detail">Conv. aprobados→1ª compra: <b id="kpi-conv-primer">{k['conv_primer_consumo']}%</b> · Sin convertir: <b style="color:#dc2626" id="kpi-aprov-sin">{k['aprobados_sin_convertir']}%</b></div>
+      <div class="ks">Sin convertir: <b style="color:#dc2626" id="kpi-aprov-sin">{k['aprobados_sin_convertir']}%</b> · T. 1ª compra: <b id="kpi-dias-prom">{k['dias_prom_primer_consumo']}d</b></div>
     </div>
-    <div class="kc"><div class="kl">T. primer consumo</div><div class="kv s" id="kpi-dias-prom">{k['dias_prom_primer_consumo']} días</div><div class="ks">post 20-abr · excluye membresías</div></div>
-    <div class="kc"><div class="kl">Sin supply</div><div class="kv" id="kpi-sin-supply">{k['pct_sin_supply']}%</div><div class="ks">usuarios sin negocio cerca</div></div>
     <div class="kc"><div class="kl">Tx completadas</div><div class="kv g">{k['trx_completadas']}</div></div>
     <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r">{k['trx_incompletas']}</div></div>
     <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}">{k['tasa_aceptacion']}%</div></div>
-    <div class="kc"><div class="kl">T. prom. aceptación</div><div class="kv s">{k['tiempo_prom_aceptacion']} min</div></div>
 
     <div class="kdiv"></div>
 
     <!-- ── NEGOCIOS ────────────────────────────────────── -->
-    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">🏪 NEGOCIOS</div></div>
+    <div class="ksec"><span class="ksec-lbl">🏪 Negocios</span></div>
     <div class="kc"><div class="kl">Activos</div><div class="kv t">{k['negocios_activos']}</div></div>
-    <div class="kc"><div class="kl">Dormidos</div><div class="kv y">{k['negocios_dormidos']} <span style="font-size:10px;color:#94a3b8">({k['dormidos_pct_total']}%)</span></div></div>
-    <div class="kc"><div class="kl">Sin tx 30d</div><div class="kv {st_col}">{k['pct_sin_tx']}%</div><div class="ks">{k['sin_tx_n']} negocios</div></div>
-    <div class="kc"><div class="kl">Mediana / Prom tx</div><div class="kv s">{k['mediana_tx_negocio']} / {k['promedio_tx_negocio']} <span style="font-size:9px;color:#64748b">tx/mes</span></div></div>
-    <div class="kc full">
-      <div class="kl">📐 Cobertura modelo estructural</div>
-      <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
-        <div style="flex:1;height:10px;background:#cbd5e1;border-radius:5px;overflow:hidden">
-          <div style="width:{cobertura_global_pct}%;height:100%;background:linear-gradient(90deg,#16a34a,#00897B);border-radius:5px;transition:width .5s"></div>
+    <div class="kc"><div class="kl">Dormidos</div><div class="kv y">{k['negocios_dormidos']}</div><div class="ks">{k['dormidos_pct_total']}%</div></div>
+    <div class="kc"><div class="kl">Sin tx 30d</div><div class="kv {st_col}">{k['pct_sin_tx']}%</div><div class="ks">{k['sin_tx_n']} neg.</div></div>
+    <div class="kc"><div class="kl">🆕 Nuevos mes</div><div class="kv t">{neg_nuevos_mes}</div><div class="ks">{_mes_nombre[:3]}</div></div>
+    <div class="kc"><div class="kl">🆕 Nuevos 7d</div><div class="kv">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx</div></div>
+    <div class="kc"><div class="kl">1ªTx ≤7d</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div></div>
+    <div class="kc half">
+      <div class="kl">📐 Cobertura estructural</div>
+      <div style="display:flex;align-items:center;gap:5px;margin-top:3px">
+        <div style="flex:1;height:7px;background:#cbd5e1;border-radius:3px;overflow:hidden">
+          <div style="width:{cobertura_global_pct}%;height:100%;background:linear-gradient(90deg,#16a34a,#00897B);border-radius:3px"></div>
         </div>
-        <span style="font-size:13px;color:#16a34a;font-weight:700;min-width:38px;text-align:right">{cobertura_global_pct}%</span>
+        <span style="font-size:11px;color:#16a34a;font-weight:700">{cobertura_global_pct}%</span>
       </div>
-      <div class="ks" style="margin-top:3px">{total_actuales_global} activos · {total_necesarios_global} necesarios · Gap: <span style="color:#dc2626;font-weight:700">{total_gap_global} 🍽</span></div>
+      <div class="ks">Gap: <span style="color:#dc2626;font-weight:700">{total_gap_global} 🍽</span> · {total_actuales_global}/{total_necesarios_global}</div>
     </div>
-    <div class="kc"><div class="kl">🆕 Nuevos 7d</div><div class="kv t">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx</div></div>
-    <div class="kc"><div class="kl">🆕 Nuevos 30d</div><div class="kv">{neg_nuevos_30}</div><div class="ks">{pct_nuevos_30_con_tx}% con tx</div></div>
-    <div class="kc full"><div class="kl">% 1ª tx en primeros 7 días</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div><div class="ks">negocios creados en últimos 7 días</div></div>
+    <div class="kc"><div class="kl">Mediana tx</div><div class="kv s">{k['mediana_tx_negocio']}</div><div class="ks">tx/mes</div></div>
 
     <div class="kdiv"></div>
 
     <!-- ── QUALITY SCORE ──────────────────────────────── -->
-    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">⭐ QUALITY SCORE</div></div>
-    <div class="kc"><div class="kl">Score promedio</div><div class="kv {'g' if _qs_avg>=60 else 'y' if _qs_avg>=40 else 'r'}">{_qs_avg}</div><div class="ks">/ 100 pts</div></div>
-    <div class="kc"><div class="kl">Negocios saludables</div><div class="kv {'g' if _qs_pct_saludables>=50 else 'y'}">{_qs_pct_saludables}%</div><div class="ks">score ≥ 60 · {_qs_saludables} negocios</div></div>
-    <div class="kc full">
-      <div class="kl" style="margin-bottom:6px">Distribución por nivel de calidad</div>
+    <div class="ksec"><span class="ksec-lbl">⭐ Quality Score</span></div>
+    <div class="kc"><div class="kl">Promedio</div><div class="kv {_qs_color}">{_qs_avg}</div><div class="ks">/ 100 pts</div></div>
+    <div class="kc half">
+      <div class="kl" style="margin-bottom:3px">Distribución por nivel</div>
       {''.join(
-        f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">'
-        f'  <div style="font-size:9px;color:{_QS_COLORS[n]};width:58px;font-weight:600">{n}</div>'
-        f'  <div style="flex:1;height:14px;background:#cbd5e1;border-radius:3px;overflow:hidden;position:relative">'
-        f'    <div style="width:{_qs_pct[n]}%;height:100%;background:{_QS_COLORS[n]};border-radius:3px;transition:width .5s"></div>'
-        f'    <span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:8px;color:#0f172a;font-weight:700">'
-        f'      {_qs_dist[n]}</span>'
-        f'  </div>'
-        f'  <div style="font-size:9px;color:{_QS_COLORS[n]};font-weight:700;min-width:28px;text-align:right">{_qs_pct[n]}%</div>'
+        f'<div style="display:flex;align-items:center;gap:4px;margin-bottom:2px">'
+        f'<div style="font-size:7.5px;color:{_QS_COLORS[n]};width:50px;font-weight:600">{n}</div>'
+        f'<div style="flex:1;height:9px;background:#cbd5e1;border-radius:2px;overflow:hidden;position:relative">'
+        f'<div style="width:{_qs_pct[n]}%;height:100%;background:{_QS_COLORS[n]};border-radius:2px"></div>'
+        f'<span style="position:absolute;right:3px;top:50%;transform:translateY(-50%);font-size:7px;color:#0f172a;font-weight:700">{_qs_dist[n]}</span>'
+        f'</div>'
+        f'<div style="font-size:7.5px;color:{_QS_COLORS[n]};font-weight:700;min-width:24px;text-align:right">{_qs_pct[n]}%</div>'
         f'</div>'
         for n in _QS_ORDER
       )}
@@ -2072,11 +2104,12 @@ var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
 
-// ── Datos por organización ───────────────────────────────────────
-var ORG_KPI_DATA        = {ORG_KPI_DATA};
+// ── Datos por organización × fecha ──────────────────────────────
+var ORG_DATE_KPI_DATA   = {ORG_DATE_KPI_DATA};
 var HEAT_USERS_BY_ORG   = {HEAT_USERS_BY_ORG};
 var SESSION_DEMAND_BY_ORG = {SESSION_DEMAND_BY_ORG};
 var _currentOrg         = 'Todas';
+var _currentRange       = 'todo';
 
 var IS_DARK  = false;
 var TILE_DARK  = "https://{{s}}.basemaps.cartocdn.com/dark_all/{{z}}/{{x}}/{{y}}{{r}}.png";
@@ -2164,72 +2197,111 @@ function refreshMap(){{
   btn.disabled = true;
   setTimeout(function(){{ location.reload(true); }}, 300);
 }}
-// ── Selector de organización ─────────────────────────────────────
-function switchOrg(org) {{
-  _currentOrg = org;
-  var d = ORG_KPI_DATA[org] || ORG_KPI_DATA['Todas'];
+// ── Helpers de DOM ────────────────────────────────────────────────
+function _setText(id, val) {{ var e=document.getElementById(id); if(e) e.textContent=val; }}
+function _setHtml(id, val) {{ var e=document.getElementById(id); if(e) e.innerHTML=val; }}
+function _setColor(id, val) {{ var e=document.getElementById(id); if(e) e.style.color=val; }}
+function _setWidth(id, w) {{ var e=document.getElementById(id); if(e) e.style.width=Math.min(100,Math.max(0,w))+'%'; }}
+function _setBg(id, val) {{ var e=document.getElementById(id); if(e) e.style.background=val; }}
+
+// ── Actualizar KPI metrics de usuarios ────────────────────────────
+function updateKPIMetrics() {{
+  var orgData = ORG_DATE_KPI_DATA[_currentOrg];
+  if (!orgData) return;
+  var d = orgData[_currentRange] || orgData['todo'];
   if (!d) return;
 
-  // ── Actualizar KPI cards de usuarios ──
   var convColor = d.conv_reg >= 20 ? '#16a34a' : '#d97706';
   var supColor  = d.pct_sin_supply < 10 ? '#16a34a' : '#dc2626';
 
-  function setText(id, val) {{ var el=document.getElementById(id); if(el) el.textContent=val; }}
-  function setStyle(id, prop, val) {{ var el=document.getElementById(id); if(el) el.style[prop]=val; }}
-  function setWidth(id, w) {{ var el=document.getElementById(id); if(el) el.style.width=Math.min(100,w)+'%'; }}
+  _setText('kpi-signups',    d.signups);
+  _setText('kpi-aprobados',  d.aprobados);
+  _setText('kpi-ap-pct',     d.ap_pct + '%');
+  _setText('kpi-ap-pct2',    d.ap_pct + '%');
+  _setColor('kpi-ap-pct2',   '#00897B');
+  _setText('kpi-conv-reg',   d.conv_reg + '%');
+  _setColor('kpi-conv-reg',  convColor);
+  _setText('kpi-conv-primer', d.conv_primer + '%');
+  _setText('kpi-aprov-sin',  d.aprov_sin + '%');
+  _setText('kpi-dias-prom',  d.dias_prom + 'd');
+  _setText('kpi-sin-supply', d.pct_sin_supply + '%');
+  _setColor('kpi-sin-supply', supColor);
+  // Barras verticales del embudo
+  var H = 32, total = Math.max(d.signups||1, 1);
+  var apH   = Math.round((d.aprobados||0) / total * H);
+  var convH = Math.round((d.conv_reg||0)  / 100 * H);
+  var apEl   = document.getElementById('kpi-bar-ap-v');
+  var convEl = document.getElementById('kpi-bar-conv-v');
+  if (apEl)   apEl.style.height   = Math.max(2, apH) + 'px';
+  if (convEl) {{ convEl.style.height = Math.max(2, convH) + 'px'; convEl.style.background = convColor; }}
 
-  setText('kpi-signups',    d.signups);
-  setText('kpi-aprobados',  d.aprobados);
-  setText('kpi-ap-pct',     d.ap_pct + '% del total');
-  setText('kpi-sig-n',      d.signups);
-  setWidth('kpi-bar-ap',    d.ap_pct);
-  setText('kpi-ap-pct2',    d.ap_pct + '%');
-  setWidth('kpi-bar-conv',  d.conv_reg);
-  setStyle('kpi-bar-conv', 'background', convColor);
-  setText('kpi-conv-reg',   d.conv_reg + '%');
-  setStyle('kpi-conv-reg', 'color', convColor);
-  setText('kpi-conv-primer', d.conv_primer + '%');
-  setText('kpi-aprov-sin',  d.aprov_sin + '%');
-  setText('kpi-dias-prom',  d.dias_prom + ' días');
-  setText('kpi-sin-supply', d.pct_sin_supply + '%');
-  setStyle('kpi-sin-supply', 'color', supColor);
+  // Label organización activa
   var lbl = document.getElementById('kpi-org-label');
-  if (lbl) lbl.textContent = org === 'Todas' ? '' : '· ' + org;
+  if (lbl) {{
+    var parts = [];
+    if (_currentOrg !== 'Todas') parts.push(_currentOrg);
+    if (_currentRange !== 'todo') parts.push('últimos ' + _currentRange);
+    lbl.textContent = parts.length ? '· ' + parts.join(' · ') : '';
+  }}
 
-  // ── Actualizar heat users ──
-  var pts = HEAT_USERS_BY_ORG[org] || HEAT_USERS_BY_ORG['Todas'];
-  if (window.LYR_HEAT_USERS && window.THE_MAP) {{
-    window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
+  // Resaltar botón de rango activo
+  document.querySelectorAll('.dr-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.dataset.range === _currentRange);
+  }});
+}}
+
+// ── Cambiar organización ──────────────────────────────────────────
+function switchOrg(org) {{
+  _currentOrg = org;
+  updateKPIMetrics();
+
+  // Heat users por org
+  var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
+  if (window.THE_MAP) {{
+    if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
     window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
-      gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}})
-    if (document.getElementById('ht_users') && document.getElementById('ht_users').checked)
-      window.LYR_HEAT_USERS.addTo(window.THE_MAP);
+      gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
+    var htCb = document.getElementById('ht_users');
+    if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
   }}
 
-  // ── Actualizar session demand ──
-  var sdData = SESSION_DEMAND_BY_ORG[org] || SESSION_DEMAND_BY_ORG['Todas'];
-  if (window.LYR_SESSION_DEMAND && window.THE_MAP) {{
-    var wasVisible = window.THE_MAP.hasLayer(window.LYR_SESSION_DEMAND);
-    window.THE_MAP.removeLayer(window.LYR_SESSION_DEMAND);
-    window.LYR_SESSION_DEMAND = L.geoJSON(sdData, {{
-      pane:'heatHexPane',
-      style:function(f){{return{{color:f.properties.fill_color,weight:0.5,
-        fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"3 2"}};}}
-      ,onEachFeature:function(f,l){{l._p=f.properties;
-        var p=f.properties; var c=p.fill_color;
-        var ncTxt = p.n_cercanos===0
-          ? "<span style='color:#ef4444;font-weight:700'>⚠ Sin negocios cerca</span>"
-          : "<span style='color:#22c55e'>"+p.n_cercanos+" negocios cerca</span>";
-        l.bindTooltip(
-          "<b style='color:"+c+"'>"+p.tier_label+"</b><br>"+
-          "<b>Usuarios:</b> "+p.n_users+" · <b>Con tx:</b> "+p.n_con_tx+"<br>"+
-          ncTxt+"<br>"+
-          "<b>Score señal:</b> <span style='color:"+c+";font-weight:700'>"+p.score_norm_pct+"%</span>",
-          {{sticky:true,opacity:0.97}});
-      }}
-    }});
-    if (wasVisible) window.LYR_SESSION_DEMAND.addTo(window.THE_MAP);
-  }}
+  // Session demand por org
+  _rebuildSessionDemand(org);
+}}
+
+// ── Cambiar rango de fecha ────────────────────────────────────────
+function switchDateRange(range) {{
+  _currentRange = range;
+  updateKPIMetrics();
+}}
+
+// ── Reconstruir capa session demand ──────────────────────────────
+function _rebuildSessionDemand(org) {{
+  if (!window.THE_MAP) return;
+  var sdData = (SESSION_DEMAND_BY_ORG && SESSION_DEMAND_BY_ORG[org]) || SESSION_DEMAND_BY_ORG['Todas'];
+  if (!sdData) return;
+  var wasVisible = window.LYR_SESSION_DEMAND && window.THE_MAP.hasLayer(window.LYR_SESSION_DEMAND);
+  if (window.LYR_SESSION_DEMAND) window.THE_MAP.removeLayer(window.LYR_SESSION_DEMAND);
+  window.LYR_SESSION_DEMAND = L.geoJSON(sdData, {{
+    pane:'heatHexPane',
+    style:function(f){{
+      return {{color:f.properties.fill_color,weight:0.5,
+              fillColor:f.properties.fill_color,
+              fillOpacity:f.properties.fill_opacity,dashArray:"3 2"}};
+    }},
+    onEachFeature:function(f,l){{
+      var p=f.properties, c=p.fill_color;
+      var nc = p.n_cercanos===0
+        ? "<span style='color:#ef4444'>Sin negocios cerca</span>"
+        : "<span style='color:#22c55e'>"+p.n_cercanos+" cerca</span>";
+      l.bindTooltip(
+        "<b style='color:"+c+"'>"+p.tier_label+"</b><br>"+
+        "Usuarios: "+p.n_users+" · Con tx: "+p.n_con_tx+"<br>"+
+        nc+"<br>Signal: "+p.score_norm_pct+"%",
+        {{sticky:true,opacity:0.97}});
+    }}
+  }});
+  if (wasVisible) window.LYR_SESSION_DEMAND.addTo(window.THE_MAP);
 }}
 
 function toggleMode() {{
@@ -2606,6 +2678,21 @@ document.addEventListener("DOMContentLoaded", function() {{
         }});
       }}
     }};
+    // ── Inicializar barras verticales del embudo ──────────────────
+    (function() {{
+      var d = (ORG_DATE_KPI_DATA['Todas'] || {{}})['todo'] || {{}};
+      var total = d.signups || 1;
+      var H = 32;
+      var apH   = Math.round((d.aprobados||0) / total * H);
+      var convH = Math.round((d.conv_reg||0)  / 100 * H);
+      var regEl  = document.getElementById('kpi-bar-reg-v');
+      var apEl   = document.getElementById('kpi-bar-ap-v');
+      var convEl = document.getElementById('kpi-bar-conv-v');
+      if (regEl)  regEl.style.height  = H + 'px';
+      if (apEl)   apEl.style.height   = Math.max(2, apH) + 'px';
+      if (convEl) convEl.style.height = Math.max(2, convH) + 'px';
+    }})();
+
     // ── Aplicar visibilidad inicial según checkboxes ───────────────
     ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ'].forEach(function(name) {{
       var el = document.getElementById('ly_'+name);

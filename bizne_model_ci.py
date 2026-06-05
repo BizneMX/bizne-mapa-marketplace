@@ -210,7 +210,7 @@ def _coerce_numeric(df):
     """
     _text_cols = {
         "name", "phone_number", "owner_name", "hunter", "address", "cp", "colonia",
-        "delegacion", "kyc_status", "status_trx", "organization_id", "email", "phone",
+        "delegacion", "kyc_status", "status_trx", "organization_id", "organization_name", "email", "phone",
         "food_types", "service_cohort", "etapa_negocio", "kitchen_quality_nivel",
         "last_transaction_register", "bizne_creation_date", "created_date",
         "allow_delivery", "menu_a_la_carta", "menu_bizne", "menu_premium", "menu_de_dia",
