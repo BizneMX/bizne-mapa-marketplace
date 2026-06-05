@@ -409,6 +409,7 @@ if QS_CSV and _os.path.exists(QS_CSV):
             'creation_date':   str(r.get('bizne_creation_date','') or ''),
             'dias_creacion':   int(float(r.get('dias_desde_creacion', 0) or 0)),
             'food_types':      str(r.get('food_types','') or ''),
+            'horario':         str(r.get('schedule', r.get('horario','')) or ''),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -443,6 +444,7 @@ else:
             'address':        str(r.get('address', '') or ''),
             'colonia':        str(r.get('colonia', '') or ''),
             'food_types':     str(r.get('food_types', '') or ''),
+            'horario':        str(r.get('horario', r.get('schedule', '')) or ''),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -494,6 +496,9 @@ for _, row in df_neg.iterrows():
             "creation_date": qs_data.get('creation_date', ''),
             "dias_creacion": qs_data.get('dias_creacion', 0),
             "food_types":    qs_data.get('food_types', str(row.get('food_types',''))),
+            "horario":       qs_data.get('horario', str(row.get('horario', row.get('schedule','')))),
+            "lat":           round(float(row['lat']), 5),
+            "lng":           round(float(row['lng']), 5),
         }
     }
     biz_features.append(feat)
@@ -2966,12 +2971,14 @@ function downloadSelectionCSV() {
     var headers = [
       'service_id','nombre','phone_number','owner_name','hunter',
       'address','colonia','delegacion',
+      'lat','lng',
+      'tipo_negocio','horario',
       'tx_historicas','tx_90d','tx_30d',
       'rating','quality_score','quality_nivel',
       'tasa_acepta','tiempo_acepta',
       'etapa','service_cohort',
       'menu_bizne','menu_dia','menu_carta',
-      'creation_date','dias_creacion','food_types'
+      'creation_date','dias_creacion'
     ];
     var rows = [headers.join(',')];
     _mqSelected.forEach(function(p) {
@@ -2986,12 +2993,14 @@ function downloadSelectionCSV() {
       rows.push([
         esc(p.service_id), esc(p.nombre),   esc(p.phone_number), esc(p.owner_name),
         esc(p.hunter),     esc(p.address),  esc(p.colonia),      esc(p.delegacion),
+        esc(p.lat),        esc(p.lng),
+        esc(p.food_types), esc(p.horario),
         esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d),
         esc(p.rating),     esc(p.quality_score), esc(p.quality_nivel),
         esc(p.tasa_acepta), esc(p.tiempo_acepta),
         esc(p.etapa),      esc(p.service_cohort),
         esc(p.menu_bizne), esc(p.menu_dia), esc(p.menu_carta),
-        esc(p.creation_date), esc(p.dias_creacion), esc(p.food_types)
+        esc(p.creation_date), esc(p.dias_creacion)
       ].join(','));
     });
     var blob = new Blob([rows.join('\\n')], {type:'text/csv;charset=utf-8;'});

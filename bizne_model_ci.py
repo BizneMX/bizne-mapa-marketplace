@@ -214,7 +214,7 @@ def _coerce_numeric(df):
         "food_types", "service_cohort", "etapa_negocio", "kitchen_quality_nivel",
         "last_transaction_register", "bizne_creation_date", "created_date",
         "allow_delivery", "menu_a_la_carta", "menu_bizne", "menu_premium", "menu_de_dia",
-        "service_id", "sleep", "dormida", "is_active",
+        "service_id", "sleep", "dormida", "is_active", "schedule",
     }
     for col in df.columns:
         if col in _text_cols:
@@ -254,7 +254,8 @@ SELECT
          WHEN dias_desde_creacion<=90 THEN 'En crecimiento'
          ELSE 'Maduro' END AS etapa_negocio,
     service_cohort, food_types, allow_delivery, max_delivery_distance,
-    last_transaction_register, bizne_creation_date
+    last_transaction_register, bizne_creation_date,
+    schedule
 FROM (
     SELECT *,
         ROUND((COALESCE(rating,0)/5.0*25)::numeric,2) AS score_rating,
@@ -273,6 +274,7 @@ FROM (
             ST_Y(a.coordinates) AS latitude,
             ST_X(a.coordinates) AS longitude,
             s.is_active, s.allow_delivery, s.max_delivery_distance, s.sleep,
+            COALESCE(s.schedule, '') AS schedule,
             ft.food_types,
             mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
             COALESCE(th.transacciones_historicas,0) AS transacciones_historicas,
@@ -2358,6 +2360,7 @@ _biz_quality_cols = [
     "tiempo_p50_aceptacion_min_ultimos_30_dias",
     "service_id", "phone_number", "owner_name", "hunter",
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
+    "schedule",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
@@ -2374,6 +2377,7 @@ kepler_biz = df_biz[_biz_cols].rename(columns={
     "tiempo_p50_aceptacion_min_ultimos_30_dias": "tiempo_acepta",
     "bizne_creation_date":                       "creation_date",
     "dias_desde_creacion":                       "dias_creacion",
+    "schedule":                                  "horario",
 }).round(4)
 
 kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False, encoding="utf-8")
