@@ -184,7 +184,7 @@ def _query_mcp(sql, nombre, cache_file):
                 raise ValueError("0 filas — posible error en query o response mal parseado")
 
             print(f"  ✅ {nombre}: {len(df):,} filas")
-            df.to_csv(cache_path, index=False)
+            df.to_csv(cache_path, index=False, encoding="utf-8")
             return df
 
         except Exception as e:
@@ -640,9 +640,6 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
 QUALITY_PATH = None   # mantenido por compatibilidad
 
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
-for _col in df_biz_raw.select_dtypes(include="object").columns:
-    if _col not in {"name","phone_number","owner_name","hunter","address","cp","colonia","delegacion","food_types","service_cohort","etapa_negocio","kitchen_quality_nivel","last_transaction_register","bizne_creation_date","service_id","sleep","is_active"}:
-        df_biz_raw[_col] = pd.to_numeric(df_biz_raw[_col], errors="coerce").fillna(0)
 df_biz_raw = _coerce_numeric(df_biz_raw)
 
 # Normalizar columna sleep/dormida (bool)
@@ -662,7 +659,7 @@ df_biz_raw["Dormidas"] = df_biz_raw["dormida"]
 df_biz_raw["effective_capacity"] = df_biz_raw.apply(
     lambda r: 0.0 if r["Dormidas"]
     else (C_CAPACITY * r["tasa_aceptacion_ultimos_30_dias"]
-          if float(r["tasa_aceptacion_ultimos_30_dias"] or 0) > 0
+          if r["tasa_aceptacion_ultimos_30_dias"] > 0
           else CAPACITY_INACTIVE),
     axis=1
 )
@@ -759,9 +756,6 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
-for _col in df_su_raw.select_dtypes(include="object").columns:
-    if _col not in {"kyc_status","organization_id","name","email","phone","created_date"}:
-        df_su_raw[_col] = pd.to_numeric(df_su_raw[_col], errors="coerce").fillna(0)
 df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
@@ -795,9 +789,6 @@ print(f"  Penetración actual   : {len(df_su)/df_sec.elementos.sum():.2%}")
 
 # ── 1.4 Transacciones — directo desde Postgres (últimos 30 días) ──────────────
 df_tx = _query_mcp(SQL_TRANSACCIONES, "Transacciones", "pg_transacciones_cache.csv")
-for _col in df_tx.select_dtypes(include="object").columns:
-    if _col not in {"status_trx","organization_id","service_id","created_date"}:
-        df_tx[_col] = pd.to_numeric(df_tx[_col], errors="coerce").fillna(0)
 df_tx = _coerce_numeric(df_tx)
 df_tx["created_date"] = pd.to_datetime(df_tx["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 df_tx = df_tx[
@@ -2276,7 +2267,7 @@ kepler_hex["tier_value"] = kepler_hex["zone_tier"].map(tier_val)
 kepler_hex.index.name = "hex_id"
 kepler_hex = kepler_hex.reset_index().round(4)
 
-kepler_hex.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_hex_demanda.csv"), index=False)
+kepler_hex.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_hex_demanda.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_hex_demanda.csv   ({len(kepler_hex):,} hexes)")
 
 # ── CSV 2: Negocios activos (capa Point — supply) ─────────────────────────────
@@ -2289,23 +2280,30 @@ _biz_base_cols = [
     "effective_capacity", "food_types",
 ]
 _biz_quality_cols = [
-    "kitchen_quality_score", "transacciones_historicas",
+    "kitchen_quality_score", "kitchen_quality_nivel",
+    "transacciones_historicas", "transacciones_ultimos_90_dias",
     "service_cohort", "menu_bizne", "menu_de_dia", "menu_a_la_carta",
     "tiempo_p50_aceptacion_min_ultimos_30_dias",
+    "service_id", "phone_number", "owner_name", "hunter",
+    "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
-    "latitude":                         "lat",
-    "longitude":                        "lng",
-    "transacciones_ultimos_30_dias":    "tx_30d",
-    "ventas_ultimos_30_dias":           "ventas_30d",
-    "tasa_aceptacion_ultimos_30_dias":  "tasa_aceptacion",
-    "tasa_no_aceptados_ultimos_30_dias":"tasa_rechazo",
-    "effective_capacity":               "capacidad_comidas_dia",
+    "latitude":                                  "lat",
+    "longitude":                                 "lng",
+    "transacciones_ultimos_30_dias":             "tx_30d",
+    "transacciones_ultimos_90_dias":             "tx_90d",
+    "transacciones_historicas":                  "tx_historicas",
+    "ventas_ultimos_30_dias":                    "ventas_30d",
+    "tasa_aceptacion_ultimos_30_dias":           "tasa_aceptacion",
+    "tasa_no_aceptados_ultimos_30_dias":         "tasa_rechazo",
+    "effective_capacity":                        "capacidad_comidas_dia",
     "tiempo_p50_aceptacion_min_ultimos_30_dias": "tiempo_acepta",
+    "bizne_creation_date":                       "creation_date",
+    "dias_desde_creacion":                       "dias_creacion",
 }).round(4)
 
-kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False)
+kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_negocios.csv       ({len(kepler_biz):,} negocios activos)")
 
 # ── CSV: Cocinas Dormidas (capa separada) ─────────────────────────────────────
@@ -2321,7 +2319,7 @@ kepler_dorm = df_biz_dorm[[
     "kitchen_quality_score":       "quality_score",
 }).round(4)
 kepler_dorm["capacidad_si_reactiva"] = CAPACITY_INACTIVE
-kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv"), index=False)
+kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_dormidas.csv        ({len(kepler_dorm):,} cocinas dormidas)")
 
 # ── CSV 3: Sectores PA (capa Point — demanda potencial) ──────────────────────
@@ -2332,7 +2330,7 @@ kepler_sec["usuarios_potenciales"]  = (kepler_sec["elementos"] * TARGET_CONVERSI
 kepler_sec["demanda_diaria_est"]    = (kepler_sec["elementos"] * TARGET_CONVERSION * TX_PER_USER_DAY).round(1)
 kepler_sec["demanda_mensual_est"]   = (kepler_sec["elementos"] * TARGET_CONVERSION * TX_PER_USER_MONTH).round(0).astype(int)
 
-kepler_sec.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_sectores.csv"), index=False)
+kepler_sec.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_sectores.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_sectores.csv        ({len(kepler_sec):,} sectores)")
 
 # ── CSV 4: Signups APPROVED (capa Point — usuarios activos) ──────────────────
@@ -2347,7 +2345,7 @@ kepler_su = df_su[[
     "ticket_promedio":"ticket_prom",
 }).round(4)
 
-kepler_su.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_usuarios.csv"), index=False)
+kepler_su.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_usuarios.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_usuarios.csv        ({len(kepler_su):,} usuarios APPROVED)")
 
 # ── CSV 5: Estaciones Metro (capa Point) ─────────────────────────────────────
@@ -2357,7 +2355,7 @@ kepler_metro = df_metro[[
     "elementos": "elementos_estimados",
     "n_lineas":  "num_lineas_transbordo",
 }).round(4)
-kepler_metro.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_metro.csv"), index=False)
+kepler_metro.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_metro.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_metro.csv           ({len(kepler_metro):,} registros, {kepler_metro['nombre'].nunique()} estaciones)")
 
 

@@ -70,7 +70,7 @@ def hex_geojson(hex_id):
 # 1. ANALYTICS DATA — May 28
 # ══════════════════════════════════════════════════════════════════════
 print("Loading analytics…")
-df_u = pd.read_csv(ANALYTICS)
+df_u = pd.read_csv(ANALYTICS, encoding='utf-8')
 df_u.columns = df_u.columns.str.strip()
 # Normalize column names — Analytics CSV may use *_last_session suffix
 if 'latitude' not in df_u.columns and 'latitude_last_session' in df_u.columns:
@@ -91,7 +91,7 @@ aprobados = len(df_aprov)
 ap_pct = round(aprobados/signups_total*100,1) if signups_total > 0 else 0
 
 # Transactions
-df_trx = pd.read_csv(TRX_CSV)
+df_trx = pd.read_csv(TRX_CSV, encoding='utf-8')
 df_trx.columns = df_trx.columns.str.strip()
 df_trx['status_trx'] = df_trx['status_trx'].fillna('')
 trx_fail = (df_trx['status_trx'].str.contains('incompleta', case=False)).sum()
@@ -128,7 +128,7 @@ df_aprov_loc = df_aprov[df_aprov['lat'].notna() & (df_aprov['lat'] != 0)].copy()
 df_aprov_loc['hex_id'] = df_aprov_loc.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
 
 # Businesses per hex
-df_neg = pd.read_csv(NEG_CSV)
+df_neg = pd.read_csv(NEG_CSV, encoding='utf-8')
 df_neg['hex_id'] = df_neg.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
 biz_per_hex = df_neg.groupby('hex_id').size().to_dict()
 def biz_nearby(hex_id):
@@ -348,25 +348,35 @@ if QS_CSV and _os.path.exists(QS_CSV):
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
     # CI mode: build QS lookup from NEG_CSV (campos de calidad ya incluidos por bizne_model_ci.py)
+    # Columnas en kepler_real_negocios.csv ya están renombradas por bizne_model_ci.py:
+    #   tx_30d, tx_90d, tx_historicas, tasa_aceptacion, tiempo_acepta, dias_creacion, creation_date
     print("  QS_CSV not available — building QS lookup from NEG_CSV")
     for _, r in df_neg.iterrows():
         name_key = str(r.get('name','')).strip().lower()
         score = float(r.get('kitchen_quality_score', 0) or 0)
+        nivel = str(r.get('kitchen_quality_nivel', '') or '') or _qs_nivel(score)
         qs_lookup[name_key] = {
             'score':          score,
-            'nivel':          _qs_nivel(score),
+            'nivel':          nivel,
             'etapa':          str(r.get('etapa_negocio','') or ''),
             'service_cohort': str(r.get('service_cohort','') or ''),
             'tasa_acepta':    round(float(r.get('tasa_aceptacion', 0) or 0)*100, 1),
             'tx_30d':         int(float(r.get('tx_30d', 0) or 0)),
             'tx_historicas':  int(float(r.get('tx_historicas', 0) or 0)),
+            'tx_90d':         int(float(r.get('tx_90d', 0) or 0)),
             'tiempo_acepta':  round(float(r.get('tiempo_acepta', 0) or 0), 1),
             'menu_bizne':     _safe_bool(r.get('menu_bizne')),
             'menu_dia':       _safe_bool(r.get('menu_de_dia')),
             'menu_carta':     _safe_bool(r.get('menu_a_la_carta')),
-            'dias_creacion':  int(float(r.get('dias_desde_creacion', r.get('dias_creacion', 9999)) or 9999)),
+            'dias_creacion':  int(float(r.get('dias_creacion', 9999) or 9999)),
+            'creation_date':  str(r.get('creation_date', '') or ''),
             'hunter':         str(r.get('hunter', '') or ''),
-            'tx_90d':         int(float(r.get('tx_90d', 0) or 0)),
+            'service_id':     int(float(r.get('service_id', 0) or 0)),
+            'phone_number':   str(r.get('phone_number', '') or ''),
+            'owner_name':     str(r.get('owner_name', '') or ''),
+            'address':        str(r.get('address', '') or ''),
+            'colonia':        str(r.get('colonia', '') or ''),
+            'food_types':     str(r.get('food_types', '') or ''),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
