@@ -625,20 +625,53 @@ df_hunt['neg_dormidos'] = df_hunt['hex_id'].map(dorm_per_hex).fillna(0).astype(i
 # Señal de activación por hex (cuánta demanda de activación cae en cada hunter hex)
 df_hunt['activ_demand'] = df_hunt['hex_id'].map(activ_dem_hex).fillna(0)
 
-# Combined score — Puntos de Activación como señal explícita (15%)
-max_ps    = df_hunt['priority_score'].max() if df_hunt['priority_score'].max()>0 else 1
-max_us    = max(df_hunt['usuarios'].max(), 1)
-max_activ = max(df_hunt['activ_demand'].max(), 1)
-df_hunt['demand_norm'] = df_hunt['priority_score']/max_ps
-df_hunt['user_norm']   = df_hunt['usuarios']/max_us
-df_hunt['activ_norm']  = df_hunt['activ_demand']/max_activ
+# ── Usuarios SIN supply cercano por hex ──────────────────────────────────────
+# df_aprov_loc ya tiene n_biz (negocios en radio H3 ring-1). Si n_biz == 0
+# el usuario está en zona sin oferta → señal de demanda real no atendida.
+_uns_hex = (
+    df_aprov_loc[df_aprov_loc['n_biz'] == 0]
+    .groupby('hex_id').size()
+    .reset_index(name='users_no_supply')
+)
+df_hunt = df_hunt.merge(_uns_hex, on='hex_id', how='left')
+df_hunt['users_no_supply'] = df_hunt['users_no_supply'].fillna(0).astype(int)
+
+# ── Nuevo modelo de scoring basado en gap + demanda real ──────────────────────
+# Componentes:
+#   gap_norm     — cocinas que faltan (driver principal)
+#   uns_norm     — usuarios sin cocina cercana (demanda real sin supply)
+#   demand_norm  — demanda estructural absoluta (tx esperadas/día)
+#   activ_norm   — puntos de activación (señal de campo)
+#   user_norm    — presencia total de usuarios (señal complementaria)
+#
+# Pesos: gap 40% | sin-supply 30% | demanda 20% | activación 10%
+# Eliminamos el ratio demanda/negocios (priority_score) como driver principal
+# porque penalizaba zonas con muchos negocios aunque el gap fuera grande.
+
+max_gap   = max(float(df_hunt['gap'].max()), 1.0)
+max_uns   = max(float(df_hunt['users_no_supply'].max()), 1.0)
+max_dem   = max(float(df_hunt['demanda_estimada_dia'].max()), 1.0)
+max_activ = max(float(df_hunt['activ_demand'].max()), 1.0)
+max_us    = max(float(df_hunt['usuarios'].max()), 1.0)
+
+df_hunt['gap_norm']    = df_hunt['gap'].astype(float) / max_gap
+df_hunt['uns_norm']    = df_hunt['users_no_supply'].astype(float) / max_uns
+df_hunt['demand_norm'] = df_hunt['demanda_estimada_dia'].astype(float) / max_dem
+df_hunt['activ_norm']  = df_hunt['activ_demand'].astype(float) / max_activ
+df_hunt['user_norm']   = df_hunt['usuarios'].astype(float) / max_us
+
 df_hunt['combined_score'] = (
-    0.50 * df_hunt['demand_norm'] +
-    0.35 * df_hunt['user_norm']   +
-    0.15 * df_hunt['activ_norm']
+    0.40 * df_hunt['gap_norm']    +   # Cocinas que faltan (prioridad principal)
+    0.30 * df_hunt['uns_norm']    +   # Usuarios sin cocina cercana (demanda real sin supply)
+    0.20 * df_hunt['demand_norm'] +   # Demanda estructural absoluta (tx/día)
+    0.10 * df_hunt['activ_norm']       # Puntos de activación en campo
 ).round(3)
+
 df_hunt = df_hunt.sort_values('combined_score', ascending=False).reset_index(drop=True)
 df_hunt['rank'] = df_hunt.index + 1
+
+print(f"  Scoring Hunter — max_gap:{max_gap:.0f} | max_uns:{max_uns:.0f} | max_dem:{max_dem:.1f}")
+print(f"  Score range: {df_hunt['combined_score'].min():.3f} – {df_hunt['combined_score'].max():.3f}")
 
 HUNTER_TIER_DEFS = [
     ('A+ Máxima prioridad', '#7f1d1d', 0.85),
@@ -649,11 +682,12 @@ HUNTER_TIER_DEFS = [
     ('E Monitoreo', '#94a3b8', 0.10),
 ]
 def hunter_tier(score):
-    if score >= 0.7:   return HUNTER_TIER_DEFS[0]
-    if score >= 0.55:  return HUNTER_TIER_DEFS[1]
-    if score >= 0.40:  return HUNTER_TIER_DEFS[2]
-    if score >= 0.25:  return HUNTER_TIER_DEFS[3]
-    if score >= 0.10:  return HUNTER_TIER_DEFS[4]
+    # Umbrales recalibrados para nueva distribución basada en gap+uns
+    if score >= 0.55:  return HUNTER_TIER_DEFS[0]
+    if score >= 0.38:  return HUNTER_TIER_DEFS[1]
+    if score >= 0.25:  return HUNTER_TIER_DEFS[2]
+    if score >= 0.15:  return HUNTER_TIER_DEFS[3]
+    if score >= 0.07:  return HUNTER_TIER_DEFS[4]
     return HUNTER_TIER_DEFS[5]
 
 # Lookup hex_code por hex_id (asignados al construir hex_features)
@@ -678,10 +712,13 @@ for _, row in df_hunt.iterrows():
             "zona": zona_lbl,
             "delegacion": "CDMX",
             "combined_score": float(row['combined_score']),
-            "demand_norm": float(row['demand_norm']),
-            "user_norm": float(row['user_norm']),
-            "activ_norm": float(row.get('activ_norm', 0)),
+            "gap_norm":    round(float(row.get('gap_norm', 0)), 3),
+            "uns_norm":    round(float(row.get('uns_norm', 0)), 3),
+            "demand_norm": round(float(row['demand_norm']), 3),
+            "user_norm":   round(float(row['user_norm']), 3),
+            "activ_norm":  round(float(row.get('activ_norm', 0)), 3),
             "activ_demand": round(float(row.get('activ_demand', 0)), 1),
+            "users_no_supply": int(row.get('users_no_supply', 0)),
             "gap": int(row['gap']),
             "neg_activos": int(row.get('negocios_actuales',0)),
             "neg_dormidos": int(row.get('neg_dormidos',0)),
@@ -730,6 +767,14 @@ _nuevos_30 = [f for f in biz_features if _safe_dias(f['properties']) <= 30]
 
 neg_nuevos_7  = len(_nuevos_7)
 neg_nuevos_30 = len(_nuevos_30)
+
+# Negocios nuevos en el mes calendario en curso (desde el día 1 del mes actual)
+from datetime import datetime as _dt
+_hoy = _dt.now()
+_dias_del_mes = (_hoy - _hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)).days
+_nuevos_mes = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_del_mes]
+neg_nuevos_mes = len(_nuevos_mes)
+_mes_nombre = _hoy.strftime('%B %Y').capitalize()
 
 # Negocios con transacción: si dias_creacion<=7 y tx_historicas>0 → tuvieron tx en sus primeros 7 días
 def _has_tx(p):
@@ -1219,11 +1264,12 @@ HUNTER_HTML = f"""
     </div>
   </div>
   <!-- Barra de actividad nuevos negocios -->
-  <div style="background:#0d1117;padding:5px 10px;display:flex;gap:14px;align-items:center;
+  <div style="background:#0d1117;padding:5px 10px;display:flex;gap:12px;align-items:center;
     font-size:10px;border-bottom:1px solid #1e2d40;flex-wrap:wrap">
-    <span style="color:#94a3b8">Nuevos <b style="color:#22c55e">{neg_nuevos_7}</b> 7d
-      · <b style="color:#00BFA5">{neg_nuevos_30}</b> 30d</span>
-    <span style="color:#94a3b8">1ªTx≤7d: <b style="color:{'#22c55e' if pct_nuevos_7_tx_7d>=50 else '#f59e0b'}">{pct_nuevos_7_tx_7d}%</b></span>
+    <span style="color:#94a3b8">{_mes_nombre[:3]}: <b style="color:#a78bfa;font-size:11px">{neg_nuevos_mes}</b></span>
+    <span style="color:#94a3b8">7d: <b style="color:#22c55e">{neg_nuevos_7}</b></span>
+    <span style="color:#94a3b8">30d: <b style="color:#00BFA5">{neg_nuevos_30}</b></span>
+    <span style="color:#94a3b8">1ªTx: <b style="color:{'#22c55e' if pct_nuevos_7_tx_7d>=50 else '#f59e0b'}">{pct_nuevos_7_tx_7d}%</b></span>
     <button onclick="var s=document.getElementById('h-act');s.style.display=s.style.display==='none'?'block':'none';this.textContent=s.style.display==='none'?'📊 Por hunter':'▲ Cerrar'"
       style="margin-left:auto;background:#1e3a52;border:none;color:#94a3b8;padding:2px 8px;
       border-radius:4px;cursor:pointer;font-size:9px;white-space:nowrap">📊 Por hunter</button>
@@ -2060,22 +2106,43 @@ function buildBizTT(p) {{
   return s;
 }}
 function buildHunterTT(p) {{
-  var usrBadge = p.has_users
-    ? "<span style='color:#a78bfa'>👤 "+p.usuarios+" usuarios</span>"
-    : "<span style='color:#64748b'>Sin usuarios aún</span>";
   var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
+  var unsColor  = p.users_no_supply > 0 ? '#f97316' : '#64748b';
+  // Barra de score desglosada
+  var gPct  = Math.round((p.gap_norm  ||0)*100);
+  var uPct  = Math.round((p.uns_norm  ||0)*100);
+  var dPct  = Math.round((p.demand_norm||0)*100);
+  var aPct  = Math.round((p.activ_norm ||0)*100);
+  var scoreBar =
+    "<div style='margin:4px 0 2px;font-size:9px;color:#94a3b8'>Score: <b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
+    "<div style='display:flex;gap:1px;height:5px;border-radius:3px;overflow:hidden;margin-bottom:3px'>"+
+      "<div style='width:"+(gPct*0.40)+"%;background:#ef4444' title='Gap'></div>"+
+      "<div style='width:"+(uPct*0.30)+"%;background:#f97316' title='Sin supply'></div>"+
+      "<div style='width:"+(dPct*0.20)+"%;background:#3b82f6' title='Demanda'></div>"+
+      "<div style='width:"+(aPct*0.10)+"%;background:#E879F9' title='Activación'></div>"+
+    "</div>"+
+    "<div style='display:flex;gap:8px;font-size:8px;color:#64748b'>"+
+      "<span style='color:#ef4444'>🍽 gap "+gPct+"%</span>"+
+      "<span style='color:#f97316'>🚫 supply "+uPct+"%</span>"+
+      "<span style='color:#3b82f6'>📊 dem "+dPct+"%</span>"+
+      "<span style='color:#E879F9'>⚡ activ "+aPct+"%</span>"+
+    "</div>";
   return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<b>🏪 Negocios activos:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span><br>"+
-    "<b>😴 Negocios dormidos:</b> <span style='color:"+dormColor+"'>"+p.neg_dormidos+"</span><br>"+
-    "<b style='color:#ef4444'>🍽 Gap:</b> <span style='color:#ef4444;font-weight:700'>"+p.gap+" faltantes</span><br>"+
+    scoreBar+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    usrBadge+" · "+p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
-    "<b>Demanda est.:</b> "+p.demanda_dia+"/día<br>"+
-    (p.activ_demand > 0
-      ? "<span style='color:#E879F9'>⚡ Punto de Activación cercano: +"+p.activ_demand+" tx/día</span><br>"
+    "<b>🏪 Activos:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span>  "+
+    "<b style='color:#ef4444'>Gap:</b> <span style='color:#ef4444;font-weight:700'>"+p.gap+" 🍽</span>  "+
+    "<span style='color:"+dormColor+"'>😴 "+p.neg_dormidos+" dorm.</span><br>"+
+    "<b>Demanda est.:</b> "+p.demanda_dia+" tx/día<br>"+
+    "<b>👤 Usuarios:</b> "+p.usuarios+
+    (p.users_no_supply > 0
+      ? " · <span style='color:"+unsColor+";font-weight:700'>⚠ "+p.users_no_supply+" sin cocina cercana</span>"
       : "")+
-    "<span style='color:#64748b;font-size:9px'>Score: "+Math.round(p.combined_score*100)+"/100</span>"+
+    "<br>"+p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
+    (p.activ_demand > 0
+      ? "<span style='color:#E879F9;font-size:9px'>⚡ Activación: +"+p.activ_demand+" tx/día</span><br>"
+      : "")+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(5)+", "+p.lng.toFixed(5)+
