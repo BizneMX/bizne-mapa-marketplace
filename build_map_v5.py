@@ -1122,42 +1122,46 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 KPI_HTML = f"""
 <div id="kpi-dash">
   <div id="kpi-dash-header">
-    <span>📊 BIZNE PA · KPIs <span style="font-weight:400;opacity:.7">28 mayo 2026</span></span>
+    <span>📊 BIZNE PA · KPIs</span>
     <button id="kpi-tb" onclick="var b=document.getElementById('kpi-body');b.style.display=b.style.display==='none'?'grid':'none';this.textContent=b.style.display==='none'?'▼':'▲'">▲</button>
   </div>
   <div id="kpi-body">
+
+    <!-- ── USUARIOS ─────────────────────────────────────── -->
+    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">👤 USUARIOS</div></div>
     <div class="kc"><div class="kl">Signups totales</div><div class="kv t">{k['signups_totales']}</div></div>
-    <div class="kc"><div class="kl">Usuarios aprobados</div><div class="kv">{k['usuarios_aprobados']}</div><div class="ks">{ap_pct}% del total</div></div>
-    <div class="kdiv"></div>
+    <div class="kc"><div class="kl">Aprobados</div><div class="kv">{k['usuarios_aprobados']}</div><div class="ks">{ap_pct}% del total</div></div>
+    <div class="kc"><div class="kl">Conv. primer consumo</div><div class="kv {cv_col}">{k['conv_primer_consumo']}%</div><div class="ks">excluye membresías</div></div>
+    <div class="kc"><div class="kl">Sin convertir</div><div class="kv {as_col}">{k['aprobados_sin_convertir']}%</div><div class="ks">aprobados sin compra</div></div>
+    <div class="kc"><div class="kl">T. primer consumo</div><div class="kv s">{k['dias_prom_primer_consumo']} días</div><div class="ks">post 20-abr · excluye membresías</div></div>
+    <div class="kc"><div class="kl">Últ. sesión sin supply</div><div class="kv {ss_col}">{k['pct_sin_supply']}%</div></div>
     <div class="kc"><div class="kl">Tx completadas</div><div class="kv g">{k['trx_completadas']}</div></div>
     <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r">{k['trx_incompletas']}</div></div>
     <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}">{k['tasa_aceptacion']}%</div></div>
     <div class="kc"><div class="kl">T. prom. aceptación</div><div class="kv s">{k['tiempo_prom_aceptacion']} min</div></div>
+
     <div class="kdiv"></div>
-    <div class="kc"><div class="kl">% Conv. primer consumo</div><div class="kv {cv_col}">{k['conv_primer_consumo']}%</div></div>
-    <div class="kc"><div class="kl">Aprobados sin convertir</div><div class="kv {as_col}">{k['aprobados_sin_convertir']}%</div></div>
-    <div class="kc"><div class="kl">T. prom. primer consumo</div><div class="kv s">{k['dias_prom_primer_consumo']} días</div><div class="ks">usuarios post 20-abr</div></div>
-    <div class="kc"><div class="kl">% últ. sesión sin supply</div><div class="kv {ss_col}">{k['pct_sin_supply']}%</div></div>
-    <div class="kdiv"></div>
-    <div class="kc"><div class="kl">Negocios activos</div><div class="kv t">{k['negocios_activos']}</div></div>
-    <div class="kc"><div class="kl">Negocios dormidos</div><div class="kv y">{k['negocios_dormidos']} <span style="font-size:10px;color:#94a3b8">({k['dormidos_pct_total']}%)</span></div></div>
-    <div class="kc"><div class="kl">Sin transacciones 30d</div><div class="kv {st_col}">{k['pct_sin_tx']}%</div><div class="ks">{k['sin_tx_n']} negocios</div></div>
-    <div class="kc full"><div class="kl">Mediana / Promedio tx negocio</div><div class="kv s">{k['mediana_tx_negocio']} / {k['promedio_tx_negocio']} <span style="font-size:9px;color:#64748b">tx/mes</span></div></div>
-    <div class="kdiv"></div>
+
+    <!-- ── NEGOCIOS ────────────────────────────────────── -->
+    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">🏪 NEGOCIOS</div></div>
+    <div class="kc"><div class="kl">Activos</div><div class="kv t">{k['negocios_activos']}</div></div>
+    <div class="kc"><div class="kl">Dormidos</div><div class="kv y">{k['negocios_dormidos']} <span style="font-size:10px;color:#94a3b8">({k['dormidos_pct_total']}%)</span></div></div>
+    <div class="kc"><div class="kl">Sin tx 30d</div><div class="kv {st_col}">{k['pct_sin_tx']}%</div><div class="ks">{k['sin_tx_n']} negocios</div></div>
+    <div class="kc"><div class="kl">Mediana / Prom tx</div><div class="kv s">{k['mediana_tx_negocio']} / {k['promedio_tx_negocio']} <span style="font-size:9px;color:#64748b">tx/mes</span></div></div>
     <div class="kc full">
-      <div class="kl">📐 Cobertura modelo estructural (negocios necesarios)</div>
+      <div class="kl">📐 Cobertura modelo estructural</div>
       <div style="display:flex;align-items:center;gap:8px;margin-top:5px">
-        <div style="flex:1;height:10px;background:#1e3a52;border-radius:5px;overflow:hidden">
-          <div style="width:{cobertura_global_pct}%;height:100%;background:linear-gradient(90deg,#22c55e,#00BFA5);border-radius:5px;transition:width .5s"></div>
+        <div style="flex:1;height:10px;background:#cbd5e1;border-radius:5px;overflow:hidden">
+          <div style="width:{cobertura_global_pct}%;height:100%;background:linear-gradient(90deg,#16a34a,#00897B);border-radius:5px;transition:width .5s"></div>
         </div>
-        <span style="font-size:13px;color:#22c55e;font-weight:700;min-width:38px;text-align:right">{cobertura_global_pct}%</span>
+        <span style="font-size:13px;color:#16a34a;font-weight:700;min-width:38px;text-align:right">{cobertura_global_pct}%</span>
       </div>
-      <div class="ks" style="margin-top:3px">{total_actuales_global} activos · {total_necesarios_global} necesarios · Gap: <span style="color:#ef4444;font-weight:700">{total_gap_global} 🍽</span></div>
+      <div class="ks" style="margin-top:3px">{total_actuales_global} activos · {total_necesarios_global} necesarios · Gap: <span style="color:#dc2626;font-weight:700">{total_gap_global} 🍽</span></div>
     </div>
-    <div class="kdiv"></div>
-    <div class="kc"><div class="kl">🆕 Nuevos últimos 7d</div><div class="kv t">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx activa</div></div>
-    <div class="kc"><div class="kl">🆕 Nuevos últimos 30d</div><div class="kv">{neg_nuevos_30}</div><div class="ks">{pct_nuevos_30_con_tx}% con tx activa</div></div>
-    <div class="kc full"><div class="kl">% con 1ª transacción en primeros 7 días</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div><div class="ks">de negocios con menos de 7 días de creación</div></div>
+    <div class="kc"><div class="kl">🆕 Nuevos 7d</div><div class="kv t">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx</div></div>
+    <div class="kc"><div class="kl">🆕 Nuevos 30d</div><div class="kv">{neg_nuevos_30}</div><div class="ks">{pct_nuevos_30_con_tx}% con tx</div></div>
+    <div class="kc full"><div class="kl">% 1ª tx en primeros 7 días</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div><div class="ks">negocios creados en últimos 7 días</div></div>
+
   </div>
 </div>
 """
