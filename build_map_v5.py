@@ -481,6 +481,20 @@ from collections import Counter
 niveles = Counter(f['properties']['quality_nivel'] for f in biz_features)
 print(f"  {len(biz_features)} negocios activos · scores: {dict(niveles)}")
 
+# ── Métricas de Quality Score ──────────────────────────────────────────────
+_QS_ORDER  = ['Excelente', 'Alta', 'Media', 'Baja', 'Crítica']
+_QS_COLORS = {'Excelente':'#16a34a','Alta':'#00897B','Media':'#d97706','Baja':'#f97316','Crítica':'#dc2626'}
+_qs_scores  = [float(f['properties'].get('quality_score', 0) or 0) for f in biz_features]
+_qs_total   = len(_qs_scores)
+_qs_avg     = round(sum(_qs_scores) / _qs_total, 1) if _qs_total > 0 else 0
+_qs_median  = round(sorted(_qs_scores)[_qs_total//2], 1) if _qs_total > 0 else 0
+_qs_dist    = {n: niveles.get(n, 0) for n in _QS_ORDER}  # count per tier
+_qs_pct     = {n: round(_qs_dist[n] / _qs_total * 100, 1) for n in _QS_ORDER} if _qs_total > 0 else {n:0 for n in _QS_ORDER}
+# Negocios excelentes+altos (score ≥ 60)
+_qs_saludables = _qs_dist.get('Excelente',0) + _qs_dist.get('Alta',0)
+_qs_pct_saludables = round(_qs_saludables / _qs_total * 100, 1) if _qs_total > 0 else 0
+print(f"  Quality avg:{_qs_avg} | median:{_qs_median} | saludables:{_qs_saludables} ({_qs_pct_saludables}%)")
+
 # ══════════════════════════════════════════════════════════════════════
 # 4. DORM DATA — dormant businesses
 # ══════════════════════════════════════════════════════════════════════
@@ -1348,6 +1362,28 @@ KPI_HTML = f"""
     <div class="kc"><div class="kl">🆕 Nuevos 7d</div><div class="kv t">{neg_nuevos_7}</div><div class="ks">{pct_nuevos_7_activos}% con tx</div></div>
     <div class="kc"><div class="kl">🆕 Nuevos 30d</div><div class="kv">{neg_nuevos_30}</div><div class="ks">{pct_nuevos_30_con_tx}% con tx</div></div>
     <div class="kc full"><div class="kl">% 1ª tx en primeros 7 días</div><div class="kv {('g' if pct_nuevos_7_tx_7d>=50 else 'y')}">{pct_nuevos_7_tx_7d}%</div><div class="ks">negocios creados en últimos 7 días</div></div>
+
+    <div class="kdiv"></div>
+
+    <!-- ── QUALITY SCORE ──────────────────────────────── -->
+    <div class="kc full" style="background:none;padding:3px 2px 0"><div class="kl" style="font-size:9px;color:#00897B;letter-spacing:.6px">⭐ QUALITY SCORE</div></div>
+    <div class="kc"><div class="kl">Score promedio</div><div class="kv {'g' if _qs_avg>=60 else 'y' if _qs_avg>=40 else 'r'}">{_qs_avg}</div><div class="ks">/ 100 pts</div></div>
+    <div class="kc"><div class="kl">Negocios saludables</div><div class="kv {'g' if _qs_pct_saludables>=50 else 'y'}">{_qs_pct_saludables}%</div><div class="ks">score ≥ 60 · {_qs_saludables} negocios</div></div>
+    <div class="kc full">
+      <div class="kl" style="margin-bottom:6px">Distribución por nivel de calidad</div>
+      {''.join(
+        f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">'
+        f'  <div style="font-size:9px;color:{_QS_COLORS[n]};width:58px;font-weight:600">{n}</div>'
+        f'  <div style="flex:1;height:14px;background:#cbd5e1;border-radius:3px;overflow:hidden;position:relative">'
+        f'    <div style="width:{_qs_pct[n]}%;height:100%;background:{_QS_COLORS[n]};border-radius:3px;transition:width .5s"></div>'
+        f'    <span style="position:absolute;right:4px;top:50%;transform:translateY(-50%);font-size:8px;color:#0f172a;font-weight:700">'
+        f'      {_qs_dist[n]}</span>'
+        f'  </div>'
+        f'  <div style="font-size:9px;color:{_QS_COLORS[n]};font-weight:700;min-width:28px;text-align:right">{_qs_pct[n]}%</div>'
+        f'</div>'
+        for n in _QS_ORDER
+      )}
+    </div>
 
   </div>
 </div>
