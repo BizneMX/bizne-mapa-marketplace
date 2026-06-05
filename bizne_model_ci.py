@@ -276,6 +276,7 @@ FROM (
             ft.food_types,
             mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
             COALESCE(th.transacciones_historicas,0) AS transacciones_historicas,
+            COALESCE(th_real.transacciones_hist_real,0) AS transacciones_hist_real,
             COALESCE(t90.transacciones_ultimos_90_dias,0) AS transacciones_ultimos_90_dias,
             t90.ticket_promedio_ultimos_90_dias,
             COALESCE(sm30.transacciones_ultimos_30_dias,0) AS transacciones_ultimos_30_dias,
