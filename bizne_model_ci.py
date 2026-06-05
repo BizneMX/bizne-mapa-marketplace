@@ -642,6 +642,17 @@ QUALITY_PATH = None   # mantenido por compatibilidad
 df_biz_raw = _query_mcp(SQL_NEGOCIOS, "Negocios", "pg_negocios_cache.csv")
 df_biz_raw = _coerce_numeric(df_biz_raw)
 
+# Forzar conversión explícita de columnas numéricas críticas (MCP devuelve todo como string)
+for _col in [
+    "tasa_aceptacion_ultimos_30_dias", "tasa_no_aceptados_ultimos_30_dias",
+    "transacciones_historicas", "transacciones_ultimos_90_dias", "transacciones_ultimos_30_dias",
+    "ventas_ultimos_30_dias", "rating", "kitchen_quality_score",
+    "tiempo_p50_aceptacion_min_ultimos_30_dias", "dias_desde_creacion",
+    "dias_desde_ultima_transaccion", "latitude", "longitude",
+]:
+    if _col in df_biz_raw.columns:
+        df_biz_raw[_col] = pd.to_numeric(df_biz_raw[_col], errors="coerce").fillna(0)
+
 # Normalizar columna sleep/dormida (bool)
 # El query devuelve "sleep" directamente desde la BD
 if "sleep" in df_biz_raw.columns:
