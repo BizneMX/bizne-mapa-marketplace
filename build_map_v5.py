@@ -900,6 +900,16 @@ for h in _all_hunters:
     )
 print(f"  Nuevos 7d: {neg_nuevos_7} | 30d: {neg_nuevos_30} | %tx7d: {pct_nuevos_7_tx_7d}%")
 
+# Lista de hunters para el panel de asignación
+_hunters_for_assign = [h for h in _all_hunters if h != 'Sin asignar']
+if not _hunters_for_assign:
+    # Fallback: extraer de biz_features si _all_hunters vacío
+    _hunters_for_assign = sorted(set(
+        f['properties'].get('hunter','') for f in biz_features
+        if f['properties'].get('hunter','') not in ('','nan','None','Sin asignar')
+    ))
+HUNTERS_LIST_JSON = json.dumps(_hunters_for_assign, ensure_ascii=False)
+
 # Hunter table top 30
 hunt_rows_json = []
 for feat in hunter_features[:30]:
@@ -1259,6 +1269,33 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 #marquee-panel .mp-clear{background:transparent;color:#64748b;border:1px solid #334155;
   padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}
 #marquee-panel .mp-clear:hover{color:#ef4444;border-color:#ef4444;}
+/* ── Panel de asignación de zonas hunter ────────────────────── */
+#assign-tool-btn{position:fixed;bottom:162px;right:24px;z-index:2002;
+  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
+  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
+  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
+#assign-tool-btn:hover,#assign-tool-btn.active{border-color:#f97316;color:#f97316;background:#1a0d00;}
+#assign-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+  z-index:3000;width:400px;max-height:80vh;background:#0f172a;border-radius:14px;
+  box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
+  flex-direction:column;overflow:hidden;border:1px solid #1e3a52;}
+#assign-panel.open{display:flex;}
+#assign-head{background:#7c2d12;color:#fff;padding:10px 14px;display:flex;
+  justify-content:space-between;align-items:center;font-size:12px;font-weight:700;cursor:move;}
+#assign-body{padding:12px 14px;overflow-y:auto;flex:1;}
+.az-hunter-row{display:flex;align-items:center;gap:8px;padding:6px 8px;
+  border-radius:6px;margin-bottom:4px;cursor:pointer;transition:background .15s;}
+.az-hunter-row:hover{background:#1e293b;}
+.az-hunter-row.selected{background:#1e293b;outline:2px solid #f97316;}
+.az-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0;}
+.az-zone-item{display:flex;align-items:center;gap:6px;padding:3px 6px;font-size:10px;
+  color:#e2e8f0;background:#1e293b;border-radius:4px;margin-bottom:2px;}
+.az-zone-item .az-rm{background:none;border:none;color:#ef4444;cursor:pointer;
+  font-size:11px;padding:0 2px;margin-left:auto;}
+#assign-mode-bar{display:none;position:fixed;bottom:20px;left:50%;transform:translateX(-50%);
+  z-index:2999;background:#7c2d12;color:#fff;padding:8px 20px;border-radius:20px;
+  font-size:12px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.5);
+  pointer-events:none;white-space:nowrap;}
 #marquee-tool-btn{position:fixed;bottom:118px;right:24px;z-index:2002;
   background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
   border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
@@ -2109,6 +2146,8 @@ var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
 
+// ── Hunters para asignación ─────────────────────────────────────
+var HUNTERS_LIST = {HUNTERS_LIST_JSON};
 // ── Datos por organización × fecha ──────────────────────────────
 var ORG_DATE_KPI_DATA   = {ORG_DATE_KPI_DATA};
 var HEAT_USERS_BY_ORG   = {HEAT_USERS_BY_ORG};
@@ -2316,6 +2355,303 @@ function _rebuildSessionDemand(org) {{
   if (wasVisible) window.LYR_SESSION_DEMAND.addTo(window.THE_MAP);
 }}
 
+// ════════════════════════════════════════════════════════════════
+// RUTAS DE HUNTING — Asignación de zonas a hunters
+// ════════════════════════════════════════════════════════════════
+var _ASSIGN_COLORS = [
+  '#f97316','#3b82f6','#22c55e','#a855f7','#ec4899',
+  '#14b8a6','#f59e0b','#6366f1','#ef4444','#84cc16'
+];
+var _assignMode      = false;        // si el modo de selección está activo
+var _pendingZones    = [];           // [{hex_id, rank, zona, gap, lat, lng, score, ...}]
+var _selectedHunter  = null;         // hunter actualmente seleccionado en el panel
+var _assignments     = {{}};           // {{hunter_name: [{{hex_id, rank, zona, ...}}]}}
+var _hunterColorMap  = {{}};           // {{hunter_name: color}}
+var LYR_ASSIGNED     = null;
+var LYR_ROUTES       = null;
+
+// ── Inicializar panel de hunters ─────────────────────────────────
+function _initAssignPanel() {{
+  var list = document.getElementById('az-hunter-list');
+  if (!list || list.children.length > 0) return;
+  HUNTERS_LIST.forEach(function(h, i) {{
+    _hunterColorMap[h] = _ASSIGN_COLORS[i % _ASSIGN_COLORS.length];
+    var row = document.createElement('div');
+    row.className = 'az-hunter-row';
+    row.setAttribute('data-hunter', h);
+    row.innerHTML =
+      '<div class="az-dot" style="background:'+_hunterColorMap[h]+'"></div>'+
+      '<span style="font-size:11px;color:#e2e8f0;flex:1">'+h+'</span>'+
+      '<span class="az-h-count" style="font-size:9px;color:#94a3b8">0 zonas</span>';
+    row.onclick = function() {{
+      document.querySelectorAll('.az-hunter-row').forEach(function(r){{r.classList.remove('selected');}});
+      row.classList.add('selected');
+      _selectedHunter = h;
+    }};
+    list.appendChild(row);
+  }});
+  // Auto-seleccionar el primero
+  if (list.firstChild) list.firstChild.click();
+}}
+
+// ── Abrir/cerrar panel ───────────────────────────────────────────
+function toggleAssignPanel() {{
+  var p = document.getElementById('assign-panel');
+  if (p.classList.toggle('open')) {{
+    _initAssignPanel();
+    renderAssignedLayer();
+  }} else {{
+    if (_assignMode) toggleAssignMode(); // apagar modo selección al cerrar
+  }}
+}}
+
+// ── Activar/desactivar modo de selección ────────────────────────
+function toggleAssignMode() {{
+  _assignMode = !_assignMode;
+  var btn = document.getElementById('az-mode-btn');
+  var bar = document.getElementById('assign-mode-bar');
+  var tb  = document.getElementById('assign-tool-btn');
+  if (btn) btn.textContent = _assignMode ? '⏹ Desactivar' : 'Activar selección';
+  if (btn) btn.style.background = _assignMode ? '#7c2d12' : 'none';
+  if (bar) bar.style.display = _assignMode ? 'block' : 'none';
+  if (tb)  tb.classList.toggle('active', _assignMode);
+  // Cambiar cursor del mapa
+  var mapEl = document.getElementById('map');
+  if (mapEl) mapEl.style.cursor = _assignMode ? 'crosshair' : '';
+}}
+
+// ── Agregar zona al pending (llamado desde el click del hunter hex) ──
+function addZoneToPending(p) {{
+  if (!_assignMode) return false;
+  // Verificar si ya está asignada
+  var alreadyAssigned = Object.values(_assignments).some(function(list) {{
+    return list.some(function(z) {{ return z.hex_id === p.hex_id; }});
+  }});
+  if (alreadyAssigned) {{ alert('Esta zona ya está asignada a un hunter.'); return false; }}
+  // Verificar si ya está en pending
+  var idx = _pendingZones.findIndex(function(z) {{ return z.hex_id === p.hex_id; }});
+  if (idx >= 0) {{
+    // Remover si ya estaba
+    _pendingZones.splice(idx, 1);
+  }} else {{
+    _pendingZones.push(p);
+  }}
+  renderPendingList();
+  return true;
+}}
+
+// ── Renderizar lista de zonas pendientes ─────────────────────────
+function renderPendingList() {{
+  var list = document.getElementById('az-pending-list');
+  var cnt  = document.getElementById('az-count');
+  if (!list) return;
+  if (cnt) cnt.textContent = _pendingZones.length;
+  list.innerHTML = '';
+  _pendingZones.forEach(function(z) {{
+    var item = document.createElement('div');
+    item.className = 'az-zone-item';
+    item.innerHTML =
+      '<span style="color:#f97316;font-weight:700">#'+z.rank+'</span>'+
+      '<span style="flex:1">'+z.zona+'</span>'+
+      '<span style="color:#ef4444;font-size:9px">Gap '+z.gap+'</span>'+
+      '<button class="az-rm" onclick="removePendingZone(\''+z.hex_id+'\')">✕</button>';
+    list.appendChild(item);
+  }});
+}}
+
+function removePendingZone(hex_id) {{
+  _pendingZones = _pendingZones.filter(function(z) {{ return z.hex_id !== hex_id; }});
+  renderPendingList();
+  renderAssignedLayer();
+}}
+
+function clearPendingZones() {{
+  _pendingZones = [];
+  renderPendingList();
+}}
+
+// ── Asignar zonas pendientes al hunter seleccionado ──────────────
+function assignZonesToHunter() {{
+  if (!_selectedHunter) {{ alert('Selecciona un hunter primero.'); return; }}
+  if (!_pendingZones.length) {{ alert('No hay zonas seleccionadas.'); return; }}
+  if (!_assignments[_selectedHunter]) _assignments[_selectedHunter] = [];
+  _pendingZones.forEach(function(z) {{
+    if (!_assignments[_selectedHunter].find(function(a){{ return a.hex_id === z.hex_id; }}))
+      _assignments[_selectedHunter].push(z);
+  }});
+  _pendingZones = [];
+  renderPendingList();
+  renderAssignedLayer();
+  renderRoutes();
+  updateAssignedSummary();
+}}
+
+// ── Actualizar resumen de asignaciones ───────────────────────────
+function updateAssignedSummary() {{
+  var total = Object.values(_assignments).reduce(function(s,v){{ return s+v.length; }},0);
+  var el = document.getElementById('az-total-assigned');
+  if (el) el.textContent = total;
+  var summary = document.getElementById('az-assigned-summary');
+  if (!summary) return;
+  summary.innerHTML = '';
+  Object.keys(_assignments).forEach(function(h) {{
+    var zones = _assignments[h];
+    if (!zones.length) return;
+    var color = _hunterColorMap[h] || '#94a3b8';
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:6px';
+    row.innerHTML =
+      '<div style="display:flex;align-items:center;gap:5px;margin-bottom:3px">'+
+      '<div style="width:10px;height:10px;border-radius:50%;background:'+color+'"></div>'+
+      '<span style="font-weight:700;font-size:10px;color:'+color+'">'+h+'</span>'+
+      '<span style="font-size:9px;color:#94a3b8;margin-left:auto">'+zones.length+' zonas</span></div>'+
+      zones.map(function(z, i) {{
+        return '<div style="font-size:9px;color:#94a3b8;padding:1px 4px">'+
+          (i+1)+'. Rank#'+z.rank+' · '+z.zona+' · Gap '+z.gap+'</div>';
+      }}).join('');
+    summary.appendChild(row);
+    // Actualizar contador en la lista de hunters
+    var hRows = document.querySelectorAll('[data-hunter="'+h+'"] .az-h-count');
+    hRows.forEach(function(el){{ el.textContent = zones.length+' zonas'; }});
+  }});
+}}
+
+// ── Renderizar capa de zonas asignadas ───────────────────────────
+function renderAssignedLayer() {{
+  if (!window.THE_MAP) return;
+  if (LYR_ASSIGNED) window.THE_MAP.removeLayer(LYR_ASSIGNED);
+  if (LYR_ROUTES)   window.THE_MAP.removeLayer(LYR_ROUTES);
+
+  var features = [];
+  // Zonas asignadas (sólidas)
+  Object.keys(_assignments).forEach(function(h) {{
+    var color = _hunterColorMap[h] || '#94a3b8';
+    _assignments[h].forEach(function(z, i) {{
+      // Buscar geometría en HUNTER_DATA
+      var match = HUNTER_DATA.features.find(function(f){{ return f.properties.hex_id === z.hex_id; }});
+      if (!match) return;
+      var feat = JSON.parse(JSON.stringify(match));
+      feat.properties._az_hunter = h;
+      feat.properties._az_color  = color;
+      feat.properties._az_order  = i + 1;
+      features.push(feat);
+    }});
+  }});
+  // Zonas pendientes (punteadas)
+  _pendingZones.forEach(function(z) {{
+    var match = HUNTER_DATA.features.find(function(f){{ return f.properties.hex_id === z.hex_id; }});
+    if (!match) return;
+    var feat = JSON.parse(JSON.stringify(match));
+    feat.properties._az_hunter = 'pending';
+    feat.properties._az_color  = '#ffffff';
+    features.push(feat);
+  }});
+
+  if (!features.length) return;
+  LYR_ASSIGNED = L.geoJSON({{type:'FeatureCollection',features:features}}, {{
+    pane:'heatHexPane',
+    style: function(f) {{
+      var p = f.properties;
+      var isPending = p._az_hunter === 'pending';
+      return {{
+        color:       p._az_color,
+        weight:      isPending ? 2.5 : 3,
+        fillColor:   p._az_color,
+        fillOpacity: isPending ? 0.15 : 0.45,
+        dashArray:   isPending ? '6 3' : null,
+        opacity:     0.9,
+      }};
+    }},
+    onEachFeature: function(f, l) {{
+      var p = f.properties;
+      if (p._az_hunter !== 'pending') {{
+        l.bindTooltip(
+          '<b style="color:'+p._az_color+'">🗺 '+p._az_hunter+'</b> · Ruta #'+p._az_order+'<br>'+
+          'Rank #'+p.rank+' · Gap: '+p.gap+' 🍽<br>'+
+          '<span style="font-size:9px;color:#94a3b8">Click para quitar</span>',
+          {{sticky:true, opacity:0.97}});
+        l.on('click', function() {{
+          if (_assignMode) return;
+          var h = p._az_hunter;
+          if (_assignments[h]) {{
+            _assignments[h] = _assignments[h].filter(function(z){{ return z.hex_id !== p.hex_id; }});
+            if (!_assignments[h].length) delete _assignments[h];
+          }}
+          renderAssignedLayer();
+          renderRoutes();
+          updateAssignedSummary();
+        }});
+      }}
+    }}
+  }}).addTo(window.THE_MAP);
+}}
+
+// ── Renderizar rutas (polylines conectando centroides) ───────────
+function renderRoutes() {{
+  if (!window.THE_MAP) return;
+  if (LYR_ROUTES) window.THE_MAP.removeLayer(LYR_ROUTES);
+  var routeLayers = [];
+  Object.keys(_assignments).forEach(function(h) {{
+    var zones = _assignments[h];
+    if (zones.length < 2) return;
+    var color = _hunterColorMap[h] || '#94a3b8';
+    // Ordenar por rank (mayor prioridad primero)
+    var sorted = zones.slice().sort(function(a,b){{ return a.rank - b.rank; }});
+    var latlngs = sorted.map(function(z){{ return [z.lat, z.lng]; }});
+    var line = L.polyline(latlngs, {{
+      color: color, weight: 2.5, opacity: 0.7, dashArray: '8 4',
+      lineJoin: 'round'
+    }});
+    // Añadir marcadores de orden
+    sorted.forEach(function(z, i) {{
+      L.marker([z.lat, z.lng], {{
+        icon: L.divIcon({{
+          className: '',
+          html: '<div style="background:'+color+';color:#fff;border-radius:50%;'+
+                'width:18px;height:18px;display:flex;align-items:center;justify-content:center;'+
+                'font-size:10px;font-weight:700;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)">'+
+                (i+1)+'</div>',
+          iconSize: [18,18], iconAnchor: [9,9]
+        }})
+      }}).bindTooltip(h+' · Parada #'+(i+1)+': Rank#'+z.rank, {{sticky:true}})
+        .addTo(window.THE_MAP);
+      routeLayers.push(line);
+    }});
+    line.addTo(window.THE_MAP);
+  }});
+}}
+
+// ── Limpiar todas las asignaciones ───────────────────────────────
+function clearAllAssignments() {{
+  if (!confirm('¿Limpiar todas las asignaciones?')) return;
+  _assignments = {{}};
+  _pendingZones = [];
+  renderPendingList();
+  renderAssignedLayer();
+  if (LYR_ROUTES) {{ window.THE_MAP.removeLayer(LYR_ROUTES); LYR_ROUTES = null; }}
+  updateAssignedSummary();
+  document.querySelectorAll('.az-h-count').forEach(function(el){{ el.textContent = '0 zonas'; }});
+}}
+
+// ── Exportar asignaciones a CSV ───────────────────────────────────
+function exportAssignments() {{
+  var rows = ['hunter,orden_ruta,hex_id,rank,zona,gap,demanda_dia,usuarios,lat,lng,score'];
+  Object.keys(_assignments).forEach(function(h) {{
+    var sorted = _assignments[h].slice().sort(function(a,b){{ return a.rank-b.rank; }});
+    sorted.forEach(function(z, i) {{
+      rows.push([h, i+1, z.hex_id, z.rank, '"'+z.zona+'"', z.gap,
+                 z.demanda_dia||'', z.usuarios||'',
+                 z.lat, z.lng, z.combined_score||''].join(','));
+    }});
+  }});
+  if (rows.length === 1) {{ alert('No hay asignaciones para exportar.'); return; }}
+  var blob = new Blob([rows.join('\\n')], {{type:'text/csv;charset=utf-8;'}});
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'rutas_hunting_' + new Date().toISOString().slice(0,10) + '.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}}
+
 function toggleMode() {{
   IS_DARK = !IS_DARK;
   var btn = document.getElementById('mode-btn');
@@ -2517,6 +2853,18 @@ document.addEventListener("DOMContentLoaded", function() {{
         l.on('click', function(e){{
           L.DomEvent.stopPropagation(e);
           var p = f.properties;
+          // Modo asignación: agregar al pending sin abrir popup
+          if (_assignMode) {{
+            var added = addZoneToPending(p);
+            if (added !== false) {{
+              // Pulso visual en el hexágono
+              var origStyle = {{color:p.fill_color,fillColor:p.fill_color,fillOpacity:p.fill_opacity}};
+              l.setStyle({{color:'#fff',fillColor:'#fff',fillOpacity:0.6}});
+              setTimeout(function(){{ l.setStyle(origStyle); }}, 300);
+              renderAssignedLayer();
+            }}
+            return;
+          }}
           window.THE_MAP.flyTo([p.lat, p.lng], 15, {{animate:true, duration:0.8}});
           setTimeout(function(){{ openHunterPopup(p, e.latlng); }}, 400);
         }});
@@ -3047,6 +3395,51 @@ html,body{{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}}
 {PANEL_HTML}
 {GUIDE_HTML}
 {CHAT_HTML}
+<!-- Assign zones tool -->
+<div id="assign-mode-bar">🎯 Modo asignación activo — haz clic en zonas Hunter para seleccionarlas</div>
+<button id="assign-tool-btn" title="Planear rutas de hunting" onclick="toggleAssignPanel()">🗺</button>
+<div id="assign-panel">
+  <div id="assign-head">
+    <span>🗺 Planear Rutas de Hunting</span>
+    <button onclick="toggleAssignPanel()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px">✕</button>
+  </div>
+  <div id="assign-body">
+    <div style="margin-bottom:10px">
+      <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;font-weight:600;letter-spacing:.3px">SELECCIONAR HUNTER</div>
+      <div id="az-hunter-list" style="display:flex;flex-direction:column;gap:2px"></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.3px">ZONAS SELECCIONADAS <span id="az-count" style="color:#f97316">0</span></div>
+        <button onclick="toggleAssignMode()" id="az-mode-btn"
+          style="font-size:9px;padding:3px 8px;border:1px solid #f97316;background:none;color:#f97316;border-radius:4px;cursor:pointer">
+          Activar selección</button>
+      </div>
+      <div id="az-pending-list" style="max-height:120px;overflow-y:auto"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button onclick="assignZonesToHunter()"
+        style="flex:1;background:#7c2d12;color:#fff;border:none;padding:7px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600">
+        ✅ Asignar zonas</button>
+      <button onclick="clearPendingZones()"
+        style="background:none;border:1px solid #334155;color:#94a3b8;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:11px">
+        🗑 Limpiar</button>
+    </div>
+    <div style="border-top:1px solid #1e3a52;padding-top:10px">
+      <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.3px;margin-bottom:6px">
+        ZONAS ASIGNADAS <span id="az-total-assigned" style="color:#22c55e">0</span></div>
+      <div id="az-assigned-summary" style="font-size:10px;color:#e2e8f0;max-height:120px;overflow-y:auto"></div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px">
+      <button onclick="exportAssignments()"
+        style="flex:1;background:#1e3a52;color:#e2e8f0;border:none;padding:6px;border-radius:6px;cursor:pointer;font-size:10px">
+        ⬇ Exportar CSV</button>
+      <button onclick="clearAllAssignments()"
+        style="background:none;border:1px solid #334155;color:#94a3b8;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:10px">
+        🗑 Limpiar todo</button>
+    </div>
+  </div>
+</div>
 <!-- Marquee selector -->
 <div id="marquee-rect"></div>
 <button id="marquee-tool-btn" title="Selector de área — arrastra para seleccionar negocios y exportar CSV" onclick="toggleMarqueeTool()">▭</button>
