@@ -2777,18 +2777,13 @@ window.flyToHunter = function(lat,lng) {{
 
 document.addEventListener("DOMContentLoaded", function() {{
   setTimeout(function() {{
-    var theMap = null;
-    Object.keys(window).forEach(function(k) {{
-      var v = window[k];
-      if (v && typeof v==="object" && v._container && v.addLayer) theMap = v;
-    }});
-    if (!theMap) return;
+    // window.THE_MAP ya está seteado en el inline <script> cuando se creó _bizneMap
+    var theMap = window.THE_MAP || window._bizneMap;
+    if (!theMap) {{
+      console.error('❌ No se encontró el mapa Leaflet');
+      return;
+    }}
     window.THE_MAP = theMap;
-
-    // Replace tile with dark CartoDB
-    theMap.eachLayer(function(l) {{ if (l._url) theMap.removeLayer(l); }});
-    window.TILE_LAYER = L.tileLayer(IS_DARK ? TILE_DARK : TILE_LIGHT,
-      {{attribution:'&copy; CartoDB',maxZoom:20}}).addTo(theMap);
 
     // Panes
     var panes = [['hunterPane',330],['heatHexPane',340],['hexPane',350],['sessionDemandPane',360]];
@@ -3417,7 +3412,13 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 </div>
 <div id="map"></div>
 <script>
-var _bizneMap = L.map('map', {{center:[19.42,-99.13],zoom:11,zoomControl:true}});
+var _bizneMap = L.map('map', {{center:[19.42,-99.13],zoom:11,zoomControl:true,preferCanvas:true}});
+window.THE_MAP = _bizneMap;
+// Tile layer cargado inmediatamente — no esperar al DOMContentLoaded
+window.TILE_LAYER = L.tileLayer(
+  "https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png",
+  {{attribution:'&copy; CartoDB', maxZoom:20}}
+).addTo(_bizneMap);
 </script>
 {JS}
 {CHAT_JS}
