@@ -2363,7 +2363,7 @@ var _ASSIGN_COLORS = [
   '#14b8a6','#f59e0b','#6366f1','#ef4444','#84cc16'
 ];
 var _assignMode      = false;        // si el modo de selección está activo
-var _pendingZones    = [];           // [{hex_id, rank, zona, gap, lat, lng, score, ...}]
+var _pendingZones    = [];           // [{{hex_id, rank, zona, gap, lat, lng, score, ...}}]
 var _selectedHunter  = null;         // hunter actualmente seleccionado en el panel
 var _assignments     = {{}};           // {{hunter_name: [{{hex_id, rank, zona, ...}}]}}
 var _hunterColorMap  = {{}};           // {{hunter_name: color}}
