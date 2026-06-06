@@ -2200,6 +2200,13 @@ document.addEventListener('click', function(e){{
       btn2.textContent = '✅';
       setTimeout(function(){{ btn2.textContent = '📋'; }}, 1200);
     }});
+    return;
+  }}
+  // Botón remover zona del pending
+  var btn3 = e.target.closest('.az-rm');
+  if (btn3) {{
+    var hid = decodeURIComponent(btn3.getAttribute('data-hid') || '');
+    if (hid) removePendingZone(hid);
   }}
 }});
 function refreshMap(){{
@@ -2421,7 +2428,7 @@ function renderPendingList() {{
       '<span style="color:#f97316;font-weight:700">#'+z.rank+'</span>'+
       '<span style="flex:1">'+z.zona+'</span>'+
       '<span style="color:#ef4444;font-size:9px">Gap '+z.gap+'</span>'+
-      '<button class="az-rm" onclick="removePendingZone(\''+z.hex_id+'\')">✕</button>';
+      '<button class="az-rm" data-hid="'+encodeURIComponent(z.hex_id)+'">✕</button>';
     list.appendChild(item);
   }});
 }}
