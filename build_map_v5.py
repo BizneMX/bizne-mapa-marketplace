@@ -1143,7 +1143,7 @@ HEAD = """
 .dr-btn{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;
   font-size:8px;padding:2px 5px;border-radius:3px;cursor:pointer;font-weight:600;}
 .dr-btn.active{background:#fff;color:#00897B;}
-.dr-btn:hover:not(.active){{background:rgba(255,255,255,.25);}}
+.dr-btn:hover:not(.active){background:rgba(255,255,255,.25);}
 /* ── Cartboard ─────────────────────────────────────────────── */
 #bmap-panel{position:fixed;top:80px;right:20px;z-index:1001;background:#fff;
   border-radius:10px;box-shadow:0 3px 14px rgba(0,0,0,.18);font-family:system-ui,sans-serif;
@@ -3385,8 +3385,8 @@ BASE = f"""<!DOCTYPE html>
 <title>Bizne PA — Mapa de Demanda · Mayo 2026</title>
 {HEAD}
 <style>
-html,body{{margin:0;padding:0;width:100%;height:100%;background:#0f172a;}}
-#map{{width:100%;height:100vh;}}
+html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
+#map{{width:100%;height:100vh;background:#e8e8e8;z-index:0;}}
 </style>
 </head>
 <body>
