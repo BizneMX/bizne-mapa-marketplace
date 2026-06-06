@@ -1058,55 +1058,22 @@ HEX_HEAT_FAIL  = build_hex_heat(heat_fail, 'Tx Fail')
 HEX_HEAT_USERS = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts], 'Usuarios')
 print("  Hex heat maps built")
 
-# ── Heat users y Session Demand por organización ──────────────────────────────
+# ── Heat users por organización (Session Demand no se duplica por org — demasiado pesado) ──
 _heat_users_by_org = {'Todas': heat_users_pts}
-_sd_by_org         = {'Todas': json.loads(SESSION_DEMAND_DATA)}
 
 if _ORG_COL and _orgs_list:
     for _org in _orgs_list:
-        # Heat users por org
-        _df_org_loc = df_aprov_loc2[df_aprov_loc2.get(_ORG_COL, pd.Series()) == _org] \
+        _df_org_loc = df_aprov_loc2[df_aprov_loc2[_ORG_COL] == _org] \
             if _ORG_COL in df_aprov_loc2.columns else pd.DataFrame()
-        _heat_org = [[round(r['lat'],5), round(r['lng'],5), 1.0]
-                     for _, r in _df_org_loc.iterrows() if abs(r.get('lat',0))>5]
+        _heat_org = [[round(float(r['lat']),5), round(float(r['lng']),5), 1.0]
+                     for _, r in _df_org_loc.iterrows()
+                     if pd.notna(r.get('lat')) and abs(float(r.get('lat',0)))>5]
         _heat_users_by_org[_org] = _heat_org
 
-        # Session demand por org
-        if len(_df_org_loc) == 0:
-            _sd_by_org[_org] = {"type":"FeatureCollection","features":[]}
-            continue
-        _hex_org = _df_org_loc.groupby('hex_id').agg(
-            n_users=('user_id','count'),
-            n_con_tx=('transacciones', lambda x: (x>0).sum()),
-            consumo=('consumo_total','sum'),
-        ).reset_index()
-        _hex_org['tasa_conv_pct'] = (_hex_org['n_con_tx']/_hex_org['n_users']*100).round(1)
-        _hex_org['sin_compras']   = _hex_org['n_users'] - _hex_org['n_con_tx']
-        _hex_org['n_cercanos']    = _hex_org['hex_id'].apply(biz_nearby)
-        _max_s = max((_hex_org['n_users']+_hex_org['n_con_tx']).max(), 1)
-        _hex_org['score_norm_pct'] = ((_hex_org['n_users']+_hex_org['n_con_tx'])/_max_s*100).round(0).astype(int)
-        _hex_org['tier_id'] = _hex_org.apply(
-            lambda r: session_tier(r['n_users'], r['n_cercanos'], r['tasa_conv_pct']), axis=1)
-        _feats_org = []
-        for _, _row in _hex_org.iterrows():
-            _tid = _row['tier_id']
-            _fill, _tlbl, _base_op = SESSION_TIER_DEFS[_tid]
-            _fop = round(min(0.80, _base_op + _row['n_users']*0.03), 2)
-            try: _geo = hex_geojson(str(_row['hex_id']))
-            except: continue
-            _feats_org.append({"type":"Feature","geometry":_geo,"properties":{
-                "hex_id":str(_row['hex_id']),"tier_id":_tid,"tier_label":_tlbl,
-                "n_users":int(_row['n_users']),"n_con_tx":int(_row['n_con_tx']),
-                "sin_compras":int(_row['sin_compras']),"tasa_conv_pct":float(_row['tasa_conv_pct']),
-                "n_cercanos":int(_row['n_cercanos']),"consumo":int(_row['consumo']),
-                "score_norm_pct":int(_row['score_norm_pct']),
-                "fill_color":_fill,"fill_opacity":_fop,
-            }})
-        _sd_by_org[_org] = {"type":"FeatureCollection","features":_feats_org}
-
-HEAT_USERS_BY_ORG = json.dumps(_heat_users_by_org, ensure_ascii=False)
-SESSION_DEMAND_BY_ORG = json.dumps(_sd_by_org, ensure_ascii=False)
-print(f"  Org layers built: {list(_heat_users_by_org.keys())}")
+# SESSION_DEMAND_BY_ORG: solo 'Todas' — evita duplicar ~340KB de GeoJSON por cada org
+HEAT_USERS_BY_ORG     = json.dumps(_heat_users_by_org, ensure_ascii=False)
+SESSION_DEMAND_BY_ORG = json.dumps({'Todas': json.loads(SESSION_DEMAND_DATA)}, ensure_ascii=False)
+print(f"  Org heat layers: {list(_heat_users_by_org.keys())} | SD: solo Todas")
 
 # ══════════════════════════════════════════════════════════════════════
 # 11. ASSEMBLE HTML
@@ -1181,7 +1148,7 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   border-radius:10px;box-shadow:0 4px 18px rgba(0,0,0,.5);font-family:system-ui,sans-serif;
   width:420px;height:300px;min-height:140px;max-height:85vh;
   display:flex;flex-direction:column;user-select:none;overflow:hidden;
-  resize:vertical;}
+  transition:height .2s ease;}
 #hunter-header{background:#dc2626;color:#fff;padding:8px 12px;cursor:move;
   display:flex;justify-content:space-between;align-items:center;font-size:11px;font-weight:700;
   flex-shrink:0;}
