@@ -2777,6 +2777,7 @@ window.flyToHunter = function(lat,lng) {{
 
 document.addEventListener("DOMContentLoaded", function() {{
   setTimeout(function() {{
+    try {{
     // window.THE_MAP ya está seteado en el inline <script> cuando se creó _bizneMap
     var theMap = window.THE_MAP || window._bizneMap;
     if (!theMap) {{
@@ -3116,6 +3117,9 @@ document.addEventListener("DOMContentLoaded", function() {{
     draggable(document.getElementById('hunter-panel'),document.getElementById('hunter-header'));
 
     console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)} · ACTIV:{len(activ_features)}');
+    }} catch(err) {{
+      console.error('❌ Error en initMap:', err.message, err.stack);
+    }}
   }}, 600);
 }});
 </script>"""
@@ -3412,12 +3416,12 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 </div>
 <div id="map"></div>
 <script>
-var _bizneMap = L.map('map', {{center:[19.42,-99.13],zoom:11,zoomControl:true,preferCanvas:true}});
+var _bizneMap = L.map('map', {{center:[19.42,-99.13],zoom:11,zoomControl:true}});
 window.THE_MAP = _bizneMap;
 // Tile layer cargado inmediatamente — no esperar al DOMContentLoaded
 window.TILE_LAYER = L.tileLayer(
   "https://{{s}}.basemaps.cartocdn.com/light_all/{{z}}/{{x}}/{{y}}{{r}}.png",
-  {{attribution:'&copy; CartoDB', maxZoom:20}}
+  {{attribution:'&copy; CartoDB &copy; OpenStreetMap', maxZoom:20}}
 ).addTo(_bizneMap);
 </script>
 {JS}
