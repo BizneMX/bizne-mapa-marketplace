@@ -1548,6 +1548,22 @@ PANEL_HTML = """
     <hr class="bhr">
 
     <div class="bs">
+      <div class="bs-title">⬡ Buscar hexágono</div>
+      <div style="display:flex;gap:4px">
+        <input id="hex-search" type="text" placeholder="HEX-0042 o ID H3..."
+          oninput="searchHex(this.value)"
+          style="flex:1;padding:5px 8px;border:1px solid #e2e8f0;border-radius:5px;
+                 font-size:11px;box-sizing:border-box;outline:none;color:#1e293b;background:#f8fafc">
+        <button onclick="searchHex(document.getElementById('hex-search').value)"
+          style="padding:4px 8px;background:#1e293b;color:#fff;border:none;border-radius:5px;cursor:pointer;font-size:11px">
+          🔍</button>
+      </div>
+      <div id="hex-search-result" style="font-size:9px;color:#94a3b8;margin-top:3px"></div>
+    </div>
+
+    <hr class="bhr">
+
+    <div class="bs">
       <div class="bs-title">🔍 Buscar negocio</div>
       <input id="biz-search" type="text" placeholder="Nombre del negocio..."
         oninput="searchNegocios(this.value)"
@@ -3080,6 +3096,101 @@ document.addEventListener("DOMContentLoaded", function() {{
       var q = (document.getElementById('biz-search')||{{}}).value||'';
       window.searchNegocios(q);
     }};
+    // ── Buscar hexágono por código o ID H3 ────────────────────────
+    window.searchHex = function(q) {{
+      var resultEl = document.getElementById('hex-search-result');
+      if (!q || !q.trim()) {{
+        if (resultEl) resultEl.textContent = '';
+        return;
+      }}
+      q = q.trim().toUpperCase();
+      var found = null;
+      var foundProps = null;
+      var foundLng, foundLat;
+
+      // 1. Buscar en LYR_HEX (hexes de demanda)
+      if (window.LYR_HEX) {{
+        window.LYR_HEX.eachLayer(function(l) {{
+          if (found) return;
+          var p = l.feature ? l.feature.properties : (l._p || {{}});
+          if (!p.hex_code && !p.hex_id) return;
+          var code = (p.hex_code || '').toUpperCase();
+          var hid  = (p.hex_id  || '').toUpperCase();
+          if (code === q || hid === q || code.indexOf(q) === 0) {{
+            found = l;
+            foundProps = p;
+          }}
+        }});
+      }}
+      // 2. Buscar en LYR_HUNTER si no encontró
+      if (!found && window.LYR_HUNTER) {{
+        window.LYR_HUNTER.eachLayer(function(l) {{
+          if (found) return;
+          var p = l.feature ? l.feature.properties : (l._p || {{}});
+          if (!p.hex_code && !p.hex_id) return;
+          var code = (p.hex_code || '').toUpperCase();
+          var hid  = (p.hex_id  || '').toUpperCase();
+          if (code === q || hid === q || code.indexOf(q) === 0) {{
+            found = l;
+            foundProps = p;
+          }}
+        }});
+      }}
+      // 3. Si tiene lat/lng en properties → usar directo
+      if (found) {{
+        if (foundProps && foundProps.lat && foundProps.lng) {{
+          foundLat = foundProps.lat;
+          foundLng = foundProps.lng;
+        }} else {{
+          try {{
+            var c = found.getBounds().getCenter();
+            foundLat = c.lat; foundLng = c.lng;
+          }} catch(e) {{}}
+        }}
+      }}
+      // 4. Fallback: buscar en datos crudos HEX_DATA si LYR_HEX off
+      if (!found || (!foundLat && !foundLng)) {{
+        var datasets = [HEX_DATA, HUNTER_DATA];
+        for (var di = 0; di < datasets.length; di++) {{
+          if (foundLat) break;
+          var features = datasets[di].features || [];
+          for (var fi = 0; fi < features.length; fi++) {{
+            var fp = features[fi].properties || {{}};
+            var code2 = (fp.hex_code || '').toUpperCase();
+            var hid2  = (fp.hex_id  || '').toUpperCase();
+            if (code2 === q || hid2 === q || code2.indexOf(q) === 0) {{
+              foundProps = fp;
+              // Centroide del polígono
+              if (fp.lat && fp.lng) {{
+                foundLat = fp.lat; foundLng = fp.lng;
+              }} else {{
+                var coords = (features[fi].geometry || {{}}).coordinates;
+                if (coords && coords[0]) {{
+                  var ring = coords[0];
+                  var slat = 0, slng = 0;
+                  ring.forEach(function(c){{ slat+=c[1]; slng+=c[0]; }});
+                  foundLat = slat/ring.length; foundLng = slng/ring.length;
+                }}
+              }}
+              break;
+            }}
+          }}
+        }}
+      }}
+
+      if (foundLat && foundLng) {{
+        window.THE_MAP.flyTo([foundLat, foundLng], 15, {{animate:true, duration:0.8}});
+        if (resultEl) resultEl.innerHTML =
+          '<span style="color:#22c55e">✓ ' + (foundProps ? (foundProps.hex_code || foundProps.hex_id || q) : q) + '</span>' +
+          (foundProps && foundProps.gap !== undefined ? ' · Gap: <b>' + foundProps.gap + '</b> 🍽' : '') +
+          (foundProps && foundProps.zona ? ' · ' + foundProps.zona : '');
+        // Mostrar tooltip si está en el mapa
+        if (found) {{ try {{ found.openTooltip(); }} catch(e){{}} }}
+      }} else {{
+        if (resultEl) resultEl.innerHTML = '<span style="color:#ef4444">No encontrado: ' + q + '</span>';
+      }}
+    }};
+
     window.searchNegocios = function(q) {{
       if (!window.LYR_BIZ) return;
       q = q.toLowerCase().trim();
