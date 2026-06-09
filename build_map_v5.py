@@ -1242,7 +1242,7 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
   justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
 #assign-tool-btn:hover,#assign-tool-btn.active{border-color:#f97316;color:#f97316;background:#1a0d00;}
-#assign-panel{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);
+#assign-panel{display:none;position:fixed;top:60px;right:70px;
   z-index:3000;width:400px;max-height:80vh;background:#0f172a;border-radius:14px;
   box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
   flex-direction:column;overflow:hidden;border:1px solid #1e3a52;}
@@ -2395,7 +2395,20 @@ function toggleAssignPanel() {{
   var p = document.getElementById('assign-panel');
   if (p.classList.toggle('open')) {{
     _initAssignPanel();
-    renderAssignedLayer();
+    // Mostrar semana actual
+    var wLabel = document.getElementById('az-current-week');
+    if (wLabel) wLabel.textContent = weekLabel(getISOWeek());
+    refreshWeekDropdown();
+    // Auto-cargar asignaciones de la semana actual si existen
+    try {{
+      var saved = localStorage.getItem('bizne_assign_' + getISOWeek());
+      if (saved) {{
+        _assignments = JSON.parse(saved);
+        renderAssignedLayer();
+        renderRoutes();
+        updateAssignedSummary();
+      }}
+    }} catch(e) {{}}
   }} else {{
     if (_assignMode) toggleAssignMode(); // apagar modo selección al cerrar
   }}
@@ -2414,6 +2427,10 @@ function toggleAssignMode() {{
   // Cambiar cursor del mapa
   var mapEl = document.getElementById('map');
   if (mapEl) mapEl.style.cursor = _assignMode ? 'crosshair' : '';
+  // Priorizar capa Hunter en modo selección para que sus clicks no sean tapados
+  if (_assignMode && window.LYR_HUNTER) {{
+    window.LYR_HUNTER.bringToFront();
+  }}
 }}
 
 // ── Agregar zona al pending (llamado desde el click del hunter hex) ──
@@ -2480,6 +2497,93 @@ function assignZonesToHunter() {{
   renderAssignedLayer();
   renderRoutes();
   updateAssignedSummary();
+  saveAssignmentsToStorage();
+}}
+
+// ── Helpers de semana ISO ────────────────────────────────────────
+function getISOWeek(d) {{
+  var date = d ? new Date(d) : new Date();
+  var day = date.getDay() || 7;
+  date.setUTCDate(date.getUTCDate() + 4 - day);
+  var yearStart = new Date(Date.UTC(date.getUTCFullYear(),0,1));
+  var w = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return date.getUTCFullYear() + '-W' + String(w).padStart(2,'0');
+}}
+function weekLabel(key) {{
+  // key = "2026-W23" → "Semana 23 (Jun 1–7, 2026)"
+  var parts = key.split('-W');
+  if (parts.length !== 2) return key;
+  var year = parseInt(parts[0]), week = parseInt(parts[1]);
+  // Lunes de esa semana ISO
+  var jan4 = new Date(year, 0, 4);
+  var monday = new Date(jan4.getTime() + (week - 1) * 7 * 86400000);
+  monday.setDate(monday.getDate() - (monday.getDay() || 7) + 1);
+  var sunday = new Date(monday.getTime() + 6 * 86400000);
+  var months = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  return 'Sem '+week+' · '+months[monday.getMonth()]+' '+monday.getDate()+'–'+sunday.getDate()+' '+year;
+}}
+function saveAssignmentsToStorage() {{
+  try {{
+    var key = 'bizne_assign_' + getISOWeek();
+    localStorage.setItem(key, JSON.stringify(_assignments));
+    refreshWeekDropdown();
+  }} catch(e) {{ console.warn('localStorage no disponible:', e); }}
+}}
+function loadAssignmentsFromStorage(weekKey) {{
+  try {{
+    var raw = localStorage.getItem('bizne_assign_' + weekKey);
+    if (!raw) {{ alert('No hay asignaciones guardadas para esa semana.'); return; }}
+    _assignments = JSON.parse(raw);
+    renderPendingList();
+    renderAssignedLayer();
+    renderRoutes();
+    updateAssignedSummary();
+  }} catch(e) {{ console.warn('Error al cargar semana:', e); }}
+}}
+function refreshWeekDropdown() {{
+  var sel = document.getElementById('az-week-select');
+  if (!sel) return;
+  var currentVal = sel.value;
+  // Listar todas las semanas guardadas
+  var weeks = [];
+  for (var i = 0; i < localStorage.length; i++) {{
+    var k = localStorage.key(i);
+    if (k && k.startsWith('bizne_assign_')) weeks.push(k.replace('bizne_assign_',''));
+  }}
+  weeks.sort().reverse();
+  sel.innerHTML = '<option value="">— cargar semana guardada —</option>';
+  weeks.forEach(function(w) {{
+    var opt = document.createElement('option');
+    opt.value = w; opt.textContent = weekLabel(w);
+    if (w === currentVal) opt.selected = true;
+    sel.appendChild(opt);
+  }});
+}}
+// ── Generar links por hunter (base64 encoded) ────────────────────
+function generateHunterLinks() {{
+  var container = document.getElementById('az-links-container');
+  if (!container) return;
+  container.innerHTML = '';
+  var base = window.location.origin + window.location.pathname;
+  var semana = getISOWeek();
+  Object.keys(_assignments).forEach(function(h) {{
+    var zones = _assignments[h];
+    if (!zones.length) return;
+    var payload = JSON.stringify({{hunter:h, semana:semana, zonas:zones}});
+    var encoded = btoa(unescape(encodeURIComponent(payload)));
+    var url = base + '?hunter=' + encodeURIComponent(h) + '&semana=' + semana + '&data=' + encoded;
+    var row = document.createElement('div');
+    row.style.cssText = 'margin-bottom:6px;display:flex;align-items:center;gap:6px;';
+    var color = _hunterColorMap[h] || '#94a3b8';
+    row.innerHTML =
+      '<div style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></div>'+
+      '<span style="font-size:10px;color:#e2e8f0;flex:1">'+h+'</span>'+
+      '<button onclick="navigator.clipboard.writeText(\''+url.replace(/'/g,"\\'")+'\')" '+
+      'style="font-size:9px;padding:2px 8px;background:#1e3a52;border:1px solid #334155;'+
+      'color:#94a3b8;border-radius:4px;cursor:pointer">📋 Copiar link</button>';
+    container.appendChild(row);
+  }});
+  if (!container.innerHTML) container.innerHTML = '<div style="font-size:10px;color:#64748b">No hay asignaciones todavía.</div>';
 }}
 
 // ── Actualizar resumen de asignaciones ───────────────────────────
@@ -2626,6 +2730,7 @@ function clearAllAssignments() {{
   renderAssignedLayer();
   if (LYR_ROUTES) {{ window.THE_MAP.removeLayer(LYR_ROUTES); LYR_ROUTES = null; }}
   updateAssignedSummary();
+  saveAssignmentsToStorage();
   document.querySelectorAll('.az-h-count').forEach(function(el){{ el.textContent = '0 zonas'; }});
 }}
 
@@ -3245,8 +3350,93 @@ document.addEventListener("DOMContentLoaded", function() {{
     draggable(document.getElementById('kpi-dash'),document.getElementById('kpi-dash-header'));
     draggable(document.getElementById('bmap-panel'),document.getElementById('bmap-header'));
     draggable(document.getElementById('hunter-panel'),document.getElementById('hunter-header'));
+    draggable(document.getElementById('assign-panel'),document.getElementById('assign-head'));
 
     console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)} · ACTIV:{len(activ_features)}');
+
+    // ── Hunter View: detectar ?hunter= en la URL ─────────────────────────────
+    (function() {{
+      var params = new URLSearchParams(window.location.search);
+      var hunterName = params.get('hunter');
+      var semana     = params.get('semana');
+      var dataB64    = params.get('data');
+      if (!hunterName || !dataB64) return;
+
+      // Ocultar todos los paneles del dashboard y controles
+      ['kpi-dash','bmap-panel','hunter-panel','hunter-toggle',
+       'assign-tool-btn','marquee-tool-btn','dr-panel',
+       'guide-btn','mode-btn'].forEach(function(id) {{
+        var el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+      }});
+
+      // Mostrar banner de hunter
+      var banner = document.createElement('div');
+      banner.style.cssText =
+        'position:fixed;top:12px;left:50%;transform:translateX(-50%);z-index:4000;'+
+        'background:#0f172a;border:1px solid #f97316;border-radius:10px;'+
+        'padding:10px 20px;font-family:system-ui,sans-serif;color:#e2e8f0;'+
+        'box-shadow:0 4px 20px rgba(0,0,0,.7);text-align:center;min-width:260px;';
+      banner.innerHTML =
+        '<div style="font-size:11px;color:#f97316;font-weight:700;letter-spacing:.5px">RUTAS DE HUNTING</div>'+
+        '<div style="font-size:16px;font-weight:800;color:#fff;margin:2px 0">'+hunterName+'</div>'+
+        (semana ? '<div style="font-size:10px;color:#94a3b8">'+weekLabel(semana)+'</div>' : '');
+      document.body.appendChild(banner);
+
+      // Decodificar zonas
+      try {{
+        var payload = JSON.parse(decodeURIComponent(escape(atob(dataB64))));
+        var zonas   = payload.zonas || [];
+        if (!zonas.length) return;
+
+        var color = _ASSIGN_COLORS[0];
+        var features = zonas.map(function(z, i) {{
+          return {{
+            type:'Feature',
+            geometry:{{type:'Polygon',coordinates:h3.cellToBoundary(z.hex_id).map(function(p){{return [p[1],p[0]];}}).concat([[h3.cellToBoundary(z.hex_id)[0][1],h3.cellToBoundary(z.hex_id)[0][0]]]}}}},
+            properties: Object.assign({{_hunter:hunterName,_orden:i+1}}, z)
+          }};
+        }});
+
+        var lyr = L.geoJSON({{type:'FeatureCollection',features:features}}, {{
+          style: function() {{ return {{color:color,weight:2,fillColor:color,fillOpacity:0.35}}; }},
+          onEachFeature: function(f,l) {{
+            var p = f.properties;
+            l.bindPopup(
+              '<b>Parada #'+p._orden+'</b><br>'+
+              'Zona: '+p.zona+'<br>'+
+              'Rank: #'+p.rank+'<br>'+
+              'Gap: '+p.gap,
+              {{maxWidth:200}}
+            );
+            l.bindTooltip('#'+p._orden+' · '+p.zona, {{sticky:true}});
+          }}
+        }}).addTo(window.THE_MAP);
+
+        // Ruta entre centroides
+        var sorted = zonas.slice().sort(function(a,b){{return a.rank-b.rank;}});
+        var latlngs = sorted.map(function(z){{return [z.lat, z.lng];}});
+        L.polyline(latlngs, {{color:color,weight:3,opacity:.8,dashArray:'8 4'}}).addTo(window.THE_MAP);
+        sorted.forEach(function(z,i){{
+          L.marker([z.lat,z.lng], {{
+            icon: L.divIcon({{
+              className:'',
+              html:'<div style="background:'+color+';color:#fff;border-radius:50%;width:20px;height:20px;'+
+                   'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;'+
+                   'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)">'+(i+1)+'</div>',
+              iconSize:[20,20],iconAnchor:[10,10]
+            }})
+          }}).bindTooltip('#'+(i+1)+' '+z.zona,{{permanent:false}}).addTo(window.THE_MAP);
+        }});
+
+        // Zoom a las zonas del hunter
+        if (latlngs.length) window.THE_MAP.fitBounds(L.latLngBounds(latlngs), {{padding:[40,40]}});
+      }} catch(e) {{
+        console.error('Hunter view error:', e);
+        banner.innerHTML += '<div style="color:#ef4444;font-size:10px;margin-top:4px">Error al cargar zonas: '+e.message+'</div>';
+      }}
+    }})();
+
     }} catch(err) {{
       console.error('❌ Error en initMap:', err.message, err.stack);
     }}
@@ -3500,6 +3690,16 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
     <button onclick="toggleAssignPanel()" style="background:none;border:none;color:#fff;cursor:pointer;font-size:16px">✕</button>
   </div>
   <div id="assign-body">
+    <!-- Semana actual + cargar semana guardada -->
+    <div style="margin-bottom:10px;background:#1e293b;border-radius:6px;padding:7px 8px">
+      <div style="font-size:9px;color:#94a3b8;font-weight:600;letter-spacing:.3px;margin-bottom:5px">SEMANA DE TRABAJO</div>
+      <div style="font-size:11px;color:#f97316;font-weight:700;margin-bottom:5px" id="az-current-week"></div>
+      <select id="az-week-select" onchange="if(this.value)loadAssignmentsFromStorage(this.value)"
+        style="width:100%;background:#0f172a;border:1px solid #334155;color:#94a3b8;
+        font-size:10px;padding:4px 6px;border-radius:4px;cursor:pointer">
+        <option value="">— cargar semana guardada —</option>
+      </select>
+    </div>
     <div style="margin-bottom:10px">
       <div style="font-size:10px;color:#94a3b8;margin-bottom:6px;font-weight:600;letter-spacing:.3px">SELECCIONAR HUNTER</div>
       <div id="az-hunter-list" style="display:flex;flex-direction:column;gap:2px"></div>
@@ -3511,7 +3711,7 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
           style="font-size:9px;padding:3px 8px;border:1px solid #f97316;background:none;color:#f97316;border-radius:4px;cursor:pointer">
           Activar selección</button>
       </div>
-      <div id="az-pending-list" style="max-height:120px;overflow-y:auto"></div>
+      <div id="az-pending-list" style="max-height:100px;overflow-y:auto"></div>
     </div>
     <div style="display:flex;gap:6px;margin-bottom:10px">
       <button onclick="assignZonesToHunter()"
@@ -3519,20 +3719,32 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
         ✅ Asignar zonas</button>
       <button onclick="clearPendingZones()"
         style="background:none;border:1px solid #334155;color:#94a3b8;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:11px">
-        🗑 Limpiar</button>
+        🗑</button>
     </div>
     <div style="border-top:1px solid #1e3a52;padding-top:10px">
       <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.3px;margin-bottom:6px">
         ZONAS ASIGNADAS <span id="az-total-assigned" style="color:#22c55e">0</span></div>
-      <div id="az-assigned-summary" style="font-size:10px;color:#e2e8f0;max-height:120px;overflow-y:auto"></div>
+      <div id="az-assigned-summary" style="font-size:10px;color:#e2e8f0;max-height:100px;overflow-y:auto"></div>
     </div>
     <div style="display:flex;gap:6px;margin-top:8px">
       <button onclick="exportAssignments()"
         style="flex:1;background:#1e3a52;color:#e2e8f0;border:none;padding:6px;border-radius:6px;cursor:pointer;font-size:10px">
-        ⬇ Exportar CSV</button>
+        ⬇ CSV</button>
       <button onclick="clearAllAssignments()"
         style="background:none;border:1px solid #334155;color:#94a3b8;padding:6px 10px;border-radius:6px;cursor:pointer;font-size:10px">
-        🗑 Limpiar todo</button>
+        🗑 Todo</button>
+    </div>
+    <!-- Links por hunter -->
+    <div style="border-top:1px solid #1e3a52;padding-top:10px;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <div style="font-size:10px;color:#94a3b8;font-weight:600;letter-spacing:.3px">🔗 LINKS POR HUNTER</div>
+        <button onclick="generateHunterLinks()"
+          style="font-size:9px;padding:2px 8px;background:#1e3a52;border:1px solid #334155;
+          color:#94a3b8;border-radius:4px;cursor:pointer">Generar</button>
+      </div>
+      <div id="az-links-container" style="font-size:10px;color:#64748b">
+        Asigna zonas y presiona "Generar".
+      </div>
     </div>
   </div>
 </div>
