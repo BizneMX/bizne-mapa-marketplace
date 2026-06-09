@@ -1570,11 +1570,17 @@ PANEL_HTML = """
         style="width:100%;padding:5px 8px;border:1px solid #e2e8f0;border-radius:5px;
                font-size:11px;box-sizing:border-box;outline:none;color:#1e293b;background:#f8fafc">
       <div id="biz-count" style="font-size:9px;color:#94a3b8;margin-top:3px;text-align:right"></div>
-      <label class="bchk" style="margin-top:5px">
-        <input type="checkbox" id="biz-nuevos-filter" onchange="filterBizNuevos(this.checked)">
-        <span style="font-size:10px;color:#0f172a">🆕 Solo negocios ≤ 30 días</span>
-      </label>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-filter').checked=false;filterBizNuevos(false)"
+      <div style="display:flex;gap:6px;margin-top:5px">
+        <label class="bchk" style="flex:1">
+          <input type="checkbox" id="biz-nuevos-7d" onchange="filterBizNuevos(this.checked?7:(document.getElementById('biz-nuevos-30d').checked?30:0))">
+          <span style="font-size:10px;color:#0f172a">🆕 ≤ 7 días</span>
+        </label>
+        <label class="bchk" style="flex:1">
+          <input type="checkbox" id="biz-nuevos-30d" onchange="filterBizNuevos(this.checked?30:(document.getElementById('biz-nuevos-7d').checked?7:0))">
+          <span style="font-size:10px;color:#0f172a">🆕 ≤ 30 días</span>
+        </label>
+      </div>
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
     </div>
@@ -3090,9 +3096,14 @@ document.addEventListener("DOMContentLoaded", function() {{
                          opacity:show?1:0,interactive:show}});
       }});
     }};
-    window._bizNuevosOnly = false;
-    window.filterBizNuevos = function(onlyNew) {{
-      window._bizNuevosOnly = onlyNew;
+    window._bizNuevosDays = 0;  // 0 = sin filtro, 7 = ≤7d, 30 = ≤30d
+    window.filterBizNuevos = function(days) {{
+      window._bizNuevosDays = parseInt(days) || 0;
+      // Sincronizar checkboxes
+      var cb7  = document.getElementById('biz-nuevos-7d');
+      var cb30 = document.getElementById('biz-nuevos-30d');
+      if (cb7)  cb7.checked  = (window._bizNuevosDays === 7);
+      if (cb30) cb30.checked = (window._bizNuevosDays === 30);
       var q = (document.getElementById('biz-search')||{{}}).value||'';
       window.searchNegocios(q);
     }};
@@ -3195,18 +3206,19 @@ document.addEventListener("DOMContentLoaded", function() {{
       if (!window.LYR_BIZ) return;
       q = q.toLowerCase().trim();
       var vis=0, tot=0;
-      var onlyNew = window._bizNuevosOnly;
+      var daysFilter = window._bizNuevosDays || 0;
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
         var p = layer._p || {{}};
-        var matchQ  = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
-        var matchNew = !onlyNew || (parseInt(p.dias_creacion||9999) <= 30);
+        var matchQ   = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+        var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
         var show = matchQ && matchNew;
         layer.setStyle({{fillOpacity:show?0.8:0,opacity:show?1:0,interactive:show}});
         if(show) vis++;
       }});
       var el=document.getElementById('biz-count');
-      if(el){{el.textContent=vis+' de '+tot+' negocios'+(onlyNew?' (≤30d)':'');
+      var suffix = daysFilter ? ' (≤'+daysFilter+'d)' : '';
+      if(el){{el.textContent=vis+' de '+tot+' negocios'+suffix;
               el.style.color=vis===0?'#dc2626':'#64748b';}}
     }};
     window.updateHexTT = function() {{
