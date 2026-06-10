@@ -1202,7 +1202,10 @@ function toggleAssignMode() {
   if (_assignMode && typeof _mqActive !== 'undefined' && _mqActive) {
     toggleMarqueeTool();
   }
-  // Priorizar capa Hunter en modo selección para que sus clicks no sean tapados
+  // Subir/bajar z-index del hunterPane para que reciba los clicks por encima de hexPane/sessionDemandPane
+  // hunterPane normal=330; en assign mode lo subimos a 395 (justo debajo del markerPane de Leaflet=400)
+  var hp = window.THE_MAP && window.THE_MAP.getPane('hunterPane');
+  if (hp) hp.style.zIndex = _assignMode ? '395' : '330';
   if (_assignMode && window.LYR_HUNTER) {
     window.LYR_HUNTER.bringToFront();
   }
