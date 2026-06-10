@@ -1195,9 +1195,13 @@ function toggleAssignMode() {
   if (btn) btn.style.background = _assignMode ? '#7c2d12' : 'none';
   if (bar) bar.style.display = _assignMode ? 'block' : 'none';
   if (tb)  tb.classList.toggle('active', _assignMode);
-  // Cambiar cursor del mapa
+  // Cambiar cursor del mapa — pointer (no crosshair) para indicar que se hace clic en hexes
   var mapEl = document.getElementById('map');
-  if (mapEl) mapEl.style.cursor = _assignMode ? 'crosshair' : '';
+  if (mapEl) mapEl.style.cursor = _assignMode ? 'pointer' : '';
+  // Si el marquee está activo, apagarlo — su mousedown haría stopPropagation y tragaría los clicks
+  if (_assignMode && typeof _mqActive !== 'undefined' && _mqActive) {
+    toggleMarqueeTool();
+  }
   // Priorizar capa Hunter en modo selección para que sus clicks no sean tapados
   if (_assignMode && window.LYR_HUNTER) {
     window.LYR_HUNTER.bringToFront();
@@ -2486,6 +2490,8 @@ var _mqHighlightedLayers = [];
 function _mqMap() { return window.THE_MAP || null; }
 
 function toggleMarqueeTool() {
+  // No activar el marquee si el asignador de zonas está en modo selección
+  if (typeof _assignMode !== 'undefined' && _assignMode && !_mqActive) return;
   var m = _mqMap();
   _mqActive = !_mqActive;
   var btn = document.getElementById('marquee-tool-btn');
