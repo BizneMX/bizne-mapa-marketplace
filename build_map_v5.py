@@ -3383,57 +3383,49 @@ document.addEventListener("DOMContentLoaded", function() {{
         (semana ? '<div style="font-size:10px;color:#94a3b8">'+weekLabel(semana)+'</div>' : '');
       document.body.appendChild(banner);
 
-      // Decodificar zonas
+      // Decodificar zonas — usar centroides (lat/lng ya vienen en el payload)
       try {{
         var payload = JSON.parse(decodeURIComponent(escape(atob(dataB64))));
         var zonas   = payload.zonas || [];
         if (!zonas.length) return;
 
         var color = _ASSIGN_COLORS[0];
-        var features = zonas.map(function(z, i) {{
-          return {{
-            type:'Feature',
-            geometry:{{type:'Polygon',coordinates:h3.cellToBoundary(z.hex_id).map(function(p){{return [p[1],p[0]];}}).concat([[h3.cellToBoundary(z.hex_id)[0][1],h3.cellToBoundary(z.hex_id)[0][0]]]}}}},
-            properties: Object.assign({{_hunter:hunterName,_orden:i+1}}, z)
-          }};
-        }});
+        // Ordenar por rank
+        var sorted = zonas.slice().sort(function(a,b){{ return a.rank - b.rank; }});
+        var latlngs = sorted.map(function(z){{ return [z.lat, z.lng]; }});
 
-        var lyr = L.geoJSON({{type:'FeatureCollection',features:features}}, {{
-          style: function() {{ return {{color:color,weight:2,fillColor:color,fillOpacity:0.35}}; }},
-          onEachFeature: function(f,l) {{
-            var p = f.properties;
-            l.bindPopup(
-              '<b>Parada #'+p._orden+'</b><br>'+
-              'Zona: '+p.zona+'<br>'+
-              'Rank: #'+p.rank+'<br>'+
-              'Gap: '+p.gap,
-              {{maxWidth:200}}
-            );
-            l.bindTooltip('#'+p._orden+' · '+p.zona, {{sticky:true}});
-          }}
-        }}).addTo(window.THE_MAP);
-
-        // Ruta entre centroides
-        var sorted = zonas.slice().sort(function(a,b){{return a.rank-b.rank;}});
-        var latlngs = sorted.map(function(z){{return [z.lat, z.lng];}});
+        // Polyline de ruta
         L.polyline(latlngs, {{color:color,weight:3,opacity:.8,dashArray:'8 4'}}).addTo(window.THE_MAP);
-        sorted.forEach(function(z,i){{
-          L.marker([z.lat,z.lng], {{
+
+        // Marcadores numerados
+        sorted.forEach(function(z, i) {{
+          L.marker([z.lat, z.lng], {{
             icon: L.divIcon({{
-              className:'',
-              html:'<div style="background:'+color+';color:#fff;border-radius:50%;width:20px;height:20px;'+
-                   'display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;'+
-                   'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5)">'+(i+1)+'</div>',
-              iconSize:[20,20],iconAnchor:[10,10]
+              className: '',
+              html: '<div style="background:'+color+';color:#fff;border-radius:50%;width:24px;height:24px;'+
+                    'display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;'+
+                    'border:2px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.6)">'+(i+1)+'</div>',
+              iconSize: [24,24], iconAnchor: [12,12]
             }})
-          }}).bindTooltip('#'+(i+1)+' '+z.zona,{{permanent:false}}).addTo(window.THE_MAP);
+          }})
+          .bindPopup(
+            '<b>Parada #'+(i+1)+'</b><br>'+
+            'Zona: '+(z.zona||'')+'<br>'+
+            'Rank: #'+z.rank+'<br>'+
+            'Gap: '+(z.gap||'')+
+            (z.demanda_dia ? '<br>Demanda/día: '+z.demanda_dia : '')
+          )
+          .bindTooltip('#'+(i+1)+' · '+(z.zona||''), {{sticky:true}})
+          .addTo(window.THE_MAP);
         }});
 
-        // Zoom a las zonas del hunter
-        if (latlngs.length) window.THE_MAP.fitBounds(L.latLngBounds(latlngs), {{padding:[40,40]}});
+        // Zoom al conjunto de zonas
+        if (latlngs.length) {{
+          window.THE_MAP.fitBounds(L.latLngBounds(latlngs), {{padding:[60,60]}});
+        }}
       }} catch(e) {{
         console.error('Hunter view error:', e);
-        banner.innerHTML += '<div style="color:#ef4444;font-size:10px;margin-top:4px">Error al cargar zonas: '+e.message+'</div>';
+        banner.innerHTML += '<div style="color:#ef4444;font-size:10px;margin-top:4px">Error: '+e.message+'</div>';
       }}
     }})();
 
