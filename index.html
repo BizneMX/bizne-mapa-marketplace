@@ -1202,10 +1202,21 @@ function toggleAssignMode() {
   if (_assignMode && typeof _mqActive !== 'undefined' && _mqActive) {
     toggleMarqueeTool();
   }
-  // Subir/bajar z-index del hunterPane para que reciba los clicks por encima de hexPane/sessionDemandPane
-  // hunterPane normal=330; en assign mode lo subimos a 395 (justo debajo del markerPane de Leaflet=400)
-  var hp = window.THE_MAP && window.THE_MAP.getPane('hunterPane');
-  if (hp) hp.style.zIndex = _assignMode ? '395' : '330';
+  // En assign mode: deshabilitar pointer-events de TODOS los panes que no son hunter,
+  // así los SVG paths de hexPane/sessionDemandPane no interceptan los clicks
+  var _allPanes = ['hexPane','sessionDemandPane','heatHexPane'];
+  if (window.THE_MAP) {
+    _allPanes.forEach(function(name) {
+      var p = window.THE_MAP.getPane(name);
+      if (p) p.style.pointerEvents = _assignMode ? 'none' : (name === 'hexPane' ? '' : 'auto');
+    });
+    // hunterPane: garantizar pointer-events auto y z-index arriba
+    var hp = window.THE_MAP.getPane('hunterPane');
+    if (hp) {
+      hp.style.pointerEvents = 'auto';
+      hp.style.zIndex = _assignMode ? '395' : '330';
+    }
+  }
   if (_assignMode && window.LYR_HUNTER) {
     window.LYR_HUNTER.bringToFront();
   }
