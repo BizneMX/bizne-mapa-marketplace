@@ -26,6 +26,7 @@ if _CI:
     SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
     UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # actualizado por bizne_model_ci.py desde BD
     TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
+    TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
@@ -40,6 +41,16 @@ else:
     SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
     UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
     TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv'
+    TRX_HIST_CSVS = [
+        '/sessions/confident-jolly-pasteur/mnt/uploads/data_transacciones.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_2026_05_04.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_2026_05_11.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_2026_05_12 (2).csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_2026_05_13.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_24.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_05_28.csv',
+        '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv',
+    ]
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (3).csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
@@ -97,6 +108,34 @@ df_trx['status_trx'] = df_trx['status_trx'].fillna('')
 trx_fail = (df_trx['status_trx'].str.contains('incompleta', case=False)).sum()
 trx_ok   = (df_trx['status_trx'].str.contains('completa', case=False) &
             ~df_trx['status_trx'].str.contains('incompleta', case=False)).sum()
+
+# Tx Policía Auxiliar por negocio (últimos 30 días, sólo completas)
+_trx_pa = df_trx[
+    df_trx['organizacion'].str.contains('Policia Auxiliar|Policía Auxiliar', case=False, na=False) &
+    df_trx['status_trx'].str.contains('completa', case=False) &
+    ~df_trx['status_trx'].str.contains('incompleta', case=False)
+]
+tx_pa_by_service = _trx_pa.groupby('service_id').size().to_dict()
+
+# Tx PA históricas — combinar todos los CSVs disponibles, deduplicar por id
+_hist_dfs = []
+for _f in TRX_HIST_CSVS:
+    try:
+        _d = pd.read_csv(_f, encoding='utf-8')
+        _d.columns = _d.columns.str.strip()
+        _hist_dfs.append(_d)
+    except Exception:
+        pass
+if not _hist_dfs:
+    _hist_dfs = [df_trx]   # fallback: solo el CSV actual
+_df_hist_all = pd.concat(_hist_dfs).drop_duplicates(subset='id')
+_trx_pa_hist = _df_hist_all[
+    _df_hist_all['organizacion'].str.contains('Policia Auxiliar|Policía Auxiliar', case=False, na=False) &
+    _df_hist_all['status_trx'].str.contains('completa', case=False) &
+    ~_df_hist_all['status_trx'].str.contains('incompleta', case=False)
+]
+tx_pa_hist_by_service = _trx_pa_hist.groupby('service_id').size().to_dict()
+print(f"  Tx PA históricas: {len(_trx_pa_hist)} (dedup) en {_trx_pa_hist['service_id'].nunique()} negocios")
 
 # Tasa aceptación
 tasa_aceptacion = round(trx_ok/(trx_ok+trx_fail)*100, 1) if (trx_ok+trx_fail) > 0 else 0
@@ -253,6 +292,9 @@ st_col = 'r' if k['pct_sin_tx']>20 else 'y'
 print("Building HEX_DATA…")
 df_hex = pd.read_csv(HEX_CSV)
 df_hex.columns = df_hex.columns.str.strip()
+# Ordenar por hex_id SIEMPRE antes de asignar HEX-XXXX
+# — hex_id es un string H3 estable y único, así los códigos nunca cambian entre builds
+df_hex = df_hex.sort_values('hex_id').reset_index(drop=True)
 
 hex_features = []
 _hex_seq = 1   # contador global para HEX-XXXX
@@ -476,6 +518,9 @@ for _, row in df_neg.iterrows():
             "service_cohort": qs_data.get('service_cohort', ''),
             "capacidad":      int(float(row.get('capacidad_comidas_dia', 0) or 0)),
             "tx_30d":         qs_data.get('tx_30d', int(row.get('tx_30d', 0))),
+            "tx_pa_30d":      int(tx_pa_by_service.get(int(qs_data.get('service_id', 0) or 0), 0)),
+            "tx_pa_hist":     int(tx_pa_hist_by_service.get(int(qs_data.get('service_id', 0) or 0), 0)),
+            "dormida":        bool(qs_data.get('dormida', False)),
             "tx_historicas":  qs_data.get('tx_historicas', 0),
             "tx_hist_real":   qs_data.get('tx_hist_real', qs_data.get('tx_historicas', 0)),
             "ventas_30d":     round(float(row.get('ventas_30d', 0) or 0), 0),
@@ -529,17 +574,47 @@ print(f"  Quality avg:{_qs_avg} | median:{_qs_median} | saludables:{_qs_saludabl
 print("Building DORM_DATA…")
 dorm_features = []
 for _, row in df_dorm.iterrows():
+    name_key  = str(row.get('name','')).strip().lower()
+    qs_data   = qs_lookup.get(name_key, {})
+    sid       = int(qs_data.get('service_id', 0) or 0)
     feat = {
         "type":"Feature",
         "geometry":{"type":"Point","coordinates":[float(row['lng']),float(row['lat'])]},
         "properties":{
-            "nombre": str(row.get('name','')),
-            "delegacion": str(row.get('delegacion','')),
-            "rating": float(row.get('rating',0)),
-            "tx_historicas": int(row.get('tx_historicas',0)),
-            "dias_sin_trx": 0 if pd.isna(row.get('dias_sin_trx')) else int(float(row.get('dias_sin_trx',0))),
-            "quality_score": 0 if pd.isna(row.get('quality_score')) else int(float(row.get('quality_score',0))),
-            "etapa": str(row.get('etapa_negocio','')),
+            "nombre":        str(row.get('name','')),
+            "delegacion":    str(row.get('delegacion','')),
+            "rating":        float(row.get('rating', 0)),
+            "tx_historicas": int(row.get('tx_historicas', 0)),
+            "tx_hist_real":  qs_data.get('tx_hist_real', int(row.get('tx_historicas', 0))),
+            "tx_90d":        qs_data.get('tx_90d', 0),
+            "tx_30d":        qs_data.get('tx_30d', 0),
+            "tx_pa_30d":     int(tx_pa_by_service.get(sid, 0)),
+            "tx_pa_hist":    int(tx_pa_hist_by_service.get(sid, 0)),
+            "dormida":       True,
+            "dias_sin_trx":  0 if pd.isna(row.get('dias_sin_trx')) else int(float(row.get('dias_sin_trx', 0))),
+            "quality_score": 0 if pd.isna(row.get('quality_score')) else int(float(row.get('quality_score', 0))),
+            "quality_nivel": qs_data.get('nivel', ''),
+            "service_cohort":qs_data.get('service_cohort', ''),
+            "etapa":         qs_data.get('etapa', str(row.get('etapa_negocio', ''))),
+            "capacidad":     int(float(row.get('capacidad_si_reactiva', 0) or 0)),
+            "ventas_30d":    round(float(qs_data.get('ventas_30d', 0) or 0), 0),
+            "tasa_acepta":   qs_data.get('tasa_acepta', 0),
+            "tiempo_acepta": qs_data.get('tiempo_acepta', 0),
+            "menu_bizne":    qs_data.get('menu_bizne', False),
+            "menu_dia":      qs_data.get('menu_dia', False),
+            "menu_carta":    qs_data.get('menu_carta', False),
+            "service_id":    sid,
+            "phone_number":  qs_data.get('phone_number', ''),
+            "owner_name":    qs_data.get('owner_name', ''),
+            "hunter":        qs_data.get('hunter', ''),
+            "address":       qs_data.get('address', ''),
+            "colonia":       qs_data.get('colonia', ''),
+            "food_types":    qs_data.get('food_types', str(row.get('food_types', ''))),
+            "horario":       qs_data.get('horario', ''),
+            "creation_date": qs_data.get('creation_date', ''),
+            "dias_creacion": qs_data.get('dias_creacion', 0),
+            "lat":           round(float(row['lat']), 5),
+            "lng":           round(float(row['lng']), 5),
         }
     }
     dorm_features.append(feat)
@@ -2230,6 +2305,18 @@ document.addEventListener('click', function(e){{
     var hid = decodeURIComponent(btn3.getAttribute('data-hid') || '');
     if (hid) removePendingZone(hid);
   }}
+  var btn4 = e.target.closest('.az-copy-link');
+  if (btn4) {{
+    var rawUrl = decodeURIComponent(btn4.getAttribute('data-url') || '');
+    if (rawUrl) {{
+      navigator.clipboard.writeText(rawUrl).then(function() {{
+        btn4.textContent = '✅ Copiado';
+        setTimeout(function(){{ btn4.textContent = '📋 Copiar link'; }}, 2000);
+      }}).catch(function() {{
+        prompt('Copia este link:', rawUrl);
+      }});
+    }}
+  }}
 }});
 function refreshMap(){{
   var btn = document.getElementById('refresh-btn');
@@ -2424,10 +2511,37 @@ function toggleAssignMode() {{
   if (btn) btn.style.background = _assignMode ? '#7c2d12' : 'none';
   if (bar) bar.style.display = _assignMode ? 'block' : 'none';
   if (tb)  tb.classList.toggle('active', _assignMode);
-  // Cambiar cursor del mapa
+  // Cambiar cursor del mapa — pointer (no crosshair) para indicar que se hace clic en hexes
   var mapEl = document.getElementById('map');
-  if (mapEl) mapEl.style.cursor = _assignMode ? 'crosshair' : '';
-  // Priorizar capa Hunter en modo selección para que sus clicks no sean tapados
+  if (mapEl) mapEl.style.cursor = _assignMode ? 'pointer' : '';
+  // Si el marquee está activo, apagarlo — su mousedown haría stopPropagation y tragaría los clicks
+  if (_assignMode && typeof _mqActive !== 'undefined' && _mqActive) {{
+    toggleMarqueeTool();
+  }}
+  // En assign mode: deshabilitar pointer-events de TODOS los panes excepto hunterPane.
+  // IMPORTANTE: overlayPane (z-index 400) es el pane default de Leaflet donde viven
+  // LYR_BIZ, LYR_DORM, LYR_METRO, LYR_UPCS, LYR_SEC — sus circleMarkers interceptan
+  // clicks por encima del hunterPane si no se deshabilitan explícitamente.
+  var _disablePanes = ['hexPane','sessionDemandPane','heatHexPane',
+                       'overlayPane','shadowPane','markerPane'];
+  if (window.THE_MAP) {{
+    _disablePanes.forEach(function(name) {{
+      var p = window.THE_MAP.getPane(name);
+      if (!p) return;
+      if (_assignMode) {{
+        p._prevPE = p.style.pointerEvents;   // guardar estado previo
+        p.style.pointerEvents = 'none';
+      }} else {{
+        p.style.pointerEvents = p._prevPE !== undefined ? p._prevPE : '';
+      }}
+    }});
+    // hunterPane: garantizar pointer-events auto y z-index arriba
+    var hp = window.THE_MAP.getPane('hunterPane');
+    if (hp) {{
+      hp.style.pointerEvents = 'auto';
+      hp.style.zIndex = _assignMode ? '395' : '330';
+    }}
+  }}
   if (_assignMode && window.LYR_HUNTER) {{
     window.LYR_HUNTER.bringToFront();
   }}
@@ -2578,7 +2692,7 @@ function generateHunterLinks() {{
     row.innerHTML =
       '<div style="width:8px;height:8px;border-radius:50%;background:'+color+';flex-shrink:0"></div>'+
       '<span style="font-size:10px;color:#e2e8f0;flex:1">'+h+'</span>'+
-      '<button onclick="navigator.clipboard.writeText(\''+url.replace(/'/g,"\\'")+'\')" '+
+      '<button class="az-copy-link" data-url="'+encodeURIComponent(url)+'" '+
       'style="font-size:9px;padding:2px 8px;background:#1e3a52;border:1px solid #334155;'+
       'color:#94a3b8;border-radius:4px;cursor:pointer">📋 Copiar link</button>';
     container.appendChild(row);
@@ -3447,6 +3561,8 @@ var _mqHighlightedLayers = [];
 function _mqMap() { return window.THE_MAP || null; }
 
 function toggleMarqueeTool() {
+  // No activar el marquee si el asignador de zonas está en modo selección
+  if (typeof _assignMode !== 'undefined' && _assignMode && !_mqActive) return;
   var m = _mqMap();
   _mqActive = !_mqActive;
   var btn = document.getElementById('marquee-tool-btn');
@@ -3599,7 +3715,7 @@ function downloadSelectionCSV() {
       'address','colonia','delegacion',
       'lat','lng',
       'tipo_negocio','horario',
-      'tx_historicas','tx_90d','tx_30d',
+      'tx_historicas','tx_90d','tx_30d','tx_pa_30d','tx_pa_hist','dormida',
       'rating','quality_score','quality_nivel',
       'tasa_acepta','tiempo_acepta',
       'etapa','service_cohort',
@@ -3621,7 +3737,8 @@ function downloadSelectionCSV() {
         esc(p.hunter),     esc(p.address),  esc(p.colonia),      esc(p.delegacion),
         esc(p.lat),        esc(p.lng),
         esc(p.food_types), esc(p.horario),
-        esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d),
+        esc(p.tx_historicas), esc(p.tx_90d), esc(p.tx_30d), esc(p.tx_pa_30d), esc(p.tx_pa_hist),
+        esc(p.dormida !== undefined ? (p.dormida ? 'TRUE' : 'FALSE') : ''),
         esc(p.rating),     esc(p.quality_score), esc(p.quality_nivel),
         esc(p.tasa_acepta), esc(p.tiempo_acepta),
         esc(p.etapa),      esc(p.service_cohort),
