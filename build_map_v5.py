@@ -3293,6 +3293,9 @@ document.addEventListener("DOMContentLoaded", function() {{
     }}
     window.THE_MAP && window.THE_MAP.on('click', function(e) {{
       if (typeof _assignMode !== 'undefined' && _assignMode) return;
+      // Si el Route Builder está cargado, él es el dueño del click del mapa
+      // (popup con asignación a rutas, incluso en hexes sin señal).
+      if (window._rbMapClick) {{ window._rbMapClick(e); return; }}
       if (!window.LYR_GRID || !window.THE_MAP.hasLayer(window.LYR_GRID)) return;
       if (!window.h3 || !window.h3.latLngToCell) return;
       var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);

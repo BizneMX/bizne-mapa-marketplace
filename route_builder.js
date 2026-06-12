@@ -675,12 +675,16 @@
   function setupMapClick() {
     if (!window.THE_MAP || !window.L) return;
     _rbPopup = L.popup({ maxWidth: 240 });
-    // Tomar el control único del click del mapa (reemplaza el popup
-    // informativo "sin señal" de v5, que no tenía acción de asignar).
-    THE_MAP.off('click');
-    THE_MAP.on('click', function (e) {
+    // Handler único del click del mapa. Se expone como window._rbMapClick para
+    // que el handler informativo de v5 delegue aquí (sin importar el orden en
+    // que se registren); _lastClick deduplica si ambos llegan a dispararse.
+    var _lastClick = 0;
+    window._rbMapClick = function (e) {
       if (typeof _assignMode !== 'undefined' && _assignMode) return;
       if (!window.h3 || !window.h3.latLngToCell) return;
+      var now = Date.now();
+      if (now - _lastClick < 150) return;      // dedup v5 + propio
+      _lastClick = now;
       var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
       var z = ensureZone(cell);
       if (!z) return;                          // fuera de la malla CDMX+Edomex
@@ -699,7 +703,8 @@
           'border-radius:5px;cursor:pointer;font-weight:600">🗺 Asignar a una ruta</button></div>'
         ).openOn(THE_MAP);
       }
-    });
+    };
+    THE_MAP.on('click', window._rbMapClick);
     window._rbAssignFromPopup = function (hexId) {
       var sel = document.getElementById('rb-pop-h');
       var h = sel ? sel.value : null;
