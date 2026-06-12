@@ -1614,9 +1614,7 @@ PANEL_HTML = """
       <label class="bchk"><input type="checkbox" id="ly_dormidas" onchange="toggleLayer('dormidas',this.checked)">
         <span class="bdot" style="background:#9ca3af"></span> Negocios Dormidos</label>
       <label class="bchk"><input type="checkbox" id="ly_hunter"   onchange="toggleLayer('hunter',this.checked)">
-        <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter</label>
-      <label class="bchk"><input type="checkbox" id="ly_malla" checked onchange="toggleLayer('malla',this.checked)">
-        <span class="bdot" style="background:none;border:1.5px solid #94a3b8"></span> Malla CDMX+Edomex</label>
+        <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter <span style="font-size:8px;color:#94a3b8">(+ malla CDMX+Edomex)</span></label>
       <label class="bchk"><input type="checkbox" id="ly_sdemand"  onchange="toggleLayer('sdemand',this.checked)">
         <span class="bdot" style="background:#7c3aed;border-radius:50%"></span> Demanda por Sesiones</label>
       <label class="bchk"><input type="checkbox" id="ly_metro"    onchange="toggleLayer('metro',this.checked)">
@@ -3276,8 +3274,11 @@ document.addEventListener("DOMContentLoaded", function() {{
           opacity: 0.35, interactive: false,
         }}));
       }}
-      var cb = document.getElementById('ly_malla');
-      if (window.THE_MAP && cb && cb.checked) window.LYR_GRID.addTo(window.THE_MAP);
+      // La malla es parte de la capa Zonas Hunter: aparece si está activa
+      var cb = document.getElementById('ly_hunter');
+      var hunterOn = (cb && cb.checked) ||
+                     (window.THE_MAP && window.LYR_HUNTER && window.THE_MAP.hasLayer(window.LYR_HUNTER));
+      if (window.THE_MAP && hunterOn) window.LYR_GRID.addTo(window.THE_MAP);
     }})();
     // Click en el mapa con la malla visible → código fijo del hex
     var _gridPopup = L.popup({{maxWidth: 200}});
@@ -3310,14 +3311,18 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV,malla:window.LYR_GRID}};
+                 activ:window.LYR_ACTIV}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
-      // Sync hunter hex code labels
+      // Sync hunter hex code labels + malla completa (parte de la capa hunter)
       if (name === 'hunter' && window.LYR_HUNTER) {{
         window.LYR_HUNTER.eachLayer(function(l) {{
           if (l._codeLabel) {{ show ? l._codeLabel.addTo(m) : m.removeLayer(l._codeLabel); }}
         }});
+        if (window.LYR_GRID) {{
+          show ? (!m.hasLayer(window.LYR_GRID) && m.addLayer(window.LYR_GRID))
+               : (m.hasLayer(window.LYR_GRID) && m.removeLayer(window.LYR_GRID));
+        }}
       }}
     }};
     // ── Inicializar barras verticales del embudo ──────────────────

@@ -621,6 +621,12 @@
     var tb = document.getElementById('assign-tool-btn');
     if (tb) tb.classList.toggle('active', rbOpen);
     if (rbOpen) {
+      // Asegurar capa Zonas Hunter + malla visibles para poder seleccionar
+      if (window.THE_MAP && typeof window.toggleLayer === 'function') {
+        var lyCb = document.getElementById('ly_hunter');
+        if (lyCb && !lyCb.checked) { lyCb.checked = true; }
+        window.toggleLayer('hunter', true);
+      }
       var wk = document.getElementById('rb-week');
       if (wk && typeof getISOWeek === 'function') wk.textContent = getISOWeek();
       // Cargar asignaciones locales de la semana (mismo storage que v5)
