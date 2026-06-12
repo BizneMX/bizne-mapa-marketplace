@@ -1,0 +1,55 @@
+name: Build Mapa Staging (PostgreSQL directo)
+
+on:
+  workflow_dispatch:  # Correr manualmente desde GitHub (seleccionando la rama db-migration)
+  push:
+    branches: [db-migration]
+    paths:
+      - 'build_map_v6.py'
+      - 'bizne_model_ci.py'
+      - 'route_builder.js'
+      - '.github/workflows/build_staging.yml'
+
+jobs:
+  build-staging:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generar staging.html desde PostgreSQL (SQLAlchemy)
+        env:
+          DB_HOST: ${{ secrets.DB_HOST }}
+          DB_PORT: ${{ secrets.DB_PORT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}  # alternativa a los DB_* individuales
+          # La BD está en VPC privada — desde GitHub Actions la fuente operativa es el MCP.
+          # Los DB_* quedan listos por si algún día hay runner self-hosted o túnel a la VPC.
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
+          RB_API_URL: ${{ vars.RB_API_URL }}   # URL pública del api_server (Route Builder); vacío = solo localStorage
+          GITHUB_ACTIONS_RUN: "true"
+        run: python build_map_v6.py
+
+      - name: Publicar staging.html en la rama
+        run: |
+          git config user.email "github-actions@bizne.mx"
+          git config user.name "Bizne Bot"
+          git add staging.html
+          git diff --staged --quiet && echo "Sin cambios" || git commit -m "Staging actualizado $(date '+%Y-%m-%d %H:%M UTC')"
+          git push

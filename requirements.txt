@@ -10,3 +10,5 @@ statsmodels
 requests
 matplotlib
 seaborn
+sqlalchemy
+psycopg2-binary
