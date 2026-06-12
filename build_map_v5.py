@@ -945,10 +945,18 @@ pct_nuevos_7_activos = round(_n7_con_tx  / neg_nuevos_7  * 100, 1) if neg_nuevos
 pct_nuevos_7_tx_7d   = pct_nuevos_7_activos   # misma lógica: son ≤7d, cualquier tx es en primeros 7 días
 pct_nuevos_30_con_tx = round(_n30_con_tx / neg_nuevos_30 * 100, 1) if neg_nuevos_30 > 0 else 0.0
 
+# Lista maestra de hunters activos en el sistema (Team Bizne - Hunter Bizne)
+# Incluye hunters sin negocios asignados aún
+HUNTERS_SISTEMA = [
+    'Amir', 'Anel', 'Oscar', 'Jose Luis',
+    'Emma', 'Jorge', 'Leonardo', 'Mahithe',
+    'Fernanda de la Rosa',
+]
+
 # Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
 _hunter_7   = defaultdict(int)
 _hunter_30  = defaultdict(int)
-_hunter_all = set()
+_hunter_all = set(HUNTERS_SISTEMA)  # siempre incluir lista maestra
 for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
@@ -958,7 +966,7 @@ for f in biz_features:
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30: _hunter_30[h] += 1
 
-# Incluir TODOS los hunters con negocios asignados (no solo con actividad reciente)
+# Incluir TODOS los hunters (sistema + negocios), ordenados por actividad reciente
 _all_hunters = sorted(
     _hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()),
     key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
