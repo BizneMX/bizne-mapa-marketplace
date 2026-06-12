@@ -810,13 +810,13 @@ def hunter_tier_v6(users, biz_nb):
     cov = biz_nb / users
     if biz_nb == 0:
         return 'A' if users >= 3 else ('B' if users == 2 else 'C')
-    if cov < 0.34:
-        return 'A' if users >= 4 else 'B'
+    if cov < 0.5:
+        return 'A' if users >= 5 else 'B'           # alta demanda, baja cobertura
     if cov < 1.0:
-        return 'B' if users >= 4 else 'C'
+        return 'B' if users >= 3 else 'C'           # demanda considerable, cobertura parcial
     if cov < 2.0:
-        return 'C'
-    return 'D'
+        return 'C'                                  # equilibrio
+    return 'D'                                      # buena cobertura relativa
 
 _uh = {r['hex_id']: r for _, r in user_hex.iterrows()}
 _signal = [hx for hx in GRID_CODE
@@ -842,6 +842,11 @@ for hx in _signal:
         'score': round((users / _max_users) * (1.0 / (1.0 + biz_nb)), 4),
         'neg_dormidos': int(dorm_per_hex.get(hx, 0)),
     })
+
+# Normalizar score a 0–1 (el hex más prioritario = 1.0 → "100/100" en tooltip)
+_max_score = max([r['score'] for r in _hunt_rows] + [1e-9])
+for _r in _hunt_rows:
+    _r['score'] = round(_r['score'] / _max_score, 3)
 
 _hunt_rows.sort(key=lambda r: (-r['score'], r['hex_id']))
 
