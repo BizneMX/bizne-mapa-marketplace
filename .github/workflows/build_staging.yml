@@ -52,5 +52,5 @@ jobs:
           git config user.name "Bizne Bot"
           git add staging.html
           git diff --staged --quiet && echo "Sin cambios" || git commit -m "Staging actualizado $(date '+%Y-%m-%d %H:%M UTC')"
-          git pull --rebase origin db-migration
+          git pull --rebase --autostash origin db-migration
           git push
