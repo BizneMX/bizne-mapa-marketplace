@@ -889,6 +889,9 @@ for _rank, row in enumerate(_hunt_rows, 1):
     hunter_features.append(feat)
 
 HUNTER_DATA = json.dumps({"type":"FeatureCollection","features":hunter_features}, ensure_ascii=False)
+# IDs de la malla completa (ordenados = numeración HEX-XXXXX); las geometrías
+# se calculan en el navegador con h3-js para no inflar el HTML con 29k polígonos.
+HUNTER_GRID_IDS_JSON = json.dumps(sorted(GRID_CODE), ensure_ascii=False)
 _tier_counts = Counter(r['tier'] for r in _hunt_rows)
 print(f"  {len(hunter_features)} hunter zones (malla {len(GRID_CODE):,}) · " +
       ' · '.join(f"{t}:{_tier_counts.get(t,0)}" for t in 'ABCD'))
@@ -1186,6 +1189,7 @@ HEAD = """
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
 <style>
 /* ── KPI dashboard ─────────────────────────────────────────── */
 #kpi-dash{position:fixed;top:10px;left:10px;z-index:1005;background:#f8fafc;
@@ -1611,6 +1615,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#9ca3af"></span> Negocios Dormidos</label>
       <label class="bchk"><input type="checkbox" id="ly_hunter"   onchange="toggleLayer('hunter',this.checked)">
         <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter</label>
+      <label class="bchk"><input type="checkbox" id="ly_malla" checked onchange="toggleLayer('malla',this.checked)">
+        <span class="bdot" style="background:none;border:1.5px solid #94a3b8"></span> Malla CDMX+Edomex</label>
       <label class="bchk"><input type="checkbox" id="ly_sdemand"  onchange="toggleLayer('sdemand',this.checked)">
         <span class="bdot" style="background:#7c3aed;border-radius:50%"></span> Demanda por Sesiones</label>
       <label class="bchk"><input type="checkbox" id="ly_metro"    onchange="toggleLayer('metro',this.checked)">
@@ -2239,6 +2245,8 @@ var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
 
 // ── Hunters para asignación ─────────────────────────────────────
 var HUNTERS_LIST = {HUNTERS_LIST_JSON};
+// ── Malla completa CDMX+Edomex (ids ordenados = HEX-00001…) ─────
+var HUNTER_GRID_IDS = {HUNTER_GRID_IDS_JSON};
 // ── Datos por organización × fecha ──────────────────────────────
 var ORG_DATE_KPI_DATA   = {ORG_DATE_KPI_DATA};
 var HEAT_USERS_BY_ORG   = {HEAT_USERS_BY_ORG};
@@ -3248,13 +3256,61 @@ document.addEventListener("DOMContentLoaded", function() {{
       onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Última sesión','#a78bfa'),{{sticky:true,opacity:0.96}});}}
     }});
 
+    // ── Malla completa CDMX+Edomex: contornos sin relleno (canvas) ──
+    // 29k hexes — geometrías calculadas con h3-js en chunks de polylines
+    // sobre un solo canvas (interactive:false) para mantener el mapa fluido.
+    window.LYR_GRID = L.layerGroup();
+    (function buildGrid() {{
+      if (!window.h3 || !window.h3.cellToBoundary) {{ setTimeout(buildGrid, 400); return; }}
+      var renderer = L.canvas({{padding: 0.4}});
+      var CHUNK = 1500;
+      for (var i = 0; i < HUNTER_GRID_IDS.length; i += CHUNK) {{
+        var lines = [];
+        for (var j = i; j < Math.min(i + CHUNK, HUNTER_GRID_IDS.length); j++) {{
+          var b = window.h3.cellToBoundary(HUNTER_GRID_IDS[j]);
+          b.push(b[0]);
+          lines.push(b);
+        }}
+        window.LYR_GRID.addLayer(L.polyline(lines, {{
+          renderer: renderer, color: '#94a3b8', weight: 0.6,
+          opacity: 0.35, interactive: false,
+        }}));
+      }}
+      var cb = document.getElementById('ly_malla');
+      if (window.THE_MAP && cb && cb.checked) window.LYR_GRID.addTo(window.THE_MAP);
+    }})();
+    // Click en el mapa con la malla visible → código fijo del hex
+    var _gridPopup = L.popup({{maxWidth: 200}});
+    function _gridCodeOf(cell) {{
+      var lo = 0, hi = HUNTER_GRID_IDS.length - 1;
+      while (lo <= hi) {{
+        var mid = (lo + hi) >> 1;
+        if (HUNTER_GRID_IDS[mid] === cell) return 'HEX-' + String(mid + 1).padStart(5, '0');
+        HUNTER_GRID_IDS[mid] < cell ? (lo = mid + 1) : (hi = mid - 1);
+      }}
+      return null;
+    }}
+    window.THE_MAP && window.THE_MAP.on('click', function(e) {{
+      if (typeof _assignMode !== 'undefined' && _assignMode) return;
+      if (!window.LYR_GRID || !window.THE_MAP.hasLayer(window.LYR_GRID)) return;
+      if (!window.h3 || !window.h3.latLngToCell) return;
+      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+      var code = _gridCodeOf(cell);
+      if (!code) return;
+      _gridPopup.setLatLng(e.latlng).setContent(
+        '<div style="font-family:system-ui;font-size:12px">' +
+        '<b style="font-family:monospace;color:#0f4c81">' + code + '</b>' +
+        '<span style="color:#64748b;font-size:10px"> · sin señal</span></div>'
+      ).openOn(window.THE_MAP);
+    }});
+
     // Toggle helpers
     window.toggleLayer = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV}};
+                 activ:window.LYR_ACTIV,malla:window.LYR_GRID}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
       // Sync hunter hex code labels
