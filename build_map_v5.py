@@ -954,7 +954,9 @@ HUNTERS_SISTEMA = [
 
 # Hunters a excluir del panel (inactivos, campañas, cuentas especiales)
 HUNTERS_EXCLUIR_RAW = {
-    'Omar', 'Fernanda Hunter', 'Campañas', 'Campanas', 'Fernanda G',
+    'Omar', 'Fernanda Hunter', 'Campañas', 'Campanas', 'Campaña', 'Campana',
+    'CampaÃ±a',  # variante mojibake por si llega de un cache viejo
+    'Fernanda G',
     'Dori La Dorali', 'Dori la Dorali', 'Jorge', 'Sin asignar',
 }
 import unicodedata as _ud

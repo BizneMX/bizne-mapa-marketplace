@@ -132,6 +132,9 @@ def _query_mcp(sql, nombre, cache_file):
             }
             r = requests.post(MCP_URL, json=tool_payload, headers=headers, timeout=180)
             r.raise_for_status()
+            # El MCP responde UTF-8 pero sin charset en Content-Type; requests
+            # asume latin-1 para text/* y rompe acentos ("Campaña" → "CampaÃ±a")
+            r.encoding = "utf-8"
 
             # 3 — Parsear respuesta (JSON directo o SSE stream)
             content_type = r.headers.get("Content-Type", "")
