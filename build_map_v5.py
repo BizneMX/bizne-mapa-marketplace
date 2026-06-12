@@ -884,8 +884,8 @@ for _, row in df_hunt.iterrows():
             "tasa_conv_pct": float(row['tasa_conv_pct']),
             "fill_color": fill,
             "fill_opacity": fill_op,
-            "lat": round(h3.cell_to_latlng(str(row['hex_id']))[0], 5),
-            "lng": round(h3.cell_to_latlng(str(row['hex_id']))[1], 5),
+            "lat": round(h3.cell_to_latlng(str(row['hex_id']))[0], 7),
+            "lng": round(h3.cell_to_latlng(str(row['hex_id']))[1], 7),
         }
     }
     hunter_features.append(feat)
@@ -993,8 +993,8 @@ for feat in hunter_features[:30]:
     hunt_rows_json.append({
         'tier': 'A_PRIORIDAD_ALTA' if p['combined_score']>=0.55 else 'B_PRIORIDAD_MEDIA',
         'zona': p['zona'],
-        'lat': round(center[0],5),
-        'lng': round(center[1],5),
+        'lat': round(center[0],7),
+        'lng': round(center[1],7),
         'demanda': p['demanda_dia'],
         'usuarios': p['usuarios'],
         'negocios': p['neg_activos'],
@@ -2241,7 +2241,7 @@ function _copyBtn(value, label) {{
 }}
 
 function openHunterPopup(p, latlng) {{
-  var coordStr = p.lat.toFixed(5)+', '+p.lng.toFixed(5);
+  var coordStr = p.lat.toFixed(7)+', '+p.lng.toFixed(7);
   var html =
     '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:240px">'+
     '<b style="color:'+p.fill_color+'">'+p.zona+'</b> · <b>Rank #'+p.rank+'</b>'+
@@ -2992,8 +2992,8 @@ function buildHunterTT(p) {{
       : "")+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
-    p.lat.toFixed(5)+", "+p.lng.toFixed(5)+
-    " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(5)+", "+p.lng.toFixed(5)+"' "+
+    p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
+    " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"' "+
     "style='background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;"+
     "font-size:10px;padding:1px 5px;margin-left:2px;'>📋</button></span>";
 }}
