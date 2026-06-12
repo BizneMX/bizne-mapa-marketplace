@@ -22,3 +22,5 @@ metro_cdmx_estaciones.csv
 
 # Archivos temporales
 .DS_Store
+.venv-rb/
+.claude/

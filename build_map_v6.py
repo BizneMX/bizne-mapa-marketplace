@@ -22,9 +22,14 @@ Fuentes de datos (en orden de preferencia):
 
 Opcionales: DB_SSLMODE (default: prefer)
 
+  5. Inyecta el Route Builder (route_builder.js + SortableJS) en staging.html —
+     panel drag & drop de asignación de zonas a hunters + AI chat. La URL del
+     API server (api_server.py) se toma de RB_API_URL si está definida.
+
 Uso:
-    python build_map_v6.py            # pipeline completo → staging.html
-    python build_map_v6.py --dry-run  # valida extracción de queries sin tocar la BD
+    python build_map_v6.py                # pipeline completo → staging.html
+    python build_map_v6.py --dry-run      # valida extracción de queries sin tocar la BD
+    python build_map_v6.py --inject-only  # solo re-inyecta route_builder.js en staging.html
 """
 import ast
 import os
@@ -150,7 +155,53 @@ def run_map():
             print("  ✅ index.html de producción restaurado")
 
 
+SORTABLE_CDN = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js'
+RB_MARKER    = '<!-- route-builder-v6 -->'
+RB_JS        = os.path.join(DIR, 'route_builder.js')
+
+
+def inject_route_builder():
+    """Inyecta SortableJS + route_builder.js antes de </body> en staging.html.
+    Idempotente: si ya hay una inyección previa, la reemplaza."""
+    print("== Paso 4: Inyectando Route Builder en staging.html ==")
+    if not os.path.exists(STAGING_HTML):
+        raise SystemExit("❌ No existe staging.html — corre el pipeline completo primero")
+    with open(RB_JS, encoding='utf-8') as f:
+        js = f.read()
+    with open(STAGING_HTML, encoding='utf-8') as f:
+        html = f.read()
+    # Quitar inyección previa (entre marcadores)
+    if RB_MARKER in html:
+        start = html.index(RB_MARKER)
+        end   = html.rindex(RB_MARKER) + len(RB_MARKER)
+        html  = html[:start] + html[end:]
+    api_url = os.environ.get('RB_API_URL', '')
+    block = (
+        f'{RB_MARKER}\n'
+        f'<script src="{SORTABLE_CDN}"></script>\n'
+        f'<script>window.RB_CONFIG = {{"apiUrl": {json_dumps(api_url)}}};</script>\n'
+        f'<script>\n{js}\n</script>\n'
+        f'{RB_MARKER}'
+    )
+    if '</body>' in html:
+        html = html.replace('</body>', block + '\n</body>', 1)
+    else:
+        html += block
+    with open(STAGING_HTML, 'w', encoding='utf-8') as f:
+        f.write(html)
+    print(f"  ✅ Route Builder inyectado ({len(js):,} chars de JS · API: {api_url or '(no configurado)'})")
+
+
+def json_dumps(s):
+    import json
+    return json.dumps(s, ensure_ascii=False)
+
+
 def main():
+    if '--inject-only' in sys.argv:
+        inject_route_builder()
+        return
+
     sqls = extract_sql_constants()
     print(f"✅ Queries extraídos de bizne_model_ci.py: {sorted(sqls)}")
 
@@ -173,6 +224,7 @@ def main():
 
     run_model(fuente)
     run_map()
+    inject_route_builder()
     print(f"✅ Pipeline v6 completo → staging.html (fuente de datos: {fuente})")
 
 
