@@ -945,19 +945,22 @@ pct_nuevos_7_activos = round(_n7_con_tx  / neg_nuevos_7  * 100, 1) if neg_nuevos
 pct_nuevos_7_tx_7d   = pct_nuevos_7_activos   # misma lógica: son ≤7d, cualquier tx es en primeros 7 días
 pct_nuevos_30_con_tx = round(_n30_con_tx / neg_nuevos_30 * 100, 1) if neg_nuevos_30 > 0 else 0.0
 
-# Negocios por hunter en 7d y 30d
-_hunter_7  = defaultdict(int)
-_hunter_30 = defaultdict(int)
+# Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
+_hunter_7   = defaultdict(int)
+_hunter_30  = defaultdict(int)
+_hunter_all = set()
 for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
     if not h or h in ('nan', 'None'): h = 'Sin asignar'
+    _hunter_all.add(h)
     d  = _safe_dias(p)
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30: _hunter_30[h] += 1
 
+# Incluir TODOS los hunters con negocios asignados (no solo con actividad reciente)
 _all_hunters = sorted(
-    set(list(_hunter_7.keys()) + list(_hunter_30.keys())),
+    _hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()),
     key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
     reverse=True
 )
