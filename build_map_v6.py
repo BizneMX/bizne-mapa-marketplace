@@ -64,10 +64,25 @@ def build_engine():
     from sqlalchemy import create_engine
     from sqlalchemy.engine import URL
 
+    connect_args = {
+        'sslmode': os.environ.get('DB_SSLMODE', 'prefer'),
+        'connect_timeout': 30,
+    }
+
+    # Fallback: DATABASE_URL completo (secret ya existente en el repo)
+    if not os.environ.get('DB_HOST') and os.environ.get('DATABASE_URL'):
+        raw = os.environ['DATABASE_URL']
+        if raw.startswith('postgres://'):
+            raw = raw.replace('postgres://', 'postgresql+psycopg2://', 1)
+        elif raw.startswith('postgresql://'):
+            raw = raw.replace('postgresql://', 'postgresql+psycopg2://', 1)
+        return create_engine(raw, connect_args=connect_args)
+
     required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
     faltantes = [v for v in required if not os.environ.get(v)]
     if faltantes:
-        raise SystemExit(f"❌ Variables de entorno faltantes: {', '.join(faltantes)}")
+        raise SystemExit(f"❌ Variables de entorno faltantes: {', '.join(faltantes)} "
+                         f"(o define DATABASE_URL completo)")
 
     url = URL.create(
         'postgresql+psycopg2',
@@ -77,10 +92,7 @@ def build_engine():
         port=int(os.environ.get('DB_PORT', '5432')),
         database=os.environ['DB_NAME'],
     )
-    return create_engine(url, connect_args={
-        'sslmode': os.environ.get('DB_SSLMODE', 'prefer'),
-        'connect_timeout': 30,
-    })
+    return create_engine(url, connect_args=connect_args)
 
 
 def fetch_caches(sqls):
