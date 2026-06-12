@@ -953,28 +953,36 @@ HUNTERS_SISTEMA = [
 ]
 
 # Hunters a excluir del panel (inactivos, campañas, cuentas especiales)
-HUNTERS_EXCLUIR = {
-    'Omar', 'Fernanda Hunter', 'Campañas', 'Fernanda G',
-    'Dori La Dorali', 'Jorge', 'Sin asignar',
+HUNTERS_EXCLUIR_RAW = {
+    'Omar', 'Fernanda Hunter', 'Campañas', 'Campanas', 'Fernanda G',
+    'Dori La Dorali', 'Dori la Dorali', 'Jorge', 'Sin asignar',
 }
+import unicodedata as _ud
+def _norm_h(s):
+    """Normaliza nombre de hunter: NFC + strip + lower para comparación."""
+    return _ud.normalize('NFC', str(s).strip()).lower()
+HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
 # Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
 _hunter_7   = defaultdict(int)
 _hunter_30  = defaultdict(int)
 _hunter_all = set(HUNTERS_SISTEMA)  # siempre incluir lista maestra
+_hunter_display = {}  # nombre normalizado → nombre display original del CSV
 for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
-    if not h or h in ('nan', 'None'): h = 'Sin asignar'
-    if h not in HUNTERS_EXCLUIR:
-        _hunter_all.add(h)
+    if not h or h in ('nan', 'None'): continue
+    h_norm = _norm_h(h)
+    if h_norm in HUNTERS_EXCLUIR_NORM: continue
+    _hunter_all.add(h)
     d  = _safe_dias(p)
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30: _hunter_30[h] += 1
 
 # Incluir TODOS los hunters (sistema + negocios), excluyendo inactivos
 _all_hunters = sorted(
-    ((_hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys())) - HUNTERS_EXCLUIR),
+    {h for h in (_hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()))
+     if _norm_h(h) not in HUNTERS_EXCLUIR_NORM},
     key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
     reverse=True
 )
