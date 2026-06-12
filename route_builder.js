@@ -324,9 +324,10 @@
   // ── Columna izquierda ─────────────────────────────────────────────
   function cardHTML(z, opts) {
     var who = assignedHunterOf(z.hex_id);
-    var badge = TIER_BADGE[z.tier] || TIER_BADGE.E;
-    var dot = z.tier === 'A' ? '🔴' : z.tier === 'B' ? '🟠' : z.tier === 'C' ? '🟡' : z.tier === 'D' ? '🟢' : '';
-    return '<span class="tier" style="' + badge + '">' + dot + z.tier + '</span>' +
+    var tier = z.tier || 'S';
+    var badge = TIER_BADGE[tier] || TIER_BADGE.E;
+    var dot = tier === 'A' ? '🔴' : tier === 'B' ? '🟠' : tier === 'C' ? '🟡' : tier === 'D' ? '🟢' : '';
+    return '<span class="tier" style="' + badge + '">' + dot + tier + '</span>' +
       '<span class="hx">' + (z.hex_code || z.hex_id.slice(-4)) + '</span>' +
       '<span class="meta">Dem ' + z.demanda_dia + '/d · Gap ' + z.gap + ' · 👥' + z.usuarios + '</span>' +
       (opts && opts.order ? '' :
@@ -442,7 +443,7 @@
         d.className = 'rb-card' + (dbAssigned[z.hex_id] ? ' fromdb' : '');
         if (dbAssigned[z.hex_id]) d.style.borderColor = color;
         d.setAttribute('data-hex', z.hex_id);
-        var zz = ZONE_BY_ID[z.hex_id] || z;
+        var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
           cardHTML(zz, { order: true });
         zEl.appendChild(d);
