@@ -549,8 +549,10 @@
     box.appendChild(d);
     (actions || []).forEach(function (a) {
       if (a.action !== 'assign') return;
-      var hexId = a.hex_id || (ZONES.find(function (z) { return z.hex_code === a.hex_code; }) || {}).hex_id;
-      if (!hexId || !ZONE_BY_ID[hexId]) return;
+      var hexId = a.hex_id ||
+        (ZONES.find(function (z) { return z.hex_code === a.hex_code; }) || {}).hex_id ||
+        gridIdByCode(a.hex_code);             // hexes sin señal de la malla completa
+      if (!hexId || !ensureZone(hexId)) return;
       var b = document.createElement('button');
       b.className = 'rb-action-btn';
       b.textContent = '✅ Asignar ' + (a.hex_code || ZONE_BY_ID[hexId].hex_code || hexId) + ' → ' + a.hunter;
@@ -642,38 +644,61 @@
     }
   };
 
-  // ── Click en el mapa (Route Builder abierto) → asignar cualquier hex ──
+  // ── Click en el mapa → asignar cualquier hex (con o sin señal) ────
   var _rbPopup = null;
+
+  function showAssignPopup(cell, latlng) {
+    var z = ensureZone(cell);
+    if (!z || !_rbPopup) return;
+    var who = assignedHunterOf(cell);
+    var html = '<div style="font-family:system-ui;font-size:12px;min-width:190px">' +
+      '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
+      (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>'
+               : '<span style="font-size:10px">' + z.zona + ' · 👥' + z.usuarios + '</span>') + '<br>';
+    if (who) {
+      html += '<div style="margin-top:4px">En la ruta de <b>' + who + '</b> ' +
+        '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
+        'padding:2px 8px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer">' +
+        '✕ Quitar</button></div>';
+    } else {
+      html += '<div style="display:flex;gap:5px;margin-top:5px">' +
+        '<select id="rb-pop-h" style="flex:1;font-size:11px;padding:3px">' +
+        (window.HUNTERS_LIST || []).map(function (h) { return '<option>' + h + '</option>'; }).join('') +
+        '</select>' +
+        '<button onclick="window._rbAssignFromPopup(\'' + cell + '\')" style="font-size:11px;padding:3px 10px;' +
+        'background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700">➕ Asignar</button></div>';
+    }
+    html += '</div>';
+    _rbPopup.setLatLng(latlng).setContent(html).openOn(THE_MAP);
+  }
+
   function setupMapClick() {
     if (!window.THE_MAP || !window.L) return;
-    _rbPopup = L.popup({ maxWidth: 230 });
+    _rbPopup = L.popup({ maxWidth: 240 });
+    // Tomar el control único del click del mapa (reemplaza el popup
+    // informativo "sin señal" de v5, que no tenía acción de asignar).
+    THE_MAP.off('click');
     THE_MAP.on('click', function (e) {
-      if (!rbOpen) return;
       if (typeof _assignMode !== 'undefined' && _assignMode) return;
       if (!window.h3 || !window.h3.latLngToCell) return;
       var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
       var z = ensureZone(cell);
       if (!z) return;                          // fuera de la malla CDMX+Edomex
-      var who = assignedHunterOf(cell);
-      var html = '<div style="font-family:system-ui;font-size:12px;min-width:180px">' +
-        '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
-        (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>'
-                 : '<span style="font-size:10px">' + z.zona + ' · 👥' + z.usuarios + '</span>') + '<br>';
-      if (who) {
-        html += '<div style="margin-top:4px">Asignada a <b>' + who + '</b> ' +
-          '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
-          'padding:2px 8px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer">' +
-          '✕ Quitar</button></div>';
+      if (rbOpen) {
+        showAssignPopup(cell, e.latlng);
       } else {
-        html += '<div style="display:flex;gap:5px;margin-top:5px">' +
-          '<select id="rb-pop-h" style="flex:1;font-size:11px;padding:3px">' +
-          (window.HUNTERS_LIST || []).map(function (h) { return '<option>' + h + '</option>'; }).join('') +
-          '</select>' +
-          '<button onclick="window._rbAssignFromPopup(\'' + cell + '\')" style="font-size:11px;padding:3px 10px;' +
-          'background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700">➕ Asignar</button></div>';
+        // Route Builder cerrado: solo en hexes vacíos (las zonas con señal
+        // conservan su popup original de coordenadas/dirección)
+        if (!z.empty) return;
+        _rbPopup.setLatLng(e.latlng).setContent(
+          '<div style="font-family:system-ui;font-size:12px;min-width:180px">' +
+          '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
+          (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>' : '') + '<br>' +
+          '<button onclick="window._rbOpenAndAssign(\'' + cell + '\',' + e.latlng.lat + ',' + e.latlng.lng + ')" ' +
+          'style="margin-top:5px;font-size:11px;padding:4px 10px;background:#0f4c81;color:#fff;border:none;' +
+          'border-radius:5px;cursor:pointer;font-weight:600">🗺 Asignar a una ruta</button></div>'
+        ).openOn(THE_MAP);
       }
-      html += '</div>';
-      _rbPopup.setLatLng(e.latlng).setContent(html).openOn(THE_MAP);
     });
     window._rbAssignFromPopup = function (hexId) {
       var sel = document.getElementById('rb-pop-h');
@@ -686,6 +711,10 @@
     window._rbUnassign = function (hexId) {
       unassignZone(hexId);
       THE_MAP.closePopup();
+    };
+    window._rbOpenAndAssign = function (hexId, lat, lng) {
+      if (!rbOpen) window.toggleRouteBuilder();
+      showAssignPopup(hexId, L.latLng(lat, lng));
     };
   }
 
