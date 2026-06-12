@@ -45,4 +45,5 @@ jobs:
           git config user.name "Bizne Bot"
           git add index.html
           git diff --staged --quiet && echo "Sin cambios" || git commit -m "Mapa actualizado $(date '+%Y-%m-%d %H:%M UTC')"
+          git pull --rebase origin main
           git push
