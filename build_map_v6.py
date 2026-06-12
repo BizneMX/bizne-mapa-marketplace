@@ -113,11 +113,14 @@ def fetch_caches(sqls):
     engine.dispose()
 
 
-def run_model():
-    """Corre bizne_model_ci.py sin MCP_API_KEY → usa los caches recién escritos."""
-    print("== Paso 2: Modelo de demanda (bizne_model_ci.py via caches) ==")
+def run_model(fuente):
+    """Corre bizne_model_ci.py. Si la fuente fue Postgres directo, se quita
+    MCP_API_KEY para forzar el uso de los caches recién escritos; si la fuente
+    es 'mcp', se deja la key para que el modelo consulte el MCP él mismo."""
+    print(f"== Paso 2: Modelo de demanda (bizne_model_ci.py · fuente: {fuente}) ==")
     env = os.environ.copy()
-    env.pop('MCP_API_KEY', None)   # fuerza el fallback a cache local
+    if fuente == 'postgres':
+        env.pop('MCP_API_KEY', None)   # fuerza el fallback a cache local
     env['GITHUB_ACTIONS_RUN'] = 'true'
     subprocess.run([sys.executable, MODEL_SCRIPT], check=True, env=env, cwd=DIR)
 
@@ -151,10 +154,20 @@ def main():
         print("Dry-run OK — no se tocó la BD.")
         return
 
-    fetch_caches(sqls)
-    run_model()
+    # Fuente primaria: Postgres directo. Fallback temporal: vía MCP (mientras
+    # no estén configurados los secrets DB_* con credenciales reales).
+    fuente = 'postgres'
+    try:
+        fetch_caches(sqls)
+    except (SystemExit, Exception) as e:
+        if not os.environ.get('MCP_API_KEY'):
+            raise
+        print(f"⚠ Postgres directo falló ({e}) — fallback a MCP_API_KEY")
+        fuente = 'mcp'
+
+    run_model(fuente)
     run_map()
-    print("✅ Pipeline v6 completo → staging.html")
+    print(f"✅ Pipeline v6 completo → staging.html (fuente de datos: {fuente})")
 
 
 if __name__ == '__main__':
