@@ -950,7 +950,6 @@ pct_nuevos_30_con_tx = round(_n30_con_tx / neg_nuevos_30 * 100, 1) if neg_nuevos
 HUNTERS_SISTEMA = [
     'Amir', 'Anel', 'Oscar', 'Jose Luis',
     'Emma', 'Jorge', 'Leonardo', 'Mahithe',
-    'Fernanda de la Rosa',
 ]
 
 # Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
