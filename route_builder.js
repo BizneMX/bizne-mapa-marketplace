@@ -279,7 +279,7 @@
   function cardHTML(z, opts) {
     var who = assignedHunterOf(z.hex_id);
     var badge = TIER_BADGE[z.tier] || TIER_BADGE.E;
-    var dot = z.tier === 'A' ? '🔴' : (z.tier === 'B' ? '🟠' : '');
+    var dot = z.tier === 'A' ? '🔴' : z.tier === 'B' ? '🟠' : z.tier === 'C' ? '🟡' : z.tier === 'D' ? '🟢' : '';
     return '<span class="tier" style="' + badge + '">' + dot + z.tier + '</span>' +
       '<span class="hx">' + (z.hex_code || z.hex_id.slice(-4)) + '</span>' +
       '<span class="meta">Dem ' + z.demanda_dia + '/d · Gap ' + z.gap + ' · 👥' + z.usuarios + '</span>' +

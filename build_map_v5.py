@@ -55,6 +55,25 @@ else:
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
+# ── Malla estática CDMX + Edomex — numeración HEX-XXXXX fija ─────────
+# Generada una sola vez por make_hex_grid.py y comiteada: los códigos de
+# hexágono no cambian entre builds (data/hex_grid_cdmx_edomex.csv).
+import csv as _csv
+GRID_CODE = {}
+try:
+    _grid_csv = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                              'data', 'hex_grid_cdmx_edomex.csv')
+    with open(_grid_csv, encoding='utf-8') as _gf:
+        for _row in _csv.DictReader(_gf):
+            GRID_CODE[_row['hex_id']] = _row['hex_code']
+    print(f"✅ Malla estática: {len(GRID_CODE):,} hexes CDMX+Edomex")
+except Exception as _e:
+    print(f"⚠ Malla estática no cargada: {_e}")
+
+def hex_code_of(hex_id):
+    """Código estable del hex: de la malla estática; fuera de ella, sufijo del hex_id."""
+    return GRID_CODE.get(hex_id, 'HX-' + str(hex_id)[-6:].upper())
+
 # ── Color maps ────────────────────────────────────────────────────────
 TIER_COLORS = {
     'A_PRIORIDAD_ALTA':'#dc2626','B_PRIORIDAD_MEDIA':'#f97316',
@@ -297,7 +316,6 @@ df_hex.columns = df_hex.columns.str.strip()
 df_hex = df_hex.sort_values('hex_id').reset_index(drop=True)
 
 hex_features = []
-_hex_seq = 1   # contador global para HEX-XXXX
 for _, row in df_hex.iterrows():
     tier = str(row['zone_tier'])
     fill = TIER_COLORS.get(tier, '#94a3b8')
@@ -319,7 +337,7 @@ for _, row in df_hex.iterrows():
         "geometry": geo,
         "properties": {
             "hex_id":   str(row['hex_id']),
-            "hex_code": f"HEX-{_hex_seq:04d}",
+            "hex_code": hex_code_of(str(row['hex_id'])),
             "zone_tier": tier,
             "DI": di,
             "demanda_dia": round(float(row.get('demanda_estimada_dia',0)), 1),
@@ -338,7 +356,6 @@ for _, row in df_hex.iterrows():
         }
     }
     hex_features.append(feat)
-    _hex_seq += 1
 
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 print(f"  {len(hex_features)} hexes")
@@ -768,130 +785,108 @@ if activ_dem_hex:
         df_hex.at[_hx, 'priority_score']      = round(_mu / max(_n_act, 1), 3)
     df_hex = df_hex.reset_index()
 
-# Incluir hexes con gap>0 O con señal de activación (zonas de desarrollo potencial)
-_activ_hex_set = set(activ_dem_hex.keys()) if activ_dem_hex else set()
-df_hunt = df_hex[(df_hex['gap'] > 0) | (df_hex['hex_id'].isin(_activ_hex_set))].copy()
-df_hunt = df_hunt.merge(user_hex, on='hex_id', how='left')
-df_hunt['usuarios'] = df_hunt['usuarios'].fillna(0).astype(int)
-df_hunt['sin_compras'] = df_hunt['sin_compras'].fillna(0).astype(int)
-df_hunt['tasa_conv_pct'] = df_hunt['tasa_conv_pct'].fillna(0).round(1)
-df_hunt['neg_dormidos'] = df_hunt['hex_id'].map(dorm_per_hex).fillna(0).astype(int)
-
-# Señal de activación por hex (cuánta demanda de activación cae en cada hunter hex)
-df_hunt['activ_demand'] = df_hunt['hex_id'].map(activ_dem_hex).fillna(0)
-
-# ── Usuarios SIN supply cercano por hex ──────────────────────────────────────
-# df_aprov_loc ya tiene n_biz (negocios en radio H3 ring-1). Si n_biz == 0
-# el usuario está en zona sin oferta → señal de demanda real no atendida.
-_uns_hex = (
-    df_aprov_loc[df_aprov_loc['n_biz'] == 0]
-    .groupby('hex_id').size()
-    .reset_index(name='users_no_supply')
-)
-df_hunt = df_hunt.merge(_uns_hex, on='hex_id', how='left')
-df_hunt['users_no_supply'] = df_hunt['users_no_supply'].fillna(0).astype(int)
-
-# ── Nuevo modelo de scoring basado en gap + demanda real ──────────────────────
-# Componentes:
-#   gap_norm     — cocinas que faltan (driver principal)
-#   uns_norm     — usuarios sin cocina cercana (demanda real sin supply)
-#   demand_norm  — demanda estructural absoluta (tx esperadas/día)
-#   activ_norm   — puntos de activación (señal de campo)
-#   user_norm    — presencia total de usuarios (señal complementaria)
+# ── MODELO HUNTER v6 — prioridad = 100% sesiones de usuarios vs oferta ───────
+# Cobertura: CDMX + Estado de México completos via la malla estática GRID_CODE
+# (numeración HEX-XXXXX fija). Se emiten todos los hexes de la malla con señal
+# (sesiones u oferta); los sin señal conservan su número pero no se pintan.
 #
-# Pesos: gap 40% | sin-supply 30% | demanda 20% | activación 10%
-# Eliminamos el ratio demanda/negocios (priority_score) como driver principal
-# porque penalizaba zonas con muchos negocios aunque el gap fuera grande.
+#   demanda   = usuarios approved con sesión en el hex (proxy 100% sesiones)
+#   oferta    = negocios activos en hex + anillo-1 (biz_nearby)
+#   cobertura = oferta / demanda  (cocinas por usuario)
+#   score     = (usuarios / max_usuarios) × 1/(1 + oferta)  → ordena el rank
+#   gap       = cocinas faltantes (heurística: 1 cocina ≈ 10 usuarios de sesión)
 
-max_gap   = max(float(df_hunt['gap'].max()), 1.0)
-max_uns   = max(float(df_hunt['users_no_supply'].max()), 1.0)
-max_dem   = max(float(df_hunt['demanda_estimada_dia'].max()), 1.0)
-max_activ = max(float(df_hunt['activ_demand'].max()), 1.0)
-max_us    = max(float(df_hunt['usuarios'].max()), 1.0)
+HUNTER_TIER_DEFS = {
+    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo — alta demanda, baja cobertura
+    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — demanda considerable, cobertura parcial
+    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — equilibrio demanda/cobertura
+    'D': ('D Cubierta',       '#00c853', 0.25),   # verde — buena cobertura relativa
+}
 
-df_hunt['gap_norm']    = df_hunt['gap'].astype(float) / max_gap
-df_hunt['uns_norm']    = df_hunt['users_no_supply'].astype(float) / max_uns
-df_hunt['demand_norm'] = df_hunt['demanda_estimada_dia'].astype(float) / max_dem
-df_hunt['activ_norm']  = df_hunt['activ_demand'].astype(float) / max_activ
-df_hunt['user_norm']   = df_hunt['usuarios'].astype(float) / max_us
+def hunter_tier_v6(users, biz_nb):
+    """Clasifica demanda (sesiones) contra cobertura (oferta cercana)."""
+    if users <= 0:
+        return 'D'                                  # solo oferta → cubierta
+    cov = biz_nb / users
+    if biz_nb == 0:
+        return 'A' if users >= 3 else ('B' if users == 2 else 'C')
+    if cov < 0.34:
+        return 'A' if users >= 4 else 'B'
+    if cov < 1.0:
+        return 'B' if users >= 4 else 'C'
+    if cov < 2.0:
+        return 'C'
+    return 'D'
 
-df_hunt['combined_score'] = (
-    0.40 * df_hunt['gap_norm']    +   # Cocinas que faltan (prioridad principal)
-    0.30 * df_hunt['uns_norm']    +   # Usuarios sin cocina cercana (demanda real sin supply)
-    0.20 * df_hunt['demand_norm'] +   # Demanda estructural absoluta (tx/día)
-    0.10 * df_hunt['activ_norm']       # Puntos de activación en campo
-).round(3)
+_uh = {r['hex_id']: r for _, r in user_hex.iterrows()}
+_signal = [hx for hx in GRID_CODE
+           if (hx in _uh and int(_uh[hx]['usuarios']) > 0) or biz_per_hex.get(hx, 0) > 0]
+_max_users = max([int(_uh[hx]['usuarios']) for hx in _signal if hx in _uh] + [1])
 
-df_hunt = df_hunt.sort_values('combined_score', ascending=False).reset_index(drop=True)
-df_hunt['rank'] = df_hunt.index + 1
+_hunt_rows = []
+for hx in _signal:
+    _u      = _uh.get(hx)
+    users   = int(_u['usuarios']) if _u is not None else 0
+    biz_in  = int(biz_per_hex.get(hx, 0))
+    biz_nb  = int(biz_nearby(hx))
+    necesarias = import_ceil(users / 10) if users > 0 else 0
+    _hunt_rows.append({
+        'hex_id': hx,
+        'tier': hunter_tier_v6(users, biz_nb),
+        'usuarios': users,
+        'sin_compras': int(_u['sin_compras']) if _u is not None else 0,
+        'tasa_conv_pct': float(_u['tasa_conv_pct']) if _u is not None else 0.0,
+        'biz_in': biz_in, 'biz_nb': biz_nb,
+        'cobertura': round(biz_nb / users, 2) if users > 0 else None,
+        'gap': max(0, necesarias - biz_nb),
+        'score': round((users / _max_users) * (1.0 / (1.0 + biz_nb)), 4),
+        'neg_dormidos': int(dorm_per_hex.get(hx, 0)),
+    })
 
-print(f"  Scoring Hunter — max_gap:{max_gap:.0f} | max_uns:{max_uns:.0f} | max_dem:{max_dem:.1f}")
-print(f"  Score range: {df_hunt['combined_score'].min():.3f} – {df_hunt['combined_score'].max():.3f}")
-
-HUNTER_TIER_DEFS = [
-    ('A+ Máxima prioridad', '#7f1d1d', 0.85),
-    ('A Alta demanda sin supply', '#dc2626', 0.70),
-    ('B Señal mixta', '#f97316', 0.55),
-    ('C Zona activa', '#22c55e', 0.40),
-    ('D Desarrollo', '#3b82f6', 0.25),
-    ('E Monitoreo', '#94a3b8', 0.10),
-]
-def hunter_tier(score):
-    # Umbrales recalibrados para nueva distribución basada en gap+uns
-    if score >= 0.55:  return HUNTER_TIER_DEFS[0]
-    if score >= 0.38:  return HUNTER_TIER_DEFS[1]
-    if score >= 0.25:  return HUNTER_TIER_DEFS[2]
-    if score >= 0.15:  return HUNTER_TIER_DEFS[3]
-    if score >= 0.07:  return HUNTER_TIER_DEFS[4]
-    return HUNTER_TIER_DEFS[5]
-
-# Lookup hex_code por hex_id (asignados al construir hex_features)
-_hex_code_lookup = {f['properties']['hex_id']: f['properties']['hex_code'] for f in hex_features}
+_hunt_rows.sort(key=lambda r: (-r['score'], r['hex_id']))
 
 hunter_features = []
-for _, row in df_hunt.iterrows():
+for _rank, row in enumerate(_hunt_rows, 1):
     try:
-        geo = hex_geojson(str(row['hex_id']))
-    except:
+        geo = hex_geojson(row['hex_id'])
+    except Exception:
         continue
-    htier = hunter_tier(row['combined_score'])
-    zona_lbl, fill, base_op = htier
-    fill_op = round(min(0.75, base_op + row['combined_score']*0.2), 2)
+    zona_lbl, fill, base_op = HUNTER_TIER_DEFS[row['tier']]
+    _lat, _lng = h3.cell_to_latlng(row['hex_id'])
     feat = {
         "type":"Feature",
         "geometry": geo,
         "properties":{
-            "hex_id":   str(row['hex_id']),
-            "hex_code": _hex_code_lookup.get(str(row['hex_id']), ''),
-            "rank": int(row['rank']),
+            "hex_id":   row['hex_id'],
+            "hex_code": hex_code_of(row['hex_id']),
+            "rank": _rank,
             "zona": zona_lbl,
-            "delegacion": "CDMX",
-            "combined_score": float(row['combined_score']),
-            "gap_norm":    round(float(row.get('gap_norm', 0)), 3),
-            "uns_norm":    round(float(row.get('uns_norm', 0)), 3),
-            "demand_norm": round(float(row['demand_norm']), 3),
-            "user_norm":   round(float(row['user_norm']), 3),
-            "activ_norm":  round(float(row.get('activ_norm', 0)), 3),
-            "activ_demand": round(float(row.get('activ_demand', 0)), 1),
-            "users_no_supply": int(row.get('users_no_supply', 0)),
-            "gap": int(row['gap']),
-            "neg_activos": int(row.get('negocios_actuales',0)),
-            "neg_dormidos": int(row.get('neg_dormidos',0)),
-            "demanda_dia": round(float(row.get('demanda_estimada_dia',0)),1),
-            "has_users": int(row['usuarios'])>0,
-            "usuarios": int(row['usuarios']),
-            "sin_compras": int(row['sin_compras']),
-            "tasa_conv_pct": float(row['tasa_conv_pct']),
+            "delegacion": "CDMX/EdoMex",
+            "combined_score": row['score'],
+            "usuarios": row['usuarios'],
+            "has_users": row['usuarios'] > 0,
+            "sin_compras": row['sin_compras'],
+            "tasa_conv_pct": row['tasa_conv_pct'],
+            "neg_activos": row['biz_in'],
+            "neg_cercanos": row['biz_nb'],
+            "neg_dormidos": row['neg_dormidos'],
+            "cobertura": row['cobertura'],
+            "gap": row['gap'],
+            "demanda_dia": row['usuarios'],   # proxy: sesiones de usuarios
+            "users_no_supply": row['usuarios'] if row['biz_nb'] == 0 else 0,
+            "activ_demand": 0,
             "fill_color": fill,
-            "fill_opacity": fill_op,
-            "lat": round(h3.cell_to_latlng(str(row['hex_id']))[0], 7),
-            "lng": round(h3.cell_to_latlng(str(row['hex_id']))[1], 7),
+            "fill_opacity": round(min(0.85, base_op + row['score'] * 0.25), 2),
+            "lat": round(_lat, 7),
+            "lng": round(_lng, 7),
         }
     }
     hunter_features.append(feat)
 
 HUNTER_DATA = json.dumps({"type":"FeatureCollection","features":hunter_features}, ensure_ascii=False)
-print(f"  {len(hunter_features)} hunter zones")
+_tier_counts = Counter(r['tier'] for r in _hunt_rows)
+print(f"  {len(hunter_features)} hunter zones (malla {len(GRID_CODE):,}) · " +
+      ' · '.join(f"{t}:{_tier_counts.get(t,0)}" for t in 'ABCD'))
 
 # ══════════════════════════════════════════════════════════════════════
 # GAP GLOBAL — cobertura del modelo estructural
@@ -1018,7 +1013,7 @@ for feat in hunter_features[:30]:
     p = feat['properties']
     center = h3.cell_to_latlng(p['hex_id'])
     hunt_rows_json.append({
-        'tier': 'A_PRIORIDAD_ALTA' if p['combined_score']>=0.55 else 'B_PRIORIDAD_MEDIA',
+        'tier': 'A_PRIORIDAD_ALTA' if p['zona'].startswith('A') else 'B_PRIORIDAD_MEDIA',
         'zona': p['zona'],
         'lat': round(center[0],7),
         'lng': round(center[1],7),
@@ -2981,42 +2976,30 @@ function buildBizTT(p) {{
 }}
 function buildHunterTT(p) {{
   var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
-  var unsColor  = p.users_no_supply > 0 ? '#f97316' : '#64748b';
-  // Barra de score desglosada
-  var gPct  = Math.round((p.gap_norm  ||0)*100);
-  var uPct  = Math.round((p.uns_norm  ||0)*100);
-  var dPct  = Math.round((p.demand_norm||0)*100);
-  var aPct  = Math.round((p.activ_norm ||0)*100);
-  var scoreBar =
-    "<div style='margin:4px 0 2px;font-size:9px;color:#94a3b8'>Score: <b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
-    "<div style='display:flex;gap:1px;height:5px;border-radius:3px;overflow:hidden;margin-bottom:3px'>"+
-      "<div style='width:"+(gPct*0.40)+"%;background:#ef4444' title='Gap'></div>"+
-      "<div style='width:"+(uPct*0.30)+"%;background:#f97316' title='Sin supply'></div>"+
-      "<div style='width:"+(dPct*0.20)+"%;background:#3b82f6' title='Demanda'></div>"+
-      "<div style='width:"+(aPct*0.10)+"%;background:#E879F9' title='Activación'></div>"+
-    "</div>"+
-    "<div style='display:flex;gap:8px;font-size:8px;color:#64748b'>"+
-      "<span style='color:#ef4444'>🍽 gap "+gPct+"%</span>"+
-      "<span style='color:#f97316'>🚫 supply "+uPct+"%</span>"+
-      "<span style='color:#3b82f6'>📊 dem "+dPct+"%</span>"+
-      "<span style='color:#E879F9'>⚡ activ "+aPct+"%</span>"+
-    "</div>";
-  return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b><br>"+
+  var covTxt, covColor;
+  if (p.usuarios > 0) {{
+    var c = p.cobertura || 0;
+    covColor = c >= 2 ? '#00c853' : c >= 1 ? '#ffd600' : c >= 0.34 ? '#ff9100' : '#ff1744';
+    covTxt = c + ' cocinas/usuario';
+  }} else {{
+    covColor = '#00c853';
+    covTxt = 'solo oferta (sin sesiones)';
+  }}
+  return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b>"+
+    " · <span style='color:#7dd3fc;font-family:monospace;font-size:10px'>"+p.hex_code+"</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    scoreBar+
-    "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<b>🏪 Activos:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span>  "+
-    "<b style='color:#ef4444'>Gap:</b> <span style='color:#ef4444;font-weight:700'>"+p.gap+" 🍽</span>  "+
-    "<span style='color:"+dormColor+"'>😴 "+p.neg_dormidos+" dorm.</span><br>"+
-    "<b>Demanda est.:</b> "+p.demanda_dia+" tx/día<br>"+
-    "<b>👤 Usuarios:</b> "+p.usuarios+
+    "<div style='margin:2px 0;font-size:9px;color:#94a3b8'>Score 100% sesiones vs oferta: "+
+    "<b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
+    "<b>👤 Sesiones:</b> "+p.usuarios+" usuarios"+
     (p.users_no_supply > 0
-      ? " · <span style='color:"+unsColor+";font-weight:700'>⚠ "+p.users_no_supply+" sin cocina cercana</span>"
-      : "")+
-    "<br>"+p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
-    (p.activ_demand > 0
-      ? "<span style='color:#E879F9;font-size:9px'>⚡ Activación: +"+p.activ_demand+" tx/día</span><br>"
-      : "")+
+      ? " · <span style='color:#ff1744;font-weight:700'>⚠ sin cocina cercana</span>"
+      : "")+"<br>"+
+    p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
+    "<b>🏪 Oferta:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span> en el hex · "+
+    p.neg_cercanos+" cercanos "+
+    "<span style='color:"+dormColor+"'>· 😴 "+p.neg_dormidos+" dorm.</span><br>"+
+    "<b>Cobertura:</b> <span style='color:"+covColor+";font-weight:700'>"+covTxt+"</span>"+
+    (p.gap > 0 ? " · <b style='color:#ff1744'>Gap: "+p.gap+" 🍽</b>" : "")+"<br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
