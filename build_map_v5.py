@@ -949,8 +949,14 @@ pct_nuevos_30_con_tx = round(_n30_con_tx / neg_nuevos_30 * 100, 1) if neg_nuevos
 # Incluye hunters sin negocios asignados aún
 HUNTERS_SISTEMA = [
     'Amir', 'Anel', 'Oscar', 'Jose Luis',
-    'Emma', 'Jorge', 'Leonardo', 'Mahithe',
+    'Emma', 'Leonardo', 'Mahithe',
 ]
+
+# Hunters a excluir del panel (inactivos, campañas, cuentas especiales)
+HUNTERS_EXCLUIR = {
+    'Omar', 'Fernanda Hunter', 'Campañas', 'Fernanda G',
+    'Dori La Dorali', 'Jorge', 'Sin asignar',
+}
 
 # Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
 _hunter_7   = defaultdict(int)
@@ -960,14 +966,15 @@ for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
     if not h or h in ('nan', 'None'): h = 'Sin asignar'
-    _hunter_all.add(h)
+    if h not in HUNTERS_EXCLUIR:
+        _hunter_all.add(h)
     d  = _safe_dias(p)
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30: _hunter_30[h] += 1
 
-# Incluir TODOS los hunters (sistema + negocios), ordenados por actividad reciente
+# Incluir TODOS los hunters (sistema + negocios), excluyendo inactivos
 _all_hunters = sorted(
-    _hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()),
+    ((_hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys())) - HUNTERS_EXCLUIR),
     key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
     reverse=True
 )
