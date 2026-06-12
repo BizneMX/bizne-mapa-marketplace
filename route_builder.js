@@ -49,6 +49,52 @@
     ZONES.forEach(function (z) { ZONE_BY_ID[z.hex_id] = z; });
   }
 
+  // ── Malla completa: cualquier hex de HUNTER_GRID_IDS es asignable ─
+  function gridCodeOf(hexId) {
+    var ids = window.HUNTER_GRID_IDS;
+    if (!ids) return null;
+    var lo = 0, hi = ids.length - 1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (ids[mid] === hexId) return 'HEX-' + String(mid + 1).padStart(5, '0');
+      ids[mid] < hexId ? (lo = mid + 1) : (hi = mid - 1);
+    }
+    return null;
+  }
+
+  function gridIdByCode(code) {
+    var m = String(code).toUpperCase().match(/^HEX-?0*(\d{1,5})$/);
+    if (!m || !window.HUNTER_GRID_IDS) return null;
+    return window.HUNTER_GRID_IDS[parseInt(m[1], 10) - 1] || null;
+  }
+
+  function ensureZone(hexId) {
+    if (ZONE_BY_ID[hexId]) return ZONE_BY_ID[hexId];
+    if (!window.h3 || !window.h3.cellToLatLng) return null;
+    var code = gridCodeOf(hexId);
+    if (!code) return null;                      // fuera de CDMX+Edomex
+    var c = window.h3.cellToLatLng(hexId);
+    var z = {
+      hex_id: hexId, hex_code: code, zona: 'S Sin señal', tier: 'S',
+      rank: 0, gap: 0, demanda_dia: 0, usuarios: 0, combined_score: 0,
+      lat: c[0], lng: c[1], empty: true,
+    };
+    ZONE_BY_ID[hexId] = z;
+    return z;
+  }
+
+  function featureOf(hexId) {
+    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === hexId; });
+    if (f || !window.h3) return f;
+    var b = window.h3.cellToBoundary(hexId);
+    b.push(b[0]);
+    return {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [b.map(function (p) { return [p[1], p[0]]; })] },
+      properties: { hex_id: hexId },
+    };
+  }
+
   function assignedHunterOf(hexId) {
     var hunters = Object.keys(window._assignments || {});
     for (var i = 0; i < hunters.length; i++) {
@@ -75,7 +121,7 @@
       var color = hunterColor(h);
       var zones = _assignments[h];
       zones.forEach(function (z, i) {
-        var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === z.hex_id; });
+        var f = featureOf(z.hex_id);
         if (!f) return;
         rbLayers.addLayer(L.geoJSON(f, {
           pane: 'heatHexPane',
@@ -106,7 +152,7 @@
 
   // ── Mutaciones de estado ──────────────────────────────────────────
   function assignZone(hexId, hunter, index) {
-    var z = ZONE_BY_ID[hexId];
+    var z = ensureZone(hexId);
     if (!z) return;
     unassignZone(hexId, true);
     if (!_assignments[hunter]) _assignments[hunter] = [];
@@ -201,8 +247,8 @@
 
   var TIER_BADGE = {
     'A': 'background:#450a0a;color:#f87171', 'B': 'background:#431407;color:#fb923c',
-    'C': 'background:#422006;color:#fbbf24', 'D': 'background:#172554;color:#93c5fd',
-    'E': 'background:#1e293b;color:#94a3b8',
+    'C': 'background:#422006;color:#fbbf24', 'D': 'background:#052e16;color:#4ade80',
+    'E': 'background:#1e293b;color:#94a3b8', 'S': 'background:#1e293b;color:#94a3b8',
   };
 
   function buildUI() {
@@ -300,6 +346,13 @@
       }
       return true;
     });
+    // Búsqueda por código de la malla completa: si no hay match entre las
+    // zonas con señal, resolver el HEX-XXXXX contra HUNTER_GRID_IDS.
+    if (!rows.length && curQuery) {
+      var gid = gridIdByCode(curQuery);
+      var gz = gid && ensureZone(gid);
+      if (gz) rows = [gz];
+    }
     document.getElementById('rb-zcount').textContent = rows.length;
     el.innerHTML = '';
     rows.slice(0, 250).forEach(function (z) {
@@ -326,7 +379,7 @@
 
   function highlightHex(z) {
     clearHighlight();
-    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === z.hex_id; });
+    var f = featureOf(z.hex_id);
     if (!f || !window.THE_MAP) return;
     hoverLayer = L.geoJSON(f, {
       pane: 'heatHexPane',
@@ -582,11 +635,59 @@
     }
   };
 
+  // ── Click en el mapa (Route Builder abierto) → asignar cualquier hex ──
+  var _rbPopup = null;
+  function setupMapClick() {
+    if (!window.THE_MAP || !window.L) return;
+    _rbPopup = L.popup({ maxWidth: 230 });
+    THE_MAP.on('click', function (e) {
+      if (!rbOpen) return;
+      if (typeof _assignMode !== 'undefined' && _assignMode) return;
+      if (!window.h3 || !window.h3.latLngToCell) return;
+      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+      var z = ensureZone(cell);
+      if (!z) return;                          // fuera de la malla CDMX+Edomex
+      var who = assignedHunterOf(cell);
+      var html = '<div style="font-family:system-ui;font-size:12px;min-width:180px">' +
+        '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
+        (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>'
+                 : '<span style="font-size:10px">' + z.zona + ' · 👥' + z.usuarios + '</span>') + '<br>';
+      if (who) {
+        html += '<div style="margin-top:4px">Asignada a <b>' + who + '</b> ' +
+          '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
+          'padding:2px 8px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer">' +
+          '✕ Quitar</button></div>';
+      } else {
+        html += '<div style="display:flex;gap:5px;margin-top:5px">' +
+          '<select id="rb-pop-h" style="flex:1;font-size:11px;padding:3px">' +
+          (window.HUNTERS_LIST || []).map(function (h) { return '<option>' + h + '</option>'; }).join('') +
+          '</select>' +
+          '<button onclick="window._rbAssignFromPopup(\'' + cell + '\')" style="font-size:11px;padding:3px 10px;' +
+          'background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700">➕ Asignar</button></div>';
+      }
+      html += '</div>';
+      _rbPopup.setLatLng(e.latlng).setContent(html).openOn(THE_MAP);
+    });
+    window._rbAssignFromPopup = function (hexId) {
+      var sel = document.getElementById('rb-pop-h');
+      var h = sel ? sel.value : null;
+      if (!h) return;
+      if (openLanes.indexOf(h) < 0) openLanes.push(h);
+      assignZone(hexId, h);
+      THE_MAP.closePopup();
+    };
+    window._rbUnassign = function (hexId) {
+      unassignZone(hexId);
+      THE_MAP.closePopup();
+    };
+  }
+
   // ── Init ──────────────────────────────────────────────────────────
   function init() {
     if (!window.HUNTER_DATA || !window.L) { setTimeout(init, 400); return; }
     buildZones();
     buildUI();
+    setupMapClick();
     // El botón 🗺 existente ahora abre el Route Builder; el panel clásico
     // queda accesible como window.toggleAssignPanelLegacy().
     if (typeof window.toggleAssignPanel === 'function') {
