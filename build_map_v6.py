@@ -13,7 +13,13 @@ sin modificar build_map_v5.py ni bizne_model_ci.py:
   4. Corre build_map_v5.py intacto, y renombra el index.html resultante a staging.html,
      restaurando el index.html original (producción no se toca).
 
-Variables de entorno requeridas: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+Fuentes de datos (en orden de preferencia):
+  1. PostgreSQL directo (DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD o DATABASE_URL)
+     — requiere ruta de red a la BD. La BD vive en VPC privada (10.200.x.x), así que
+     esto solo aplica desde un entorno con acceso (VPN, runner self-hosted en la VPC).
+  2. MCP (MCP_API_KEY) — gateway público https://mcp.bizne.com.mx/mcp. Es la fuente
+     operativa desde GitHub Actions; mismo SQL, mismos datos, vía bizne_model_ci.py.
+
 Opcionales: DB_SSLMODE (default: prefer)
 
 Uso:
@@ -154,8 +160,8 @@ def main():
         print("Dry-run OK — no se tocó la BD.")
         return
 
-    # Fuente primaria: Postgres directo. Fallback temporal: vía MCP (mientras
-    # no estén configurados los secrets DB_* con credenciales reales).
+    # Fuente primaria: Postgres directo (solo entornos con ruta a la VPC).
+    # Desde GitHub Actions la fuente operativa es el MCP.
     fuente = 'postgres'
     try:
         fetch_caches(sqls)

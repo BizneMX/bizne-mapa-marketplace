@@ -37,8 +37,10 @@ jobs:
           DB_NAME: ${{ secrets.DB_NAME }}
           DB_USER: ${{ secrets.DB_USER }}
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}  # fallback si los DB_* no están configurados
-          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}    # fallback temporal mientras no haya credenciales DB reales
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}  # alternativa a los DB_* individuales
+          # La BD está en VPC privada — desde GitHub Actions la fuente operativa es el MCP.
+          # Los DB_* quedan listos por si algún día hay runner self-hosted o túnel a la VPC.
+          MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
           GITHUB_ACTIONS_RUN: "true"
         run: python build_map_v6.py
 
