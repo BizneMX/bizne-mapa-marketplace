@@ -3164,7 +3164,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       style:function(f){{return {{color:f.properties.fill_color,weight:1.2,
         fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"4 3"}};}},
       onEachFeature:function(f,l){{l._p=f.properties;
-        l.bindTooltip(buildHunterTT(f.properties),{{sticky:false,interactive:true,opacity:0.97,maxWidth:280}});
+        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,interactive:true,opacity:0.97,maxWidth:280}});
         l.on('click', function(e){{
           L.DomEvent.stopPropagation(e);
           var p = f.properties;

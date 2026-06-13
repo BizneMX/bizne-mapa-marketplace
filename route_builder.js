@@ -800,8 +800,12 @@
     ghost.style.pointerEvents = 'none';  // ghost no bloquea elementFromPoint
     document.body.appendChild(ghost);
 
-    var dragState = null;  // { hexId, zone, startX, startY, active }
+    // dragState: { hexId, zone, startX, startY, active, ready, holdTimer }
+    // ready = long-press confirmado (350ms sin moverse); active = drag en movimiento
+    var dragState = null;
     var TIER_COLOR = { A:'#f87171', B:'#fb923c', C:'#fbbf24', D:'#4ade80', S:'#94a3b8' };
+    var HOLD_MS = 350;   // ms de hold para entrar en modo drag
+    var MOVE_CANCEL = 6; // px de movimiento antes del hold que cancela el drag
 
     function startGhost(z, x, y) {
       var tc = TIER_COLOR[z.tier] || '#94a3b8';
@@ -814,11 +818,14 @@
     }
 
     function clearDrag() {
+      if (dragState) {
+        clearTimeout(dragState.holdTimer);
+        if (dragState.active && window.THE_MAP) THE_MAP.dragging.enable();
+      }
       ghost.style.display = 'none';
       document.querySelectorAll('.rb-lane-zones.rb-drop-over').forEach(function (el) {
         el.classList.remove('rb-drop-over');
       });
-      if (dragState && dragState.active && window.THE_MAP) THE_MAP.dragging.enable();
       dragState = null;
     }
 
@@ -832,12 +839,26 @@
       var cell = window.h3.latLngToCell(latlng.lat, latlng.lng, 8);
       var z = ZONE_BY_ID[cell] || ensureZone(cell);
       if (!z) return;
-      dragState = { hexId: cell, zone: z, startX: e.clientX, startY: e.clientY, active: false };
+      dragState = { hexId: cell, zone: z, startX: e.clientX, startY: e.clientY,
+                    active: false, ready: false, holdTimer: null };
+      // Confirmar intención de drag solo después de HOLD_MS sin moverse
+      dragState.holdTimer = setTimeout(function () {
+        if (dragState) dragState.ready = true;
+      }, HOLD_MS);
     }
 
     function onPointerMove(e) {
       if (!dragState) return;
       var dx = e.clientX - dragState.startX, dy = e.clientY - dragState.startY;
+      // Movimiento antes del hold → es pan, dejar a Leaflet
+      if (!dragState.ready) {
+        if (Math.sqrt(dx * dx + dy * dy) > MOVE_CANCEL) {
+          clearTimeout(dragState.holdTimer);
+          dragState = null;
+        }
+        return;
+      }
+      // Long press confirmado: activar drag al mover más de 8px
       if (!dragState.active) {
         if (Math.sqrt(dx * dx + dy * dy) < 8) return;
         dragState.active = true;
@@ -846,7 +867,6 @@
       }
       ghost.style.left = (e.clientX + 14) + 'px';
       ghost.style.top  = (e.clientY - 22) + 'px';
-      // Highlight lane bajo el cursor (ghost es pointer-events:none)
       var under = document.elementFromPoint(e.clientX, e.clientY);
       document.querySelectorAll('.rb-lane-zones').forEach(function (el) {
         el.classList.toggle('rb-drop-over', el === under || el.contains(under));
