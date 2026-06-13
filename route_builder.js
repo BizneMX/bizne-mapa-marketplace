@@ -839,12 +839,15 @@
       var cell = window.h3.latLngToCell(latlng.lat, latlng.lng, 8);
       var z = ZONE_BY_ID[cell] || ensureZone(cell);
       if (!z) return;
+      var cmdDrag = e.metaKey || e.ctrlKey;  // ⌘ Mac / Ctrl Win
       dragState = { hexId: cell, zone: z, startX: e.clientX, startY: e.clientY,
-                    active: false, ready: false, holdTimer: null };
-      // Confirmar intención de drag solo después de HOLD_MS sin moverse
-      dragState.holdTimer = setTimeout(function () {
-        if (dragState) dragState.ready = true;
-      }, HOLD_MS);
+                    active: false, ready: cmdDrag, holdTimer: null };
+      if (!cmdDrag) {
+        // Sin modificador: confirmar intención después de HOLD_MS sin moverse
+        dragState.holdTimer = setTimeout(function () {
+          if (dragState) dragState.ready = true;
+        }, HOLD_MS);
+      }
     }
 
     function onPointerMove(e) {
