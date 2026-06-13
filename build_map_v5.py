@@ -2311,42 +2311,98 @@ function _copyBtn(value, label) {{
 }}
 
 function openHunterPopup(p, latlng) {{
-  var coordStr = p.lat.toFixed(7)+', '+p.lng.toFixed(7);
+  var coordStr  = p.lat.toFixed(7)+', '+p.lng.toFixed(7);
+  var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
+  var covPct    = Math.round((p.neg_cercanos / 3) * 100);
+  var covColor  = covPct >= 100 ? '#00c853' : covPct >= 67 ? '#ffd600' : covPct >= 34 ? '#ff9100' : '#ff1744';
+  var covTxt    = p.neg_cercanos+'/3 opciones ('+Math.min(covPct,100)+'%)';
+
   var html =
-    '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:240px">'+
+    '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:260px;max-width:300px">'+
     '<b style="color:'+p.fill_color+'">'+p.zona+'</b> · <b>Rank #'+p.rank+'</b>'+
-    '<hr style="border:none;border-top:1px solid #334155;margin:6px 0">'+
-    '<div style="margin-bottom:4px">'+
-    '<span style="color:#94a3b8">📍 Coordenadas:</span><br>'+
-    '<span style="font-family:monospace;font-size:11px">'+coordStr+'</span>'+
-    _copyBtn(coordStr, '📋 Copiar coords')+
-    '</div>'+
-    '<div id="hunter-addr-'+p.hex_code+'" style="color:#94a3b8;font-size:11px;margin-top:4px">'+
-    '🔍 Buscando dirección...</div>'+
+    ' · <span style="color:#7dd3fc;font-family:monospace;font-size:10px">'+p.hex_code+'</span>'+
+    '<hr style="border:none;border-top:1px solid #334155;margin:5px 0">'+
+    '<div style="font-size:9px;color:#94a3b8;margin-bottom:3px">Score (gap 50% · PA 35% · otras 15%): '+
+    '<b style="color:#f1f5f9">'+Math.round(p.combined_score*100)+'/100</b></div>'+
+    '<b>👮 Sesiones PA:</b> '+p.usuarios+' usuarios'+
+    (p.users_no_supply > 0 ? ' · <span style="color:#ff1744;font-weight:700">⚠ sin cocina cerca</span>' : '')+'<br>'+
+    p.sin_compras+' sin comprar · Conv: '+p.tasa_conv_pct+'%<br>'+
+    ((p.users_other||0) > 0 ? '<b>👮 Otras orgs:</b> <span style="color:#7dd3fc">'+(p.users_other||0)+' usuarios</span><br>' : '')+
+    '<b>🏪 Oferta:</b> <span style="color:#00BFA5">'+p.neg_activos+'</span> en hex · '+
+    p.neg_cercanos+' cercanos '+
+    '<span style="color:'+dormColor+'">· 😴 '+p.neg_dormidos+' dorm.</span><br>'+
+    '<b>Cobertura:</b> <span style="color:'+covColor+';font-weight:700">'+covTxt+'</span><br>'+
+    '<b>🎯 Faltantes:</b> <span style="color:'+(p.gap > 0 ? '#ff1744' : '#64748b')+';font-weight:700">'+
+    p.gap+(p.gap===1?' negocio':' negocios')+' (meta: 3)</span>'+
+    '<hr style="border:none;border-top:1px solid #334155;margin:5px 0">'+
+    // Hunter buttons
+    '<div id="hp-hunters-'+p.hex_id+'" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px"></div>'+
+    // Coords
+    '<div style="font-size:10px;color:#64748b;margin-bottom:3px">'+
+    '📍 <span style="font-family:monospace;color:#94a3b8">'+coordStr+'</span>'+
+    _copyBtn(coordStr,'📋')+'</div>'+
+    // Address
+    '<div id="hp-addr-'+p.hex_id+'" style="font-size:10px;color:#475569">🔍 Cargando dirección...</div>'+
     '</div>';
+
   _hunterPopup.setLatLng(latlng).setContent(html).openOn(window.THE_MAP);
 
-  // Reverse geocode con Nominatim
-  fetch('https://nominatim.openstreetmap.org/reverse?lat='+p.lat+'&lon='+p.lng+'&format=json&addressdetails=1')
-    .then(function(r){{ return r.json(); }})
-    .then(function(d){{
-      var addr = d.display_name || 'Dirección no disponible';
-      // Versión corta: colonia + delegación
-      var a = d.address || {{}};
-      var short = [a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough, a.city||a.town]
-        .filter(Boolean).join(', ') || addr;
-      var el = document.getElementById('hunter-addr-'+p.hex_code);
-      if (el) {{
-        el.innerHTML = '<span style="color:#94a3b8">🏘 Dirección:</span><br>'+
-          '<span style="font-size:11px">'+short+'</span>'+
-          _copyBtn(short, '📋 Copiar dir.')+
-          '<br><span style="font-size:9px;color:#475569">'+addr+'</span>';
-      }}
-    }})
-    .catch(function(){{
-      var el = document.getElementById('hunter-addr-'+p.hex_code);
-      if (el) el.textContent = 'Dirección no disponible';
-    }});
+  // Poblar botones de hunter
+  var huntersEl = document.getElementById('hp-hunters-'+p.hex_id);
+  if (huntersEl) {{
+    var assigned = window._rbGetAssignment && window._rbGetAssignment(p.hex_id);
+    if (assigned) {{
+      huntersEl.innerHTML = '<span style="font-size:10px;color:#94a3b8">Ruta: <b style="color:#86efac">'+assigned+'</b></span>'+
+        ' <button class="hpop-copy" data-val="" data-lbl="✕ Quitar" '+
+        'onclick="window._rbUnassign && window._rbUnassign(\''+p.hex_id+'\');window.THE_MAP&&window.THE_MAP.closePopup()" '+
+        'style="background:none;border:1px solid #dc2626;border-radius:4px;color:#dc2626;cursor:pointer;font-size:10px;padding:1px 7px;">✕ Quitar</button>';
+    }} else {{
+      (window.HUNTERS_LIST||[]).forEach(function(h) {{
+        var color = (window._hunterColorMap&&window._hunterColorMap[h])||'#94a3b8';
+        var btn = document.createElement('button');
+        btn.textContent = h;
+        btn.style.cssText = 'font-size:9px;padding:2px 8px;border-radius:10px;cursor:pointer;'+
+          'border:1px solid '+color+';background:none;color:'+color+';font-weight:700';
+        btn.onclick = (function(hunter, hexId) {{
+          return function() {{
+            window._rbAssignZone && window._rbAssignZone(hexId, hunter);
+            window.THE_MAP && window.THE_MAP.closePopup();
+          }};
+        }})(h, p.hex_id);
+        huntersEl.appendChild(btn);
+      }});
+    }}
+  }}
+
+  // Dirección — cache compartido con el tooltip
+  window._addrCache = window._addrCache || {{}};
+  var addrEl = document.getElementById('hp-addr-'+p.hex_id);
+  if (addrEl) {{
+    if (window._addrCache[p.hex_id]) {{
+      addrEl.innerHTML = window._addrCache[p.hex_id];
+    }} else {{
+      fetch('https://nominatim.openstreetmap.org/reverse?lat='+p.lat+'&lon='+p.lng+'&format=json')
+        .then(function(r){{ return r.json(); }})
+        .then(function(d){{
+          var a = d.address || {{}};
+          var short = [a.road, a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough]
+            .filter(Boolean).join(', ') || d.display_name || 'Sin datos';
+          var full = d.display_name || '';
+          var addrHtml = '<span style="color:#cbd5e1">🏘 '+short+'</span>'+
+            _copyBtn(short,'📋')+
+            (full ? '<br><span style="font-size:9px;color:#475569">'+full+'</span>' : '');
+          window._addrCache[p.hex_id] = addrHtml;
+          // Actualizar tanto popup como tooltip si están abiertos
+          ['hp-addr-','tt-addr-'].forEach(function(pfx){{
+            var el = document.getElementById(pfx+p.hex_id);
+            if (el) el.innerHTML = addrHtml;
+          }});
+        }})
+        .catch(function(){{
+          if (addrEl) addrEl.textContent = 'Dirección no disponible';
+        }});
+    }}
+  }}
 }}
 
 // Copiar — delegación de eventos para .hpop-copy y .copy-coord-btn
@@ -2426,6 +2482,38 @@ document.addEventListener('click', function(e){{
         }})(h, hexId);
         row.appendChild(btn);
       }});
+      // ── Dirección por geocode con cache ───────────────────────────
+      window._addrCache = window._addrCache || {{}};
+      var addrEl = el.querySelector('[id^="tt-addr-"]');
+      if (addrEl) {{
+        var hid = addrEl.id.replace('tt-addr-', '');
+        if (window._addrCache[hid]) {{
+          addrEl.innerHTML = window._addrCache[hid];
+        }} else {{
+          var lat = addrEl.getAttribute('data-lat');
+          var lng = addrEl.getAttribute('data-lng');
+          fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json')
+            .then(function(r) {{ return r.json(); }})
+            .then(function(d) {{
+              var a = d.address || {{}};
+              var short = [a.road, a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough]
+                .filter(Boolean).join(', ') || d.display_name || 'Sin datos';
+              var full  = d.display_name || '';
+              var addrHtml = '<span style="color:#cbd5e1">🏘 '+short+'</span>'+
+                '<button class="hpop-copy" data-val="'+encodeURIComponent(short)+'" data-lbl="📋" '+
+                'style="background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;'+
+                'cursor:pointer;font-size:10px;padding:1px 5px;margin-left:4px;">📋</button>'+
+                (full ? '<br><span style="font-size:9px;color:#475569">'+full+'</span>' : '');
+              window._addrCache[hid] = addrHtml;
+              var live = document.getElementById('tt-addr-'+hid);
+              if (live) live.innerHTML = addrHtml;
+            }})
+            .catch(function() {{
+              var live = document.getElementById('tt-addr-'+hid);
+              if (live) live.textContent = 'Dirección no disponible';
+            }});
+        }}
+      }}
     }});
   }}
   // Esperar a que el mapa esté listo
@@ -3094,12 +3182,15 @@ function buildHunterTT(p) {{
     "<b>🎯 Opciones faltantes:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
     p.gap+(p.gap === 1 ? " negocio faltante" : " negocios faltantes")+" (meta: 3)</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;flex-wrap:wrap;gap:3px;margin-top:4px'></div>"+
-    "<span style='color:#94a3b8;font-size:10px'>📍 "+
-    p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
+    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px'></div>"+
+    "<div style='font-size:10px;color:#64748b;margin-bottom:3px'>"+
+    "📍 <span style='font-family:monospace;color:#94a3b8'>"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"</span>"+
     " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"' "+
     "style='background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;"+
-    "font-size:10px;padding:1px 5px;margin-left:2px;'>📋</button></span>";
+    "font-size:10px;padding:1px 5px;margin-left:3px;'>📋</button></div>"+
+    "<div id='tt-addr-"+p.hex_id+"' data-lat='"+p.lat.toFixed(7)+"' data-lng='"+p.lng.toFixed(7)+"' "+
+    "style='font-size:10px;color:#475569;min-height:14px'>🔍 Cargando dirección...</div>"+
+    "<div style='margin-top:5px;text-align:right;font-size:9px;color:#334155'>📌 Click para fijar</div>";
 }}
 function buildHeatHexTT(p, label, color) {{
   return "<b style='color:"+color+"'>⬡ "+label+"</b><br>"+
