@@ -3260,7 +3260,15 @@ document.addEventListener("DOMContentLoaded", function() {{
     window.LYR_GRID = L.layerGroup();
     (function buildGrid() {{
       if (!window.h3 || !window.h3.cellToBoundary) {{ setTimeout(buildGrid, 400); return; }}
-      var renderer = L.canvas({{padding: 0.4}});
+      // Pane propio DEBAJO de hunterPane (330) y transparente al mouse: el
+      // canvas en overlayPane interceptaba el hover y mataba los tooltips
+      // de las zonas hunter.
+      if (!window.THE_MAP.getPane('gridPane')) {{
+        window.THE_MAP.createPane('gridPane');
+        window.THE_MAP.getPane('gridPane').style.zIndex = '320';
+        window.THE_MAP.getPane('gridPane').style.pointerEvents = 'none';
+      }}
+      var renderer = L.canvas({{pane: 'gridPane', padding: 0.4}});
       var CHUNK = 1500;
       for (var i = 0; i < HUNTER_GRID_IDS.length; i += CHUNK) {{
         var lines = [];
@@ -3270,7 +3278,7 @@ document.addEventListener("DOMContentLoaded", function() {{
           lines.push(b);
         }}
         window.LYR_GRID.addLayer(L.polyline(lines, {{
-          renderer: renderer, color: '#94a3b8', weight: 0.6,
+          pane: 'gridPane', renderer: renderer, color: '#94a3b8', weight: 0.6,
           opacity: 0.35, interactive: false,
         }}));
       }}
