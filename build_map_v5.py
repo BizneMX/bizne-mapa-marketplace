@@ -28,6 +28,7 @@ if _CI:
     TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
+    OTROS_CSV= _os.path.join(_DIR, 'pg_usuarios_otros_cache.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
     # Local dev paths
@@ -52,6 +53,7 @@ else:
         '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv',
     ]
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (3).csv'
+    OTROS_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/pg_usuarios_otros_cache.csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
@@ -737,6 +739,21 @@ user_hex = df_aprov_loc2.groupby('hex_id').agg(
 user_hex['sin_compras'] = user_hex['usuarios'] - user_hex['con_tx']
 user_hex['tasa_conv_pct'] = (user_hex['con_tx']/user_hex['usuarios']*100).round(1)
 
+# Señal secundaria: sesiones de otras orgs policía (Conéctate CDMX + Bancaria Industrial)
+try:
+    _df_otros = pd.read_csv(OTROS_CSV, encoding='utf-8')
+    _df_otros.columns = _df_otros.columns.str.strip()
+    for _c in ['latitude', 'longitude']:
+        _df_otros[_c] = pd.to_numeric(_df_otros[_c], errors='coerce')
+    _df_otros = _df_otros[_df_otros['latitude'].between(-90, 90) & _df_otros['longitude'].between(-180, 180)]
+    _df_otros['hex_id'] = _df_otros.apply(lambda r: safe_h3(r['latitude'], r['longitude']), axis=1)
+    _df_otros = _df_otros[_df_otros['hex_id'].notna()]
+    user_hex_otros = _df_otros.groupby('hex_id').size().to_dict()
+    print(f"  Usuarios otras orgs: {len(_df_otros):,} → {len(user_hex_otros):,} hexes")
+except Exception as _e:
+    user_hex_otros = {}
+    print(f"  Usuarios otras orgs: sin datos ({_e})")
+
 # Dormidas by hex
 df_dorm_copy = df_dorm.copy()
 df_dorm_copy['hex_id'] = df_dorm_copy.apply(lambda r: safe_h3(r['lat'],r['lng']), axis=1)
@@ -790,56 +807,55 @@ if activ_dem_hex:
 # (numeración HEX-XXXXX fija). Se emiten todos los hexes de la malla con señal
 # (sesiones u oferta); los sin señal conservan su número pero no se pintan.
 #
-#   demanda   = usuarios approved con sesión en el hex (proxy 100% sesiones)
-#   oferta    = negocios activos en hex + anillo-1 (biz_nearby)
-#   cobertura = oferta / demanda  (cocinas por usuario)
-#   score     = (usuarios / max_usuarios) × 1/(1 + oferta)  → ordena el rank
-#   gap       = cocinas faltantes (heurística: 1 cocina ≈ 10 usuarios de sesión)
+#   Estrategia: el usuario que abre la app debe encontrar ≥3 opciones cercanas (~1km).
+#   gap   = max(0, 3 - biz_nb)  — cuántas opciones faltan para alcanzar la meta
+#   tier  = basado en gap (A=falta todo, D=cubierta)
+#   score = 50% gap + 35% demanda PA + 15% demanda otras orgs policía
 
 HUNTER_TIER_DEFS = {
-    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo   — gap alto  (≥4 cocinas faltantes)
-    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — gap medio (2-3 cocinas faltantes)
-    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — gap bajo (1 cocina faltante)
-    'D': ('D Cubierta',       '#00c853', 0.25),   # verde   — gap = 0  (bien cubierta)
+    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo    — gap = 3 (0 negocios cercanos)
+    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — gap = 2 (1 negocio cercano)
+    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — gap = 1 (2 negocios cercanos)
+    'D': ('D Cubierta',       '#00c853', 0.25),   # verde   — gap = 0 (≥3 negocios cercanos)
 }
+COVERAGE_TARGET = 3   # opciones mínimas visibles al usuario (~1km)
 
-def hunter_tier_v6(users, biz_in):
-    """Clasifica por gap de negocios faltantes en el hex (1 cocina ≈ 10 usuarios).
-    Usa solo negocios DENTRO del hex (biz_in), no cercanos."""
-    if users <= 0:
-        return 'D'                        # sin demanda → cubierta
-    necesarias = import_ceil(users / 10)
-    gap = max(0, necesarias - biz_in)
-    if gap >= 4:
-        return 'A'
-    if gap >= 2:
-        return 'B'
-    if gap >= 1:
-        return 'C'
-    return 'D'                            # gap = 0 → cubierta
+def hunter_tier_v6(biz_nb):
+    """Clasifica por gap respecto a la meta de 3 opciones cercanas."""
+    gap = max(0, COVERAGE_TARGET - biz_nb)
+    if gap >= 3: return 'A'
+    if gap >= 2: return 'B'
+    if gap >= 1: return 'C'
+    return 'D'   # gap = 0 → cubierta
 
-_uh = {r['hex_id']: r for _, r in user_hex.iterrows()}
-_signal = [hx for hx in GRID_CODE
-           if (hx in _uh and int(_uh[hx]['usuarios']) > 0) or biz_per_hex.get(hx, 0) > 0]
-_max_users = max([int(_uh[hx]['usuarios']) for hx in _signal if hx in _uh] + [1])
+_uh       = {r['hex_id']: r for _, r in user_hex.iterrows()}
+_signal   = [hx for hx in GRID_CODE
+             if (hx in _uh and int(_uh[hx]['usuarios']) > 0) or biz_per_hex.get(hx, 0) > 0]
+_max_pa    = max([int(_uh[hx]['usuarios']) for hx in _signal if hx in _uh] + [1])
+_max_other = max(list(user_hex_otros.values()) + [1])
 
 _hunt_rows = []
 for hx in _signal:
-    _u      = _uh.get(hx)
-    users   = int(_u['usuarios']) if _u is not None else 0
-    biz_in  = int(biz_per_hex.get(hx, 0))
-    biz_nb  = int(biz_nearby(hx))
-    necesarias = import_ceil(users / 10) if users > 0 else 0
+    _u          = _uh.get(hx)
+    users       = int(_u['usuarios']) if _u is not None else 0
+    users_other = int(user_hex_otros.get(hx, 0))
+    biz_in      = int(biz_per_hex.get(hx, 0))
+    biz_nb      = int(biz_nearby(hx))
+    gap         = max(0, COVERAGE_TARGET - biz_nb)
+    gap_norm    = gap / COVERAGE_TARGET
+    pa_norm     = users / _max_pa
+    other_norm  = users_other / _max_other
     _hunt_rows.append({
         'hex_id': hx,
-        'tier': hunter_tier_v6(users, biz_in),
+        'tier': hunter_tier_v6(biz_nb),
         'usuarios': users,
+        'users_other': users_other,
         'sin_compras': int(_u['sin_compras']) if _u is not None else 0,
         'tasa_conv_pct': float(_u['tasa_conv_pct']) if _u is not None else 0.0,
         'biz_in': biz_in, 'biz_nb': biz_nb,
-        'cobertura': round(biz_nb / users, 2) if users > 0 else None,
-        'gap': max(0, necesarias - biz_in),
-        'score': round((users / _max_users) * (1.0 / (1.0 + biz_nb)), 4),
+        'cobertura': round(biz_nb / COVERAGE_TARGET, 2),
+        'gap': gap,
+        'score': round(gap_norm * 0.50 + pa_norm * 0.35 + other_norm * 0.15, 4),
         'neg_dormidos': int(dorm_per_hex.get(hx, 0)),
     })
 
@@ -877,6 +893,7 @@ for _rank, row in enumerate(_hunt_rows, 1):
             "neg_dormidos": row['neg_dormidos'],
             "cobertura": row['cobertura'],
             "gap": row['gap'],
+            "users_other": row['users_other'],
             "demanda_dia": row['usuarios'],   # proxy: sesiones de usuarios
             "users_no_supply": row['usuarios'] if row['biz_nb'] == 0 else 0,
             "activ_demand": 0,
@@ -2987,31 +3004,28 @@ function buildBizTT(p) {{
 }}
 function buildHunterTT(p) {{
   var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
-  var covTxt, covColor;
-  if (p.usuarios > 0) {{
-    var c = p.cobertura || 0;
-    covColor = c >= 2 ? '#00c853' : c >= 1 ? '#ffd600' : c >= 0.34 ? '#ff9100' : '#ff1744';
-    covTxt = c + ' cocinas/usuario';
-  }} else {{
-    covColor = '#00c853';
-    covTxt = 'solo oferta (sin sesiones)';
-  }}
+  var covPct = Math.round((p.neg_cercanos / 3) * 100);
+  var covColor = covPct >= 100 ? '#00c853' : covPct >= 67 ? '#ffd600' : covPct >= 34 ? '#ff9100' : '#ff1744';
+  var covTxt = p.neg_cercanos + '/3 opciones (' + Math.min(covPct,100) + '%)';
   return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b>"+
     " · <span style='color:#7dd3fc;font-family:monospace;font-size:10px'>"+p.hex_code+"</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<div style='margin:2px 0;font-size:9px;color:#94a3b8'>Score 100% sesiones vs oferta: "+
+    "<div style='margin:2px 0;font-size:9px;color:#94a3b8'>Score (gap 50% · PA 35% · otras orgs 15%): "+
     "<b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
-    "<b>👤 Sesiones:</b> "+p.usuarios+" usuarios"+
+    "<b>👮 Sesiones PA:</b> "+p.usuarios+" usuarios"+
     (p.users_no_supply > 0
       ? " · <span style='color:#ff1744;font-weight:700'>⚠ sin cocina cercana</span>"
       : "")+"<br>"+
     p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
+    ((p.users_other||0) > 0
+      ? "<b>👮 Otras orgs policía:</b> <span style='color:#7dd3fc'>"+(p.users_other||0)+" usuarios</span><br>"
+      : "")+
     "<b>🏪 Oferta:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span> en el hex · "+
-    p.neg_cercanos+" cercanos "+
+    p.neg_cercanos+" cercanos (~1km) "+
     "<span style='color:"+dormColor+"'>· 😴 "+p.neg_dormidos+" dorm.</span><br>"+
     "<b>Cobertura:</b> <span style='color:"+covColor+";font-weight:700'>"+covTxt+"</span><br>"+
-    "<b>🍽 Gap de negocios:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
-    p.gap+(p.gap === 1 ? " cocina faltante" : " cocinas faltantes")+"</span><br>"+
+    "<b>🎯 Opciones faltantes:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
+    p.gap+(p.gap === 1 ? " negocio faltante" : " negocios faltantes")+" (meta: 3)</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(7)+", "+p.lng.toFixed(7)+

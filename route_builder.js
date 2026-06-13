@@ -670,19 +670,19 @@
             'border-radius:6px;line-height:1.55">';
     if (f) {
       var p = f.properties;
-      var cov = p.usuarios > 0
-        ? ((p.cobertura == null ? '—' : p.cobertura) + ' cocinas/usuario')
-        : 'solo oferta';
+      var covPct = Math.min(100, Math.round(((p.neg_cercanos || 0) / 3) * 100));
+      var cov = (p.neg_cercanos || 0) + '/3 opciones (' + covPct + '%)';
       s += row('Score', Math.round((p.combined_score || 0) * 100) + '/100') +
-           row('👤 Sesiones', p.usuarios + (p.sin_compras ? ' (' + p.sin_compras + ' sin comprar)' : '')) +
+           row('👮 Sesiones PA', p.usuarios + (p.sin_compras ? ' (' + p.sin_compras + ' sin comprar)' : '')) +
+           ((p.users_other || 0) > 0 ? row('👮 Otras orgs', (p.users_other || 0) + ' usuarios') : '') +
            row('📈 Conversión', (p.tasa_conv_pct || 0) + '%') +
-           row('🏪 Oferta', p.neg_activos + ' en hex · ' + p.neg_cercanos + ' cerca') +
+           row('🏪 Oferta', p.neg_activos + ' en hex · ' + (p.neg_cercanos || 0) + ' cerca (~1km)') +
            row('Cobertura', cov) +
-           (p.gap > 0 ? row('🍽 Gap', p.gap + ' cocinas') : '');
+           (p.gap > 0 ? row('🎯 Faltantes', p.gap + ' negocio(s) (meta: 3)') : row('✅ Cubierta', '≥3 opciones cerca'));
     } else {
       var nb = bizNearbyOf(cell);
       s += row('👤 Sesiones', '0 — sin señal') +
-           row('🏪 Oferta cercana', nb === null ? '—' : nb + ' negocios');
+           row('🏪 Oferta cercana', nb === null ? '—' : nb + '/3 negocios');
     }
     s += row('📍', z.lat.toFixed(5) + ', ' + z.lng.toFixed(5)) + '</div>';
     return s;

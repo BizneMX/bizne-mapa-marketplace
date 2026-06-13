@@ -632,6 +632,21 @@ LEFT JOIN user_user uu ON uu.id = u.user_id
 ORDER BY transacciones DESC
 """
 
+SQL_USUARIOS_OTROS = """
+SELECT
+    uu2.id AS user_id,
+    oo.name AS organization_name,
+    ST_Y(uu2.coordinates) AS latitude,
+    ST_X(uu2.coordinates) AS longitude
+FROM user_user uu2
+LEFT JOIN organization_organization oo ON oo.id = uu2.organization_id
+WHERE oo.name IN ('Conéctate Policia CDMX', 'Policía Bancaria Industrial')
+  AND uu2.completed_register IS TRUE
+  AND uu2.coordinates IS NOT NULL
+  AND (uu2.name IS NULL OR uu2.name NOT ILIKE '%test%')
+  AND (uu2.email IS NULL OR uu2.email NOT ILIKE '%test%')
+"""
+
 SQL_TRANSACCIONES = """
 SELECT
     t.id, t.created_date,
@@ -800,6 +815,7 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
+df_su_otros_raw = _query_mcp(SQL_USUARIOS_OTROS, "Usuarios Otras Orgs", "pg_usuarios_otros_cache.csv")
 df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
@@ -904,6 +920,10 @@ df_metro["hex_id"]        = df_metro.apply(lambda r: to_hex(r.lat, r.lng), axis=
 df_admin["hex_id"]        = df_admin.apply(lambda r: to_hex(r.lat, r.lng), axis=1)
 df_su["hex_id"]           = df_su.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_su_potential["hex_id"] = df_su_potential.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
+# Otras orgs: coerce coords y asignar hex
+for _col in ["latitude", "longitude"]:
+    df_su_otros_raw[_col] = pd.to_numeric(df_su_otros_raw[_col], errors="coerce")
+df_su_otros_raw["hex_id"] = df_su_otros_raw.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_tx["hex_id"]           = df_tx.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_tx_complete            = df_tx[df_tx["status_trx"] == "Transacción completa"].copy()
 df_tx_incomplete          = df_tx[df_tx["status_trx"] == "Transacción incompleta"].copy()
