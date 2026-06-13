@@ -803,12 +803,13 @@ HUNTER_TIER_DEFS = {
     'D': ('D Cubierta',       '#00c853', 0.25),   # verde   — gap = 0  (bien cubierta)
 }
 
-def hunter_tier_v6(users, biz_nb):
-    """Clasifica por gap de negocios faltantes (1 cocina ≈ 10 usuarios)."""
+def hunter_tier_v6(users, biz_in):
+    """Clasifica por gap de negocios faltantes en el hex (1 cocina ≈ 10 usuarios).
+    Usa solo negocios DENTRO del hex (biz_in), no cercanos."""
     if users <= 0:
         return 'D'                        # sin demanda → cubierta
     necesarias = import_ceil(users / 10)
-    gap = max(0, necesarias - biz_nb)
+    gap = max(0, necesarias - biz_in)
     if gap >= 4:
         return 'A'
     if gap >= 2:
@@ -831,13 +832,13 @@ for hx in _signal:
     necesarias = import_ceil(users / 10) if users > 0 else 0
     _hunt_rows.append({
         'hex_id': hx,
-        'tier': hunter_tier_v6(users, biz_nb),
+        'tier': hunter_tier_v6(users, biz_in),
         'usuarios': users,
         'sin_compras': int(_u['sin_compras']) if _u is not None else 0,
         'tasa_conv_pct': float(_u['tasa_conv_pct']) if _u is not None else 0.0,
         'biz_in': biz_in, 'biz_nb': biz_nb,
         'cobertura': round(biz_nb / users, 2) if users > 0 else None,
-        'gap': max(0, necesarias - biz_nb),
+        'gap': max(0, necesarias - biz_in),
         'score': round((users / _max_users) * (1.0 / (1.0 + biz_nb)), 4),
         'neg_dormidos': int(dorm_per_hex.get(hx, 0)),
     })
