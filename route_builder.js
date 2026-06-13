@@ -450,7 +450,13 @@
         d.setAttribute('data-hex', z.hex_id);
         var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
-          cardHTML(zz, { order: true });
+          cardHTML(zz, { order: true }) +
+          '<button data-rmhex="' + z.hex_id + '" style="margin-left:auto;flex-shrink:0;background:none;border:none;' +
+          'color:#64748b;cursor:pointer;font-size:13px;padding:0 2px;line-height:1" title="Quitar zona">✕</button>';
+        d.querySelector('[data-rmhex]').onclick = function (e) {
+          e.stopPropagation();
+          unassignZone(this.getAttribute('data-rmhex'));
+        };
         zEl.appendChild(d);
       });
       if (window.Sortable) {
