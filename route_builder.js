@@ -467,23 +467,6 @@
           },
         });
       }
-      // HTML5 drop desde el badge del mapa (flujo paralelo a SortableJS)
-      (function (hunter, dropEl) {
-        dropEl.addEventListener('dragover', function (e) {
-          e.preventDefault();
-          e.dataTransfer.dropEffect = 'move';
-          dropEl.classList.add('rb-drop-over');
-        });
-        dropEl.addEventListener('dragleave', function (e) {
-          if (!dropEl.contains(e.relatedTarget)) dropEl.classList.remove('rb-drop-over');
-        });
-        dropEl.addEventListener('drop', function (e) {
-          e.preventDefault();
-          dropEl.classList.remove('rb-drop-over');
-          var hexId = e.dataTransfer.getData('text/plain');
-          if (hexId) assignZone(hexId, hunter);
-        });
-      })(h, zEl);
     });
     el.querySelectorAll('.rb-lane-share').forEach(function (b) {
       b.onclick = function () {
@@ -804,69 +787,87 @@
     };
   }
 
-  // ── Drag desde el mapa → Hunter Lanes ────────────────────────────
-  var _badgeHideTimer = null;
-
+  // ── Drag directo de hex → Hunter Lane (Pointer Events) ───────────
   function setupMapDrag() {
-    var badge = document.createElement('div');
-    badge.id = 'rb-map-drag-badge';
-    badge.draggable = true;
-    document.body.appendChild(badge);
+    var ghost = document.createElement('div');
+    ghost.id = 'rb-map-drag-badge';
+    ghost.style.pointerEvents = 'none';  // ghost no bloquea elementFromPoint
+    document.body.appendChild(ghost);
 
+    var dragState = null;  // { hexId, zone, startX, startY, active }
     var TIER_COLOR = { A:'#f87171', B:'#fb923c', C:'#fbbf24', D:'#4ade80', S:'#94a3b8' };
 
-    function scheduleBadgeHide() {
-      clearTimeout(_badgeHideTimer);
-      _badgeHideTimer = setTimeout(function () { badge.style.display = 'none'; }, 260);
+    function startGhost(z, x, y) {
+      var tc = TIER_COLOR[z.tier] || '#94a3b8';
+      ghost.innerHTML =
+        '<span style="color:' + tc + ';font-weight:800">' + z.tier + '</span>' +
+        '<span style="color:#7dd3fc;font-family:monospace"> ' + (z.hex_code || z.hex_id.slice(-6)) + '</span>';
+      ghost.style.display = 'flex';
+      ghost.style.left = (x + 14) + 'px';
+      ghost.style.top  = (y - 22) + 'px';
     }
 
-    badge.addEventListener('mouseenter', function () { clearTimeout(_badgeHideTimer); });
-    badge.addEventListener('mouseleave', scheduleBadgeHide);
+    function clearDrag() {
+      ghost.style.display = 'none';
+      document.querySelectorAll('.rb-lane-zones.rb-drop-over').forEach(function (el) {
+        el.classList.remove('rb-drop-over');
+      });
+      if (dragState && dragState.active && window.THE_MAP) THE_MAP.dragging.enable();
+      dragState = null;
+    }
 
-    badge.addEventListener('dragstart', function (e) {
-      var hexId = badge.getAttribute('data-hex');
-      if (!hexId) { e.preventDefault(); return; }
-      e.dataTransfer.setData('text/plain', hexId);
-      e.dataTransfer.effectAllowed = 'move';
-      // Ocultar tras el snapshot del ghost nativo
-      setTimeout(function () { badge.style.opacity = '0'; }, 0);
-    });
-    badge.addEventListener('dragend', function () {
-      badge.style.display = 'none';
-      badge.style.opacity = '1';
-    });
-
-    function onMapMouseMove(e) {
-      if (!rbOpen) { badge.style.display = 'none'; return; }
-      clearTimeout(_badgeHideTimer);
-      if (!window.h3 || !window.h3.latLngToCell) return;
-
-      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+    function onPointerDown(e) {
+      if (!rbOpen || e.button !== 0) return;
+      if (!window.h3 || !window.THE_MAP) return;
+      var mc = THE_MAP.getContainer();
+      var rect = mc.getBoundingClientRect();
+      var pt = L.point(e.clientX - rect.left, e.clientY - rect.top);
+      var latlng = THE_MAP.containerPointToLatLng(pt);
+      var cell = window.h3.latLngToCell(latlng.lat, latlng.lng, 8);
       var z = ZONE_BY_ID[cell] || ensureZone(cell);
-      if (!z) { scheduleBadgeHide(); return; }
-
-      var pt = THE_MAP.latLngToContainerPoint(e.latlng);
-      var rect = THE_MAP.getContainer().getBoundingClientRect();
-      badge.style.left = (rect.left + pt.x + 16) + 'px';
-      badge.style.top  = (rect.top  + pt.y - 24) + 'px';
-
-      if (badge.getAttribute('data-hex') !== cell) {
-        badge.setAttribute('data-hex', cell);
-        var tc = TIER_COLOR[z.tier] || '#94a3b8';
-        badge.innerHTML =
-          '<span style="color:' + tc + ';font-weight:800">' + z.tier + '</span>' +
-          '<span style="color:#7dd3fc;font-family:monospace"> ' + (z.hex_code || z.hex_id.slice(-6)) + '</span>' +
-          '<span style="color:#64748b;margin-left:4px;font-size:11px">⠿</span>';
-      }
-      badge.style.display = 'flex';
-      badge.style.opacity = '1';
+      if (!z) return;
+      dragState = { hexId: cell, zone: z, startX: e.clientX, startY: e.clientY, active: false };
     }
 
-    var _attachTimer = setInterval(function () {
+    function onPointerMove(e) {
+      if (!dragState) return;
+      var dx = e.clientX - dragState.startX, dy = e.clientY - dragState.startY;
+      if (!dragState.active) {
+        if (Math.sqrt(dx * dx + dy * dy) < 8) return;
+        dragState.active = true;
+        THE_MAP.dragging.disable();
+        startGhost(dragState.zone, e.clientX, e.clientY);
+      }
+      ghost.style.left = (e.clientX + 14) + 'px';
+      ghost.style.top  = (e.clientY - 22) + 'px';
+      // Highlight lane bajo el cursor (ghost es pointer-events:none)
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      document.querySelectorAll('.rb-lane-zones').forEach(function (el) {
+        el.classList.toggle('rb-drop-over', el === under || el.contains(under));
+      });
+    }
+
+    function onPointerUp(e) {
+      if (!dragState) return;
+      var state = dragState;
+      clearDrag();
+      if (!state.active) return;
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      document.querySelectorAll('.rb-lane-zones').forEach(function (el) {
+        if (el === under || el.contains(under)) {
+          assignZone(state.hexId, el.getAttribute('data-hunter'));
+        }
+      });
+    }
+
+    var _t = setInterval(function () {
       if (!window.THE_MAP) return;
-      clearInterval(_attachTimer);
-      THE_MAP.on('mousemove', onMapMouseMove);
-      THE_MAP.on('mouseout', function () { scheduleBadgeHide(); });
+      clearInterval(_t);
+      var mc = THE_MAP.getContainer();
+      mc.addEventListener('pointerdown', onPointerDown);
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+      document.addEventListener('pointercancel', clearDrag);
     }, 300);
   }
 

@@ -2414,12 +2414,17 @@ document.addEventListener('click', function(e){{
         row.appendChild(btn);
         return;
       }}
-      var sel = row.querySelector('.tt-hunter-sel');
-      if (!sel || sel.options.length > 1) return;  // ya poblado
+      if (row.children.length > 0) return;  // ya poblado
       (window.HUNTERS_LIST || []).forEach(function(h) {{
-        var o = document.createElement('option');
-        o.value = h; o.textContent = h;
-        sel.appendChild(o);
+        var color = (window._hunterColorMap && window._hunterColorMap[h]) || '#94a3b8';
+        var btn = document.createElement('button');
+        btn.textContent = h;
+        btn.style.cssText = 'font-size:9px;padding:2px 8px;border-radius:10px;cursor:pointer;' +
+          'border:1px solid ' + color + ';background:none;color:' + color + ';font-weight:700';
+        btn.onclick = (function(hunter, hid) {{
+          return function() {{ window._rbAssignZone && window._rbAssignZone(hid, hunter); }};
+        }})(h, hexId);
+        row.appendChild(btn);
       }});
     }});
   }}
@@ -2429,12 +2434,6 @@ document.addEventListener('click', function(e){{
   }}, 300);
 }})();
 
-window._rbAssignFromTT = function(row) {{
-  var hexId = row && row.getAttribute('data-hex');
-  var sel   = row && row.querySelector('.tt-hunter-sel');
-  if (!hexId || !sel || !sel.value) return;
-  if (window._rbAssignZone) window._rbAssignZone(hexId, sel.value);
-}};
 
 function refreshMap(){{
   var btn = document.getElementById('refresh-btn');
@@ -3095,12 +3094,7 @@ function buildHunterTT(p) {{
     "<b>🎯 Opciones faltantes:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
     p.gap+(p.gap === 1 ? " negocio faltante" : " negocios faltantes")+" (meta: 3)</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;gap:4px;align-items:center;margin-bottom:4px'>"+
-      "<select class='tt-hunter-sel' style='flex:1;font-size:10px;padding:2px 4px;background:#0f172a;color:#f1f5f9;"+
-      "border:1px solid #334155;border-radius:4px'><option value=''>— Hunter —</option></select>"+
-      "<button class='tt-assign-btn' onclick='window._rbAssignFromTT(this.parentElement)' "+
-      "style='font-size:10px;padding:2px 8px;background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700'>Asignar</button>"+
-    "</div>"+
+    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;flex-wrap:wrap;gap:3px;margin-top:4px'></div>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
     " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"' "+
