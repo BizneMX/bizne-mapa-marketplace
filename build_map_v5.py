@@ -740,6 +740,7 @@ user_hex['sin_compras'] = user_hex['usuarios'] - user_hex['con_tx']
 user_hex['tasa_conv_pct'] = (user_hex['con_tx']/user_hex['usuarios']*100).round(1)
 
 # Señal secundaria: sesiones de otras orgs policía (Conéctate CDMX + Bancaria Industrial)
+_df_conectate_loc = pd.DataFrame()   # para capas de mapa de Conéctate
 try:
     _df_otros = pd.read_csv(OTROS_CSV, encoding='utf-8')
     _df_otros.columns = _df_otros.columns.str.strip()
@@ -749,7 +750,11 @@ try:
     _df_otros['hex_id'] = _df_otros.apply(lambda r: safe_h3(r['latitude'], r['longitude']), axis=1)
     _df_otros = _df_otros[_df_otros['hex_id'].notna()]
     user_hex_otros = _df_otros.groupby('hex_id').size().to_dict()
-    print(f"  Usuarios otras orgs: {len(_df_otros):,} → {len(user_hex_otros):,} hexes")
+    # Capa específica Conéctate Policía CDMX (excluyendo Bancaria)
+    if 'organization_name' in _df_otros.columns:
+        _df_conectate_loc = _df_otros[_df_otros['organization_name'] == 'Conéctate Policia CDMX'].copy()
+    print(f"  Usuarios otras orgs: {len(_df_otros):,} → {len(user_hex_otros):,} hexes "
+          f"(Conéctate: {len(_df_conectate_loc):,})")
 except Exception as _e:
     user_hex_otros = {}
     print(f"  Usuarios otras orgs: sin datos ({_e})")
@@ -1150,10 +1155,18 @@ heat_ok   = [[round(r.lat_v,5), round(r.lng_v,5), 1.0] for r in df_trx_loc[~df_t
 heat_fail = [[round(r.lat_v,5), round(r.lng_v,5), 1.0] for r in df_trx_loc[df_trx_loc['status_trx'].str.contains('incompleta',case=False)].itertuples()]
 heat_users_pts = [[round(r['lat'],5), round(r['lng'],5), 1.0] for _, r in df_aprov_loc2.iterrows() if abs(r['lat'])>5]
 
-HEAT_TRX_OK   = json.dumps(heat_ok, ensure_ascii=False)
-HEAT_TRX_FAIL = json.dumps(heat_fail, ensure_ascii=False)
-HEAT_USERS    = json.dumps(heat_users_pts, ensure_ascii=False)
-print(f"  Heat: ok={len(heat_ok)}, fail={len(heat_fail)}, users={len(heat_users_pts)}")
+heat_conectate_pts = [
+    [round(float(r['latitude']),5), round(float(r['longitude']),5), 1.0]
+    for _, r in _df_conectate_loc.iterrows()
+    if pd.notna(r.get('latitude')) and abs(float(r.get('latitude', 0))) > 5
+]
+
+HEAT_TRX_OK      = json.dumps(heat_ok, ensure_ascii=False)
+HEAT_TRX_FAIL    = json.dumps(heat_fail, ensure_ascii=False)
+HEAT_USERS       = json.dumps(heat_users_pts, ensure_ascii=False)
+HEAT_CONECTATE   = json.dumps(heat_conectate_pts, ensure_ascii=False)
+print(f"  Heat: ok={len(heat_ok)}, fail={len(heat_fail)}, users={len(heat_users_pts)}, "
+      f"conectate={len(heat_conectate_pts)}")
 
 # Hex-level heat (aggregated)
 def build_hex_heat(points, label):
@@ -1175,9 +1188,10 @@ def build_hex_heat(points, label):
         }})
     return json.dumps({"type":"FeatureCollection","features":feats}, ensure_ascii=False)
 
-HEX_HEAT_OK    = build_hex_heat(heat_ok,   'Tx OK')
-HEX_HEAT_FAIL  = build_hex_heat(heat_fail, 'Tx Fail')
-HEX_HEAT_USERS = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts], 'Usuarios')
+HEX_HEAT_OK        = build_hex_heat(heat_ok,              'Tx OK')
+HEX_HEAT_FAIL      = build_hex_heat(heat_fail,            'Tx Fail')
+HEX_HEAT_USERS     = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts],     'Usuarios PA')
+HEX_HEAT_CONECTATE = build_hex_heat([[p[0],p[1],1] for p in heat_conectate_pts], 'Conéctate')
 print("  Hex heat maps built")
 
 # ── Heat users por organización (Session Demand no se duplica por org — demasiado pesado) ──
@@ -1654,6 +1668,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#ef4444"></span> Tx incompletas</label>
       <label class="bchk"><input type="checkbox" id="ht_users" onchange="toggleHeat('users',this.checked)">
         <span class="bdot" style="background:#a78bfa"></span> Última sesión usuarios</label>
+      <label class="bchk"><input type="checkbox" id="ht_conectate" onchange="toggleHeat('conectate',this.checked)">
+        <span class="bdot" style="background:#0ea5e9"></span> Conéctate Policía</label>
     </div>
 
     <hr class="bhr">
@@ -1666,6 +1682,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#ef4444"></span> Tx incompletas</label>
       <label class="bchk"><input type="checkbox" id="hh_users" onchange="toggleHexHeat('users',this.checked)">
         <span class="bdot" style="background:#a78bfa"></span> Última sesión usuarios</label>
+      <label class="bchk"><input type="checkbox" id="hh_conectate" onchange="toggleHexHeat('conectate',this.checked)">
+        <span class="bdot" style="background:#0ea5e9"></span> Conéctate Policía</label>
     </div>
 
     <hr class="bhr">
@@ -2254,9 +2272,11 @@ var ACTIV_DATA          = {ACTIV_DATA};
 var HEAT_TRX_OK         = {HEAT_TRX_OK};
 var HEAT_TRX_FAIL       = {HEAT_TRX_FAIL};
 var HEAT_USERS          = {HEAT_USERS};
+var HEAT_CONECTATE      = {HEAT_CONECTATE};
 var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
+var HEX_HEAT_CONECTATE  = {HEX_HEAT_CONECTATE};
 
 // ── Hunters para asignación ─────────────────────────────────────
 var HUNTERS_LIST = {HUNTERS_LIST_JSON};
@@ -3248,9 +3268,10 @@ document.addEventListener("DOMContentLoaded", function() {{
     }}).addTo(theMap);
 
     // Heat maps (smooth)
-    window.LYR_HEAT_OK   = L.heatLayer(HEAT_TRX_OK,  {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
-    window.LYR_HEAT_FAIL = L.heatLayer(HEAT_TRX_FAIL,{{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
-    window.LYR_HEAT_USERS= L.heatLayer(HEAT_USERS,   {{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
+    window.LYR_HEAT_OK        = L.heatLayer(HEAT_TRX_OK,   {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
+    window.LYR_HEAT_FAIL      = L.heatLayer(HEAT_TRX_FAIL, {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
+    window.LYR_HEAT_USERS     = L.heatLayer(HEAT_USERS,    {{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
+    window.LYR_HEAT_CONECTATE = L.heatLayer(HEAT_CONECTATE,{{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#0284c7',0.65:'#38bdf8',1:'#fff'}}}});
 
     // Hex heat layers
     window.LYR_HHEX_OK = L.geoJSON(HEX_HEAT_OK, {{
@@ -3266,7 +3287,12 @@ document.addEventListener("DOMContentLoaded", function() {{
     window.LYR_HHEX_USERS = L.geoJSON(HEX_HEAT_USERS, {{
       pane:'heatHexPane',
       style:function(f){{return {{color:'#a78bfa',weight:0.5,fillColor:'#a78bfa',fillOpacity:f.properties.fill_opacity}};}},
-      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Última sesión','#a78bfa'),{{sticky:true,opacity:0.96}});}}
+      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Última sesión PA','#a78bfa'),{{sticky:true,opacity:0.96}});}}
+    }});
+    window.LYR_HHEX_CONECTATE = L.geoJSON(HEX_HEAT_CONECTATE, {{
+      pane:'heatHexPane',
+      style:function(f){{return {{color:'#0ea5e9',weight:0.5,fillColor:'#0ea5e9',fillOpacity:f.properties.fill_opacity}};}},
+      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Conéctate Policía','#0ea5e9'),{{sticky:true,opacity:0.96}});}}
     }});
 
     // ── Malla completa CDMX+Edomex: contornos sin relleno (canvas) ──
@@ -3374,13 +3400,13 @@ document.addEventListener("DOMContentLoaded", function() {{
 
     window.toggleHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
-      var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS}};
+      var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS,conectate:window.LYR_HEAT_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
     window.toggleHexHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
-      var map = {{ok:window.LYR_HHEX_OK,fail:window.LYR_HHEX_FAIL,users:window.LYR_HHEX_USERS}};
+      var map = {{ok:window.LYR_HHEX_OK,fail:window.LYR_HHEX_FAIL,users:window.LYR_HHEX_USERS,conectate:window.LYR_HHEX_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
