@@ -3009,8 +3009,9 @@ function buildHunterTT(p) {{
     "<b>🏪 Oferta:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span> en el hex · "+
     p.neg_cercanos+" cercanos "+
     "<span style='color:"+dormColor+"'>· 😴 "+p.neg_dormidos+" dorm.</span><br>"+
-    "<b>Cobertura:</b> <span style='color:"+covColor+";font-weight:700'>"+covTxt+"</span>"+
-    (p.gap > 0 ? " · <b style='color:#ff1744'>Gap: "+p.gap+" 🍽</b>" : "")+"<br>"+
+    "<b>Cobertura:</b> <span style='color:"+covColor+";font-weight:700'>"+covTxt+"</span><br>"+
+    "<b>🍽 Gap de negocios:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
+    p.gap+(p.gap === 1 ? " cocina faltante" : " cocinas faltantes")+"</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
