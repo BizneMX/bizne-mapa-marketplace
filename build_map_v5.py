@@ -2402,11 +2402,16 @@ document.addEventListener('click', function(e){{
       // Estado de asignación actual (expuesto por route_builder.js)
       var who = window._rbGetAssignment && window._rbGetAssignment(hexId);
       if (who) {{
-        row.innerHTML =
-          "<span style='font-size:10px;color:#94a3b8'>Ruta: <b style='color:#86efac'>" + who + "</b></span>" +
-          "<button onclick='window._rbUnassignZone(\"" + hexId.replace(/"/g,'\\"') + "\")' " +
-          "style='margin-left:8px;font-size:10px;padding:2px 7px;border:1px solid #dc2626;" +
-          "background:none;color:#dc2626;border-radius:4px;cursor:pointer'>✕ Quitar</button>";
+        var span = document.createElement('span');
+        span.style.cssText = 'font-size:10px;color:#94a3b8';
+        span.innerHTML = 'Ruta: <b style="color:#86efac">' + who + '</b>';
+        var btn = document.createElement('button');
+        btn.textContent = '✕ Quitar';
+        btn.style.cssText = 'margin-left:8px;font-size:10px;padding:2px 7px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer';
+        btn.onclick = (function(hx) {{ return function() {{ window._rbUnassignZone && window._rbUnassignZone(hx); }}; }})(hexId);
+        row.innerHTML = '';
+        row.appendChild(span);
+        row.appendChild(btn);
         return;
       }}
       var sel = row.querySelector('.tt-hunter-sel');
