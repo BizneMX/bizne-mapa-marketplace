@@ -760,6 +760,22 @@
       unassignZone(hexId);
       THE_MAP.closePopup();
     };
+    // Asignación rápida desde el tooltip de hover (no requiere Route Builder abierto)
+    window._rbAssignZone = function (hexId, hunter) {
+      if (!hunter) return;
+      if (openLanes.indexOf(hunter) < 0) openLanes.push(hunter);
+      assignZone(hexId, hunter);
+      // Cierra el tooltip para dar feedback visual
+      THE_MAP.closeTooltip();
+    };
+    window._rbUnassignZone = function (hexId) {
+      unassignZone(hexId);
+      THE_MAP.closeTooltip();
+    };
+    // Consulta quién tiene asignada una zona (usado por el tooltip interactivo)
+    window._rbGetAssignment = function (hexId) {
+      return assignedHunterOf(hexId) || null;
+    };
     window._rbOpenAndAssign = function (hexId, lat, lng) {
       if (!rbOpen) window.toggleRouteBuilder();
       showAssignPopup(hexId, L.latLng(lat, lng));

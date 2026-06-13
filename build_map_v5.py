@@ -2388,6 +2388,49 @@ document.addEventListener('click', function(e){{
     }}
   }}
 }});
+// ── Asignación rápida desde tooltip de Zonas Hunter ────────────────────────
+// Pobla el <select class="tt-hunter-sel"> con HUNTERS_LIST al abrir el tooltip,
+// y muestra el estado actual de asignación si la zona ya tiene hunter.
+(function setupTooltipAssign() {{
+  function bindTooltipOpen(m) {{
+    m.on('tooltipopen', function(e) {{
+      var el = e.tooltip && e.tooltip.getElement();
+      if (!el) return;
+      var row = el.querySelector('.tt-assign-row');
+      if (!row) return;
+      var hexId = row.getAttribute('data-hex');
+      // Estado de asignación actual (expuesto por route_builder.js)
+      var who = window._rbGetAssignment && window._rbGetAssignment(hexId);
+      if (who) {{
+        row.innerHTML =
+          "<span style='font-size:10px;color:#94a3b8'>Ruta: <b style='color:#86efac'>" + who + "</b></span>" +
+          "<button onclick='window._rbUnassignZone(\"" + hexId.replace(/"/g,'\\"') + "\")' " +
+          "style='margin-left:8px;font-size:10px;padding:2px 7px;border:1px solid #dc2626;" +
+          "background:none;color:#dc2626;border-radius:4px;cursor:pointer'>✕ Quitar</button>";
+        return;
+      }}
+      var sel = row.querySelector('.tt-hunter-sel');
+      if (!sel || sel.options.length > 1) return;  // ya poblado
+      (window.HUNTERS_LIST || []).forEach(function(h) {{
+        var o = document.createElement('option');
+        o.value = h; o.textContent = h;
+        sel.appendChild(o);
+      }});
+    }});
+  }}
+  // Esperar a que el mapa esté listo
+  var _t = setInterval(function() {{
+    if (window.THE_MAP) {{ bindTooltipOpen(window.THE_MAP); clearInterval(_t); }}
+  }}, 300);
+}})();
+
+window._rbAssignFromTT = function(row) {{
+  var hexId = row && row.getAttribute('data-hex');
+  var sel   = row && row.querySelector('.tt-hunter-sel');
+  if (!hexId || !sel || !sel.value) return;
+  if (window._rbAssignZone) window._rbAssignZone(hexId, sel.value);
+}};
+
 function refreshMap(){{
   var btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
@@ -3047,6 +3090,12 @@ function buildHunterTT(p) {{
     "<b>🎯 Opciones faltantes:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
     p.gap+(p.gap === 1 ? " negocio faltante" : " negocios faltantes")+" (meta: 3)</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
+    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;gap:4px;align-items:center;margin-bottom:4px'>"+
+      "<select class='tt-hunter-sel' style='flex:1;font-size:10px;padding:2px 4px;background:#0f172a;color:#f1f5f9;"+
+      "border:1px solid #334155;border-radius:4px'><option value=''>— Hunter —</option></select>"+
+      "<button class='tt-assign-btn' onclick='window._rbAssignFromTT(this.parentElement)' "+
+      "style='font-size:10px;padding:2px 8px;background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700'>Asignar</button>"+
+    "</div>"+
     "<span style='color:#94a3b8;font-size:10px'>📍 "+
     p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
     " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"' "+
@@ -3116,7 +3165,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       style:function(f){{return {{color:f.properties.fill_color,weight:1.2,
         fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"4 3"}};}},
       onEachFeature:function(f,l){{l._p=f.properties;
-        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});
+        l.bindTooltip(buildHunterTT(f.properties),{{sticky:false,interactive:true,opacity:0.97,maxWidth:280}});
         l.on('click', function(e){{
           L.DomEvent.stopPropagation(e);
           var p = f.properties;
