@@ -647,14 +647,56 @@
   // ── Click en el mapa → asignar cualquier hex (con o sin señal) ────
   var _rbPopup = null;
 
+  // Negocios activos en el hex + anillo-1 (para hexes fuera de HUNTER_DATA)
+  function bizNearbyOf(cell) {
+    if (!window.h3 || !window.h3.gridDisk || !window.BIZ_DATA) return null;
+    var ring = {};
+    window.h3.gridDisk(cell, 1).forEach(function (c) { ring[c] = true; });
+    var n = 0;
+    BIZ_DATA.features.forEach(function (f) {
+      var c = f.geometry.coordinates;
+      if (ring[window.h3.latLngToCell(c[1], c[0], 8)]) n++;
+    });
+    return n;
+  }
+
+  function indicatorsHTML(cell, z) {
+    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === cell; });
+    var row = function (label, val) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px">' +
+        '<span style="color:#94a3b8">' + label + '</span><span style="font-weight:600">' + val + '</span></div>';
+    };
+    var s = '<div style="font-size:10.5px;margin:5px 0;padding:5px 7px;background:rgba(148,163,184,.12);' +
+            'border-radius:6px;line-height:1.55">';
+    if (f) {
+      var p = f.properties;
+      var cov = p.usuarios > 0
+        ? ((p.cobertura == null ? '—' : p.cobertura) + ' cocinas/usuario')
+        : 'solo oferta';
+      s += row('Score', Math.round((p.combined_score || 0) * 100) + '/100') +
+           row('👤 Sesiones', p.usuarios + (p.sin_compras ? ' (' + p.sin_compras + ' sin comprar)' : '')) +
+           row('📈 Conversión', (p.tasa_conv_pct || 0) + '%') +
+           row('🏪 Oferta', p.neg_activos + ' en hex · ' + p.neg_cercanos + ' cerca') +
+           row('Cobertura', cov) +
+           (p.gap > 0 ? row('🍽 Gap', p.gap + ' cocinas') : '');
+    } else {
+      var nb = bizNearbyOf(cell);
+      s += row('👤 Sesiones', '0 — sin señal') +
+           row('🏪 Oferta cercana', nb === null ? '—' : nb + ' negocios');
+    }
+    s += row('📍', z.lat.toFixed(5) + ', ' + z.lng.toFixed(5)) + '</div>';
+    return s;
+  }
+
   function showAssignPopup(cell, latlng) {
     var z = ensureZone(cell);
     if (!z || !_rbPopup) return;
     var who = assignedHunterOf(cell);
-    var html = '<div style="font-family:system-ui;font-size:12px;min-width:190px">' +
+    var html = '<div style="font-family:system-ui;font-size:12px;min-width:210px">' +
       '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
       (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>'
-               : '<span style="font-size:10px">' + z.zona + ' · 👥' + z.usuarios + '</span>') + '<br>';
+               : '<span style="font-size:10px">' + z.zona + '</span>') +
+      indicatorsHTML(cell, z);
     if (who) {
       html += '<div style="margin-top:4px">En la ruta de <b>' + who + '</b> ' +
         '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
@@ -695,9 +737,10 @@
         // conservan su popup original de coordenadas/dirección)
         if (!z.empty) return;
         _rbPopup.setLatLng(e.latlng).setContent(
-          '<div style="font-family:system-ui;font-size:12px;min-width:180px">' +
+          '<div style="font-family:system-ui;font-size:12px;min-width:210px">' +
           '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
-          (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>' : '') + '<br>' +
+          (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>' : '') +
+          indicatorsHTML(cell, z) +
           '<button onclick="window._rbOpenAndAssign(\'' + cell + '\',' + e.latlng.lat + ',' + e.latlng.lng + ')" ' +
           'style="margin-top:5px;font-size:11px;padding:4px 10px;background:#0f4c81;color:#fff;border:none;' +
           'border-radius:5px;cursor:pointer;font-weight:600">🗺 Asignar a una ruta</button></div>'
