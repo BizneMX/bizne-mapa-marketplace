@@ -797,26 +797,25 @@ if activ_dem_hex:
 #   gap       = cocinas faltantes (heurística: 1 cocina ≈ 10 usuarios de sesión)
 
 HUNTER_TIER_DEFS = {
-    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo — alta demanda, baja cobertura
-    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — demanda considerable, cobertura parcial
-    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — equilibrio demanda/cobertura
-    'D': ('D Cubierta',       '#00c853', 0.25),   # verde — buena cobertura relativa
+    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo   — gap alto  (≥4 cocinas faltantes)
+    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — gap medio (2-3 cocinas faltantes)
+    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — gap bajo (1 cocina faltante)
+    'D': ('D Cubierta',       '#00c853', 0.25),   # verde   — gap = 0  (bien cubierta)
 }
 
 def hunter_tier_v6(users, biz_nb):
-    """Clasifica demanda (sesiones) contra cobertura (oferta cercana)."""
+    """Clasifica por gap de negocios faltantes (1 cocina ≈ 10 usuarios)."""
     if users <= 0:
-        return 'D'                                  # solo oferta → cubierta
-    cov = biz_nb / users
-    if biz_nb == 0:
-        return 'A' if users >= 3 else ('B' if users == 2 else 'C')
-    if cov < 0.5:
-        return 'A' if users >= 5 else 'B'           # alta demanda, baja cobertura
-    if cov < 1.0:
-        return 'B' if users >= 3 else 'C'           # demanda considerable, cobertura parcial
-    if cov < 2.0:
-        return 'C'                                  # equilibrio
-    return 'D'                                      # buena cobertura relativa
+        return 'D'                        # sin demanda → cubierta
+    necesarias = import_ceil(users / 10)
+    gap = max(0, necesarias - biz_nb)
+    if gap >= 4:
+        return 'A'
+    if gap >= 2:
+        return 'B'
+    if gap >= 1:
+        return 'C'
+    return 'D'                            # gap = 0 → cubierta
 
 _uh = {r['hex_id']: r for _, r in user_hex.iterrows()}
 _signal = [hx for hx in GRID_CODE
