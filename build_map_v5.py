@@ -2506,7 +2506,7 @@ function switchOrg(org) {{
     var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
     if (window.THE_MAP) {{
       if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
-      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
+      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:8,blur:5,maxZoom:17,
         gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
       var htCb = document.getElementById('ht_users');
       if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
@@ -3317,10 +3317,10 @@ document.addEventListener("DOMContentLoaded", function() {{
     }}).addTo(theMap);
 
     // Heat maps (smooth)
-    window.LYR_HEAT_OK        = L.heatLayer(HEAT_TRX_OK,   {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
-    window.LYR_HEAT_FAIL      = L.heatLayer(HEAT_TRX_FAIL, {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
-    window.LYR_HEAT_USERS     = L.heatLayer(HEAT_USERS,    {{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
-    window.LYR_HEAT_CONECTATE = L.heatLayer(HEAT_CONECTATE,{{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#0284c7',0.65:'#38bdf8',1:'#fff'}}}});
+    window.LYR_HEAT_OK        = L.heatLayer(HEAT_TRX_OK,   {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
+    window.LYR_HEAT_FAIL      = L.heatLayer(HEAT_TRX_FAIL, {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
+    window.LYR_HEAT_USERS     = L.heatLayer(HEAT_USERS,    {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
+    window.LYR_HEAT_CONECTATE = L.heatLayer(HEAT_CONECTATE,{{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#0284c7',0.65:'#38bdf8',1:'#fff'}}}});
 
     // Hex heat layers
     window.LYR_HHEX_OK = L.geoJSON(HEX_HEAT_OK, {{
