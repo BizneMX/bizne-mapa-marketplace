@@ -229,6 +229,11 @@
     '.rb-lane-btns button,.rb-hbtn{font-size:9px;padding:3px 8px;border-radius:5px;border:1px solid #334155;',
     '  background:none;color:#94a3b8;cursor:pointer}',
     '.rb-lane-btns button:hover,.rb-hbtn:hover{background:#1e3a52}',
+    '.rb-lane-zones.rb-drop-over{background:rgba(249,115,22,.13);outline:1.5px dashed #f97316;outline-offset:-2px;border-radius:6px}',
+    '#rb-map-drag-badge{position:fixed;z-index:9999;display:none;align-items:center;gap:5px;',
+    '  background:#0f172a;border:1.5px solid #f97316;border-radius:8px;padding:5px 11px;',
+    '  font-size:10px;font-weight:700;cursor:grab;user-select:none;white-space:nowrap;',
+    '  box-shadow:0 2px 10px rgba(0,0,0,.6);pointer-events:auto;transition:opacity .08s}',
     '#rb-chat{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;width:min(680px,90vw);z-index:1500;',
     '  background:#0f172a;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,.55);display:none;',
     '  flex-direction:column;font-family:system-ui,sans-serif;max-height:170px;color:#e2e8f0}',
@@ -462,6 +467,23 @@
           },
         });
       }
+      // HTML5 drop desde el badge del mapa (flujo paralelo a SortableJS)
+      (function (hunter, dropEl) {
+        dropEl.addEventListener('dragover', function (e) {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+          dropEl.classList.add('rb-drop-over');
+        });
+        dropEl.addEventListener('dragleave', function (e) {
+          if (!dropEl.contains(e.relatedTarget)) dropEl.classList.remove('rb-drop-over');
+        });
+        dropEl.addEventListener('drop', function (e) {
+          e.preventDefault();
+          dropEl.classList.remove('rb-drop-over');
+          var hexId = e.dataTransfer.getData('text/plain');
+          if (hexId) assignZone(hexId, hunter);
+        });
+      })(h, zEl);
     });
     el.querySelectorAll('.rb-lane-share').forEach(function (b) {
       b.onclick = function () {
@@ -782,12 +804,79 @@
     };
   }
 
+  // ── Drag desde el mapa → Hunter Lanes ────────────────────────────
+  var _badgeHideTimer = null;
+
+  function setupMapDrag() {
+    var badge = document.createElement('div');
+    badge.id = 'rb-map-drag-badge';
+    badge.draggable = true;
+    document.body.appendChild(badge);
+
+    var TIER_COLOR = { A:'#f87171', B:'#fb923c', C:'#fbbf24', D:'#4ade80', S:'#94a3b8' };
+
+    function scheduleBadgeHide() {
+      clearTimeout(_badgeHideTimer);
+      _badgeHideTimer = setTimeout(function () { badge.style.display = 'none'; }, 260);
+    }
+
+    badge.addEventListener('mouseenter', function () { clearTimeout(_badgeHideTimer); });
+    badge.addEventListener('mouseleave', scheduleBadgeHide);
+
+    badge.addEventListener('dragstart', function (e) {
+      var hexId = badge.getAttribute('data-hex');
+      if (!hexId) { e.preventDefault(); return; }
+      e.dataTransfer.setData('text/plain', hexId);
+      e.dataTransfer.effectAllowed = 'move';
+      // Ocultar tras el snapshot del ghost nativo
+      setTimeout(function () { badge.style.opacity = '0'; }, 0);
+    });
+    badge.addEventListener('dragend', function () {
+      badge.style.display = 'none';
+      badge.style.opacity = '1';
+    });
+
+    function onMapMouseMove(e) {
+      if (!rbOpen) { badge.style.display = 'none'; return; }
+      clearTimeout(_badgeHideTimer);
+      if (!window.h3 || !window.h3.latLngToCell) return;
+
+      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+      var z = ZONE_BY_ID[cell] || ensureZone(cell);
+      if (!z) { scheduleBadgeHide(); return; }
+
+      var pt = THE_MAP.latLngToContainerPoint(e.latlng);
+      var rect = THE_MAP.getContainer().getBoundingClientRect();
+      badge.style.left = (rect.left + pt.x + 16) + 'px';
+      badge.style.top  = (rect.top  + pt.y - 24) + 'px';
+
+      if (badge.getAttribute('data-hex') !== cell) {
+        badge.setAttribute('data-hex', cell);
+        var tc = TIER_COLOR[z.tier] || '#94a3b8';
+        badge.innerHTML =
+          '<span style="color:' + tc + ';font-weight:800">' + z.tier + '</span>' +
+          '<span style="color:#7dd3fc;font-family:monospace"> ' + (z.hex_code || z.hex_id.slice(-6)) + '</span>' +
+          '<span style="color:#64748b;margin-left:4px;font-size:11px">⠿</span>';
+      }
+      badge.style.display = 'flex';
+      badge.style.opacity = '1';
+    }
+
+    var _attachTimer = setInterval(function () {
+      if (!window.THE_MAP) return;
+      clearInterval(_attachTimer);
+      THE_MAP.on('mousemove', onMapMouseMove);
+      THE_MAP.on('mouseout', function () { scheduleBadgeHide(); });
+    }, 300);
+  }
+
   // ── Init ──────────────────────────────────────────────────────────
   function init() {
     if (!window.HUNTER_DATA || !window.L) { setTimeout(init, 400); return; }
     buildZones();
     buildUI();
     setupMapClick();
+    setupMapDrag();
     // El botón 🗺 existente ahora abre el Route Builder; el panel clásico
     // queda accesible como window.toggleAssignPanelLegacy().
     if (typeof window.toggleAssignPanel === 'function') {
