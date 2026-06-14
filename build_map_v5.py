@@ -474,6 +474,7 @@ if QS_CSV and _os.path.exists(QS_CSV):
             'tx_7d':           int(float(r.get('tx_7d', r.get('transacciones_ultimos_7_dias', 0)) or 0)),
             'ventas_7d':       round(float(r.get('ventas_7d', r.get('ventas_ultimos_7_dias', 0)) or 0), 0),
             'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
+            'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -512,6 +513,7 @@ else:
             'tx_7d':          int(float(r.get('tx_7d', 0) or 0)),
             'ventas_7d':      round(float(r.get('ventas_7d', 0) or 0), 0),
             'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
+            'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -570,6 +572,7 @@ for _, row in df_neg.iterrows():
             "tx_7d":         qs_data.get('tx_7d', 0),
             "ventas_7d":     qs_data.get('ventas_7d', 0),
             "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
+            "categoria_negocio": qs_data.get('categoria_negocio', ''),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -1817,6 +1820,8 @@ PANEL_HTML = """
 
     <div class="bs">
       <div class="bs-title">🍽 Tooltip Negocios</div>
+      <label class="bchk"><input type="checkbox" id="bf_categoria"  checked onchange="updateBizTT()"> Categoría</label>
+      <label class="bchk"><input type="checkbox" id="bf_food_types" checked onchange="updateBizTT()"> Tipo de negocio</label>
       <label class="bchk"><input type="checkbox" id="bf_hunter"    checked onchange="updateBizTT()"> Hunter</label>
       <label class="bchk"><input type="checkbox" id="bf_horario"   checked onchange="updateBizTT()"> Horario</label>
       <label class="bchk"><input type="checkbox" id="bf_rating"    checked onchange="updateBizTT()"> Rating ⭐</label>
@@ -3133,6 +3138,8 @@ var HEX_FIELDS = [
   {{key:"demanda_activacion",id:"hf_activ",label:"Dem. Activación"}},
 ];
 var BIZ_FIELDS = [
+  {{key:"categoria_negocio", id:"bf_categoria", label:"Categoría",   fmt:function(v){{return v||"—";}}}},
+  {{key:"food_types",   id:"bf_food_types", label:"Tipo de negocio", fmt:function(v){{return v||"—";}}}},
   {{key:"hunter",       id:"bf_hunter",    label:"Hunter",           fmt:function(v){{return v||"—";}}}},
   {{key:"horario",      id:"bf_horario",   label:"Horario",
     fmt:function(v){{

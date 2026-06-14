@@ -257,7 +257,7 @@ SELECT
          WHEN dias_desde_creacion<=30 AND transacciones_historicas>0 THEN 'Nuevo con tracción'
          WHEN dias_desde_creacion<=90 THEN 'En crecimiento'
          ELSE 'Maduro' END AS etapa_negocio,
-    service_cohort, food_types, allow_delivery, max_delivery_distance,
+    service_cohort, food_types, categoria_negocio, allow_delivery, max_delivery_distance,
     last_transaction_register, bizne_creation_date,
     schedule
 FROM (
@@ -304,6 +304,7 @@ FROM (
             ROUND((1-COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS tasa_no_aceptados_ultimos_30_dias,
             ROUND((s.calification_sum/NULLIF(s.calification_count::float,0))::numeric,2) AS rating,
             u.name AS hunter,
+            COALESCE(scat.name, '') AS categoria_negocio,
             CASE WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<1500 THEN '5 - Low Critico'
                  WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<5000 THEN '4 - Low'
                  WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<10000 THEN '3 - Growth'
@@ -394,6 +395,7 @@ FROM (
             GROUP BY csft.service_id
         ) ft ON ft.service_id = s.id
         LEFT JOIN user_user u ON u.id = s.hunter_id
+        LEFT JOIN service_servicecategory scat ON scat.id = s.category_id
         WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
     ) _base
 ) _scored
@@ -2432,6 +2434,7 @@ _biz_quality_cols = [
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
     "schedule",
     "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias", "tx_conectate_30d",
+    "categoria_negocio",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
