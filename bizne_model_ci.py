@@ -699,6 +699,18 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
 GROUP BY tt.service_id
 """
 
+SQL_PRIMERA_VENTA = """
+SELECT
+    tt.service_id,
+    EXTRACT(EPOCH FROM (MIN(t.created_date) - s.created_date)) / 86400.0 AS dias_a_primera_venta
+FROM service_service s
+JOIN transaction_transactionticket tt ON tt.service_id = s.id
+JOIN transaction_transaction t ON t.ticket_id = tt.id
+WHERE s.created_date >= NOW() - INTERVAL '35 days'
+  AND t.hidden IS FALSE
+GROUP BY tt.service_id, s.created_date
+"""
+
 SQL_UPCS = """
 SELECT
     ut.id,
@@ -755,6 +767,16 @@ df_biz_raw["effective_capacity"] = df_biz_raw.apply(
           else CAPACITY_INACTIVE),
     axis=1
 )
+
+# Días a primera venta para negocios creados en últimos 35 días
+_df_1venta = _query_mcp(SQL_PRIMERA_VENTA, "PrimeraVenta", "pg_primera_venta_cache.csv")
+if _df_1venta is not None and len(_df_1venta) > 0:
+    _df_1venta["service_id"] = pd.to_numeric(_df_1venta["service_id"], errors="coerce").fillna(0).astype(int)
+    _df_1venta["dias_a_primera_venta"] = pd.to_numeric(_df_1venta["dias_a_primera_venta"], errors="coerce")
+    df_biz_raw["service_id"] = pd.to_numeric(df_biz_raw["service_id"], errors="coerce").fillna(0).astype(int)
+    df_biz_raw = df_biz_raw.merge(_df_1venta[["service_id", "dias_a_primera_venta"]], on="service_id", how="left")
+else:
+    df_biz_raw["dias_a_primera_venta"] = float("nan")
 
 # Breakdown de transacciones por organización (PA, Conéctate) por negocio — últimos 30d
 _df_trx_org = _query_mcp(SQL_TRX_ORG_PER_BIZ, "TrxPorOrg", "pg_trx_org_cache.csv")
@@ -2434,7 +2456,7 @@ _biz_quality_cols = [
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
     "schedule",
     "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias", "tx_conectate_30d",
-    "categoria_negocio",
+    "categoria_negocio", "dias_a_primera_venta",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
@@ -2472,7 +2494,7 @@ _dorm_extra_cols = [
     "menu_bizne", "menu_de_dia", "menu_a_la_carta", "service_cohort",
     "hunter", "food_types", "schedule", "service_id", "phone_number",
     "owner_name", "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
-    "kitchen_quality_nivel", "tx_conectate_30d", "categoria_negocio",
+    "kitchen_quality_nivel", "tx_conectate_30d", "categoria_negocio", "dias_a_primera_venta",
 ]
 _dorm_cols = _dorm_base_cols + [c for c in _dorm_extra_cols if c in df_biz_dorm.columns]
 kepler_dorm = df_biz_dorm[_dorm_cols].rename(columns={

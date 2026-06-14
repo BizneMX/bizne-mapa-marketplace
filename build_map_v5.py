@@ -475,6 +475,7 @@ if QS_CSV and _os.path.exists(QS_CSV):
             'ventas_7d':       round(float(r.get('ventas_7d', r.get('ventas_ultimos_7_dias', 0)) or 0), 0),
             'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
             'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
+            'dias_a_primera_venta': None if pd.isna(r.get('dias_a_primera_venta', float('nan'))) else round(float(r.get('dias_a_primera_venta')), 1),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -514,6 +515,7 @@ else:
             'ventas_7d':      round(float(r.get('ventas_7d', 0) or 0), 0),
             'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
             'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
+            'dias_a_primera_venta': None if pd.isna(r.get('dias_a_primera_venta', float('nan'))) else round(float(r.get('dias_a_primera_venta')), 1),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -573,6 +575,7 @@ for _, row in df_neg.iterrows():
             "ventas_7d":     qs_data.get('ventas_7d', 0),
             "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
             "categoria_negocio": qs_data.get('categoria_negocio', ''),
+            "dias_a_primera_venta": qs_data.get('dias_a_primera_venta', None),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -654,6 +657,7 @@ for _, row in df_dorm.iterrows():
             "tx_7d":         int(float(_rv('tx_7d', 0))),
             "tx_conectate_30d": int(float(_rv('tx_conectate_30d', 0))),
             "categoria_negocio": str(_rv('categoria_negocio', '')),
+            "dias_a_primera_venta": None if pd.isna(_rv('dias_a_primera_venta', float('nan'))) else round(float(_rv('dias_a_primera_venta')), 1),
             "fill_color":    '#9ca3af',
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
@@ -1013,11 +1017,19 @@ def _norm_h(s):
     return _ud.normalize('NFC', str(s).strip()).lower()
 HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
-# Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
-_hunter_7   = defaultdict(int)
-_hunter_30  = defaultdict(int)
-_hunter_all = set(HUNTERS_SISTEMA)  # siempre incluir lista maestra
-_hunter_display = {}  # nombre normalizado → nombre display original del CSV
+# Días desde el lunes de la semana ISO en curso (0=lunes, 6=domingo)
+_dias_inicio_semana = _hoy.weekday()  # 0=Mon … 6=Sun
+_nuevos_semana = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_inicio_semana]
+neg_nuevos_semana = len(_nuevos_semana)
+_lunes_nombre = (_hoy - __import__('datetime').timedelta(days=_dias_inicio_semana)).strftime('%-d %b')
+
+# Negocios por hunter en semana actual, 7d, 30d + % primera venta ≤7d
+_hunter_semana  = defaultdict(int)
+_hunter_7       = defaultdict(int)
+_hunter_30      = defaultdict(int)
+_hunter_30_list = defaultdict(list)  # lista de (dias_a_primera_venta) para negocios 30d
+_hunter_all     = set(HUNTERS_SISTEMA)
+_hunter_display = {}
 for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
@@ -1026,26 +1038,40 @@ for f in biz_features:
     if h_norm in HUNTERS_EXCLUIR_NORM: continue
     _hunter_all.add(h)
     d  = _safe_dias(p)
+    if d <= _dias_inicio_semana: _hunter_semana[h] += 1
     if d <= 7:  _hunter_7[h]  += 1
-    if d <= 30: _hunter_30[h] += 1
+    if d <= 30:
+        _hunter_30[h] += 1
+        dpv = p.get('dias_a_primera_venta')
+        _hunter_30_list[h].append(dpv)
 
 # Incluir TODOS los hunters (sistema + negocios), excluyendo inactivos
 _all_hunters = sorted(
     {h for h in (_hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()))
      if _norm_h(h) not in HUNTERS_EXCLUIR_NORM},
-    key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
+    key=lambda h: (_hunter_semana.get(h, 0) * 100 + _hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
     reverse=True
 )
 hunter_actividad_rows = ''
 for h in _all_hunters:
-    n7  = _hunter_7.get(h, 0)
-    n30 = _hunter_30.get(h, 0)
-    clr7 = '#22c55e' if n7 > 0 else '#475569'
+    n_sem = _hunter_semana.get(h, 0)
+    n7    = _hunter_7.get(h, 0)
+    n30   = _hunter_30.get(h, 0)
+    # % negocios 30d con primera venta ≤7 días
+    _lista_dpv = _hunter_30_list.get(h, [])
+    _n_con_1v7 = sum(1 for v in _lista_dpv if v is not None and v <= 7)
+    pct_1v7 = round(_n_con_1v7 / n30 * 100) if n30 > 0 else None
+    clr_sem  = '#a78bfa' if n_sem > 0 else '#334155'
+    clr7     = '#22c55e' if n7 > 0 else '#475569'
+    clr_pct  = ('#22c55e' if (pct_1v7 or 0) >= 50 else '#f59e0b') if pct_1v7 is not None else '#334155'
+    pct_str  = f'{pct_1v7}%' if pct_1v7 is not None else '—'
     hunter_actividad_rows += (
         f'<tr>'
         f'<td style="padding:3px 8px;color:#e2e8f0">{h}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:{clr_sem};font-weight:700">{n_sem}</td>'
         f'<td style="padding:3px 8px;text-align:right;color:{clr7};font-weight:700">{n7}</td>'
         f'<td style="padding:3px 8px;text-align:right;color:#94a3b8">{n30}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:{clr_pct};font-weight:700">{pct_str}</td>'
         f'</tr>\n'
     )
 print(f"  Nuevos 7d: {neg_nuevos_7} | 30d: {neg_nuevos_30} | %tx7d: {pct_nuevos_7_tx_7d}%")
@@ -1606,6 +1632,7 @@ HUNTER_HTML = f"""
   <div style="background:#0d1117;padding:5px 10px;display:flex;gap:12px;align-items:center;
     font-size:10px;border-bottom:1px solid #1e2d40;flex-wrap:wrap">
     <span style="color:#94a3b8">{_mes_nombre[:3]}: <b style="color:#a78bfa;font-size:11px">{neg_nuevos_mes}</b></span>
+    <span style="color:#94a3b8" title="Semana en curso (desde {_lunes_nombre})">Sem: <b style="color:#c084fc;font-size:11px">{neg_nuevos_semana}</b></span>
     <span style="color:#94a3b8">7d: <b style="color:#22c55e">{neg_nuevos_7}</b></span>
     <span style="color:#94a3b8">30d: <b style="color:#00BFA5">{neg_nuevos_30}</b></span>
     <span style="color:#94a3b8">1ªTx: <b style="color:{'#22c55e' if pct_nuevos_7_tx_7d>=50 else '#f59e0b'}">{pct_nuevos_7_tx_7d}%</b></span>
@@ -1618,8 +1645,10 @@ HUNTER_HTML = f"""
     <table style="width:100%;border-collapse:collapse;font-size:10px">
       <thead><tr style="position:sticky;top:0;background:#0f172a">
         <th style="padding:4px 8px;color:#64748b;text-align:left;font-size:9px;letter-spacing:.3px">HUNTER</th>
+        <th style="padding:4px 8px;color:#a78bfa;text-align:right;font-size:9px" title="Nuevos negocios activados en la semana en curso">Sem</th>
         <th style="padding:4px 8px;color:#22c55e;text-align:right;font-size:9px">7d</th>
         <th style="padding:4px 8px;color:#00BFA5;text-align:right;font-size:9px">30d</th>
+        <th style="padding:4px 8px;color:#f59e0b;text-align:right;font-size:9px" title="% negocios (últimos 30d) con primera venta en ≤7 días">1ªV≤7d</th>
       </tr></thead>
       <tbody style="color:#e2e8f0">
 {hunter_actividad_rows}
