@@ -2460,16 +2460,38 @@ kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepl
 print(f"✅ kepler_real_negocios.csv       ({len(kepler_biz):,} negocios activos)")
 
 # ── CSV: Cocinas Dormidas (capa separada) ─────────────────────────────────────
-kepler_dorm = df_biz_dorm[[
+_dorm_base_cols = [
     "latitude", "longitude", "name", "delegacion", "rating",
-    "transacciones_historicas", "dias_desde_ultima_transaccion",
-    "kitchen_quality_score", "etapa_negocio",
-]].rename(columns={
-    "latitude":                    "lat",
-    "longitude":                   "lng",
-    "transacciones_historicas":    "tx_historicas",
-    "dias_desde_ultima_transaccion":"dias_sin_trx",
-    "kitchen_quality_score":       "quality_score",
+    "transacciones_historicas", "transacciones_hist_real",
+    "dias_desde_ultima_transaccion", "kitchen_quality_score", "etapa_negocio",
+]
+_dorm_extra_cols = [
+    "transacciones_ultimos_30_dias", "transacciones_ultimos_7_dias",
+    "ventas_ultimos_30_dias", "ventas_ultimos_7_dias",
+    "tasa_aceptacion_ultimos_30_dias", "tiempo_p50_aceptacion_min_ultimos_30_dias",
+    "menu_bizne", "menu_de_dia", "menu_a_la_carta", "service_cohort",
+    "hunter", "food_types", "schedule", "service_id", "phone_number",
+    "owner_name", "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
+    "kitchen_quality_nivel", "tx_conectate_30d", "categoria_negocio",
+]
+_dorm_cols = _dorm_base_cols + [c for c in _dorm_extra_cols if c in df_biz_dorm.columns]
+kepler_dorm = df_biz_dorm[_dorm_cols].rename(columns={
+    "latitude":                                  "lat",
+    "longitude":                                 "lng",
+    "transacciones_historicas":                  "tx_historicas",
+    "transacciones_hist_real":                   "tx_hist_real",
+    "transacciones_ultimos_30_dias":             "tx_30d",
+    "transacciones_ultimos_7_dias":              "tx_7d",
+    "ventas_ultimos_30_dias":                    "ventas_30d",
+    "ventas_ultimos_7_dias":                     "ventas_7d",
+    "tasa_aceptacion_ultimos_30_dias":           "tasa_aceptacion",
+    "tiempo_p50_aceptacion_min_ultimos_30_dias": "tiempo_acepta",
+    "dias_desde_ultima_transaccion":             "dias_sin_trx",
+    "kitchen_quality_score":                     "quality_score",
+    "kitchen_quality_nivel":                     "quality_nivel",
+    "bizne_creation_date":                       "creation_date",
+    "dias_desde_creacion":                       "dias_creacion",
+    "schedule":                                  "horario",
 }).round(4)
 kepler_dorm["capacidad_si_reactiva"] = CAPACITY_INACTIVE
 kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv"), index=False, encoding="utf-8")
