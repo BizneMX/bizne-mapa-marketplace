@@ -2352,10 +2352,21 @@ function openHunterPopup(p, latlng) {{
   if (huntersEl) {{
     var assigned = window._rbGetAssignment && window._rbGetAssignment(p.hex_id);
     if (assigned) {{
-      huntersEl.innerHTML = '<span style="font-size:10px;color:#94a3b8">Ruta: <b style="color:#86efac">'+assigned+'</b></span>'+
-        ' <button class="hpop-copy" data-val="" data-lbl="✕ Quitar" '+
-        'onclick="window._rbUnassign && window._rbUnassign(\''+p.hex_id+'\');window.THE_MAP&&window.THE_MAP.closePopup()" '+
-        'style="background:none;border:1px solid #dc2626;border-radius:4px;color:#dc2626;cursor:pointer;font-size:10px;padding:1px 7px;">✕ Quitar</button>';
+      var _sp = document.createElement('span');
+      _sp.style.cssText = 'font-size:10px;color:#94a3b8';
+      _sp.innerHTML = 'Ruta: <b style="color:#86efac">'+assigned+'</b>';
+      var _qb = document.createElement('button');
+      _qb.textContent = '✕ Quitar';
+      _qb.style.cssText = 'background:none;border:1px solid #dc2626;border-radius:4px;'+
+        'color:#dc2626;cursor:pointer;font-size:10px;padding:1px 7px;margin-left:6px';
+      _qb.onclick = (function(hid) {{
+        return function() {{
+          window._rbUnassign && window._rbUnassign(hid);
+          window.THE_MAP && window.THE_MAP.closePopup();
+        }};
+      }})(p.hex_id);
+      huntersEl.appendChild(_sp);
+      huntersEl.appendChild(_qb);
     }} else {{
       (window.HUNTERS_LIST||[]).forEach(function(h) {{
         var color = (window._hunterColorMap&&window._hunterColorMap[h])||'#94a3b8';
