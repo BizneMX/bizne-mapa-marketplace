@@ -3134,7 +3134,21 @@ var HEX_FIELDS = [
 ];
 var BIZ_FIELDS = [
   {{key:"hunter",       id:"bf_hunter",    label:"Hunter",           fmt:function(v){{return v||"—";}}}},
-  {{key:"horario",      id:"bf_horario",   label:"Horario",          fmt:function(v){{return v||"—";}}}},
+  {{key:"horario",      id:"bf_horario",   label:"Horario",
+    fmt:function(v){{
+      if(!v||!v.trim())return'—';
+      var parts=v.split(';').filter(function(s){{return s.trim();}});
+      if(!parts.length)return'—';
+      var abbr={{'Lunes':'Lu','Martes':'Ma','Miércoles':'Mi','Jueves':'Ju','Viernes':'Vi','Sábado':'Sá','Domingo':'Do'}};
+      var grp={{}};
+      parts.forEach(function(ent){{
+        var m=ent.trim().match(/^(\S+)\s+(.+)$/);
+        if(m){{var d=abbr[m[1]]||m[1].slice(0,2);var h=m[2].trim();if(!grp[h])grp[h]=[];grp[h].push(d);}}
+      }});
+      var ks=Object.keys(grp);
+      if(ks.length===1)return"<span style='color:#94a3b8;font-size:9px'>"+grp[ks[0]].join(' ')+"</span> <span style='font-size:9px'>"+ks[0]+"</span>";
+      return"<div style='font-size:9px;line-height:1.6'>"+ks.map(function(h){{return"<span style='color:#94a3b8'>"+grp[h].join(' ')+"</span> "+h;}}).join('<br>')+"</div>";
+    }}}},
   {{key:"rating",       id:"bf_rating",    label:"Rating",           fmt:function(v){{return "⭐ "+v;}}}},
   {{key:"tx_7d",        id:"bf_tx_7d",    label:"Trx 7d"}},
   {{key:"tx_30d",       id:"bf_tx_30d",   label:"Trx 30d"}},
