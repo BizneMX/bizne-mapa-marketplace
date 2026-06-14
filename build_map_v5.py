@@ -471,6 +471,9 @@ if QS_CSV and _os.path.exists(QS_CSV):
             'dias_creacion':   int(float(r.get('dias_desde_creacion', 0) or 0)),
             'food_types':      str(r.get('food_types','') or ''),
             'horario':         str(r.get('schedule', r.get('horario','')) or ''),
+            'tx_7d':           int(float(r.get('tx_7d', r.get('transacciones_ultimos_7_dias', 0)) or 0)),
+            'ventas_7d':       round(float(r.get('ventas_7d', r.get('ventas_ultimos_7_dias', 0)) or 0), 0),
+            'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -506,6 +509,9 @@ else:
             'colonia':        str(r.get('colonia', '') or ''),
             'food_types':     str(r.get('food_types', '') or ''),
             'horario':        str(r.get('horario', r.get('schedule', '')) or ''),
+            'tx_7d':          int(float(r.get('tx_7d', 0) or 0)),
+            'ventas_7d':      round(float(r.get('ventas_7d', 0) or 0), 0),
+            'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -561,6 +567,9 @@ for _, row in df_neg.iterrows():
             "dias_creacion": qs_data.get('dias_creacion', 0),
             "food_types":    qs_data.get('food_types', str(row.get('food_types',''))),
             "horario":       qs_data.get('horario', str(row.get('horario', row.get('schedule','')))),
+            "tx_7d":         qs_data.get('tx_7d', 0),
+            "ventas_7d":     qs_data.get('ventas_7d', 0),
+            "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -1670,6 +1679,14 @@ PANEL_HTML = """
         <span class="bdot" style="background:#a78bfa"></span> Última sesión usuarios</label>
       <label class="bchk"><input type="checkbox" id="ht_conectate" onchange="toggleHeat('conectate',this.checked)">
         <span class="bdot" style="background:#0ea5e9"></span> Conéctate Policía</label>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:6px">
+        <span style="font-size:9px;color:#94a3b8;white-space:nowrap">Tamaño:</span>
+        <button onclick="setHeatSize(6,4)"  id="hs_xs" class="bb">XS</button>
+        <button onclick="setHeatSize(10,6)" id="hs_s"  class="bb">S</button>
+        <button onclick="setHeatSize(16,10)" id="hs_m" class="bb" style="font-weight:700;border-color:#7dd3fc;color:#7dd3fc">M</button>
+        <button onclick="setHeatSize(26,16)" id="hs_l" class="bb">L</button>
+        <button onclick="setHeatSize(40,25)" id="hs_xl" class="bb">XL</button>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -1800,14 +1817,18 @@ PANEL_HTML = """
 
     <div class="bs">
       <div class="bs-title">🍽 Tooltip Negocios</div>
+      <label class="bchk"><input type="checkbox" id="bf_hunter"    checked onchange="updateBizTT()"> Hunter</label>
+      <label class="bchk"><input type="checkbox" id="bf_horario"   checked onchange="updateBizTT()"> Horario</label>
       <label class="bchk"><input type="checkbox" id="bf_rating"    checked onchange="updateBizTT()"> Rating ⭐</label>
-      <label class="bchk"><input type="checkbox" id="bf_capacidad" checked onchange="updateBizTT()"> Capacidad</label>
-      <label class="bchk"><input type="checkbox" id="bf_tx_hist"   checked onchange="updateBizTT()"> Trx históricas</label>
-      <label class="bchk"><input type="checkbox" id="bf_tx_30d"    checked onchange="updateBizTT()"> Tx 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_7d"     checked onchange="updateBizTT()"> Trx 7d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_30d"    checked onchange="updateBizTT()"> Trx 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_ventas_7d" checked onchange="updateBizTT()"> Ventas 7d</label>
+      <label class="bchk"><input type="checkbox" id="bf_ventas_30d" checked onchange="updateBizTT()"> Ventas 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_hist"   onchange="updateBizTT()"> Trx históricas</label>
       <label class="bchk"><input type="checkbox" id="bf_acepta"    checked onchange="updateBizTT()"> Tasa aceptación %</label>
       <label class="bchk"><input type="checkbox" id="bf_tiempo"    checked onchange="updateBizTT()"> T. aceptación p50</label>
       <div style="font-size:9px;color:#64748b;margin-top:4px;padding:3px 6px;background:#f1f5f9;border-radius:4px">
-        🍽 Menús siempre visibles en tooltip</div>
+        🍽 Menús y % por org siempre visibles</div>
       <div class="bbr">
         <button class="bb" onclick="document.querySelectorAll('[id^=bf_]').forEach(function(c){c.checked=true});updateBizTT()">Todos</button>
         <button class="bb" onclick="document.querySelectorAll('[id^=bf_]').forEach(function(c){c.checked=false});updateBizTT()">Ninguno</button>
@@ -3112,10 +3133,14 @@ var HEX_FIELDS = [
   {{key:"demanda_activacion",id:"hf_activ",label:"Dem. Activación"}},
 ];
 var BIZ_FIELDS = [
+  {{key:"hunter",       id:"bf_hunter",    label:"Hunter",           fmt:function(v){{return v||"—";}}}},
+  {{key:"horario",      id:"bf_horario",   label:"Horario",          fmt:function(v){{return v||"—";}}}},
   {{key:"rating",       id:"bf_rating",    label:"Rating",           fmt:function(v){{return "⭐ "+v;}}}},
-  {{key:"capacidad",    id:"bf_capacidad", label:"Capacidad",        fmt:function(v){{return v+" com/día";}}}},
+  {{key:"tx_7d",        id:"bf_tx_7d",    label:"Trx 7d"}},
+  {{key:"tx_30d",       id:"bf_tx_30d",   label:"Trx 30d"}},
+  {{key:"ventas_7d",    id:"bf_ventas_7d", label:"Ventas 7d",        fmt:function(v){{return "$"+Number(v).toLocaleString('es-MX',{{maximumFractionDigits:0}});}}}},
+  {{key:"ventas_30d",   id:"bf_ventas_30d",label:"Ventas 30d",       fmt:function(v){{return "$"+Number(v).toLocaleString('es-MX',{{maximumFractionDigits:0}});}}}},
   {{key:"tx_historicas",id:"bf_tx_hist",  label:"Trx históricas"}},
-  {{key:"tx_30d",       id:"bf_tx_30d",   label:"Tx 30d"}},
   {{key:"tasa_acepta",  id:"bf_acepta",   label:"Tasa aceptación",  fmt:function(v){{return v+"%";}}}},
   {{key:"tiempo_acepta",id:"bf_tiempo",   label:"T. aceptación p50",fmt:function(v){{return v+" min";}}}},
 ];
@@ -3157,12 +3182,26 @@ function buildBizTT(p) {{
     var cb = document.getElementById(f.id);
     if (cb && cb.checked) {{ var v=f.fmt?f.fmt(p[f.key]):p[f.key]; s+="<b>"+f.label+":</b> "+v+"<br>"; }}
   }});
+  // % Transacciones por organización — always visible
+  var txTotal = p.tx_30d || 0;
+  var txPA = p.tx_pa_30d || 0;
+  var txConectate = p.tx_conectate_30d || 0;
+  var txB2C = Math.max(0, txTotal - txPA - txConectate);
+  var pctPA = txTotal > 0 ? Math.round(txPA / txTotal * 100) : 0;
+  var pctConectate = txTotal > 0 ? Math.round(txConectate / txTotal * 100) : 0;
+  var pctB2C = txTotal > 0 ? Math.max(0, 100 - pctPA - pctConectate) : 0;
+  var orgRow = txTotal > 0
+    ? "<span style='color:#f97316;font-size:9px'>PA "+pctPA+"%</span>" +
+      (txConectate > 0 ? " · <span style='color:#0ea5e9;font-size:9px'>CP "+pctConectate+"%</span>" : "") +
+      (pctB2C > 0     ? " · <span style='color:#94a3b8;font-size:9px'>B2C "+pctB2C+"%</span>" : "")
+    : "<span style='color:#475569;font-size:9px'>Sin trx</span>";
+  s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
+    "<span style='font-size:9px;color:#94a3b8'>% ORG (30d)</span> "+orgRow+"<br>";
   // Menús — always visible
   var mBizne = p.menu_bizne ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
   var mDia   = p.menu_dia   ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
   var mCarta = p.menu_carta ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
-  s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
-    "<span style='font-size:9px;color:#94a3b8'>MENÚS</span><br>"+
+  s += "<span style='font-size:9px;color:#94a3b8'>MENÚS</span> "+
     mBizne+" <b style='font-size:9px'>Bizne</b> &nbsp; "+
     mDia  +" <b style='font-size:9px'>Del día</b> &nbsp; "+
     mCarta+" <b style='font-size:9px'>A la carta</b>";
@@ -3559,6 +3598,12 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{ok:window.LYR_HHEX_OK,fail:window.LYR_HHEX_FAIL,users:window.LYR_HHEX_USERS,conectate:window.LYR_HHEX_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
+    }};
+    window.setHeatSize = function(radius, blur) {{
+      [window.LYR_HEAT_OK, window.LYR_HEAT_FAIL, window.LYR_HEAT_USERS, window.LYR_HEAT_CONECTATE].forEach(function(lyr) {{
+        if (lyr) {{ lyr.setOptions({{radius:radius,blur:blur}}); lyr.redraw(); }}
+      }});
+      document.querySelectorAll('[id^=hs_]').forEach(function(b) {{ b.style.fontWeight=''; b.style.borderColor=''; b.style.color=''; }});
     }};
     window.filterTiers = function() {{
       if (!window.LYR_HEX) return;
