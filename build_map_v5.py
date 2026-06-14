@@ -644,6 +644,11 @@ for _, row in df_dorm.iterrows():
             "horario":       qs_data.get('horario', ''),
             "creation_date": qs_data.get('creation_date', ''),
             "dias_creacion": qs_data.get('dias_creacion', 0),
+            "tx_7d":         qs_data.get('tx_7d', 0),
+            "ventas_7d":     qs_data.get('ventas_7d', 0),
+            "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
+            "categoria_negocio": qs_data.get('categoria_negocio', ''),
+            "fill_color":    '#9ca3af',
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -3388,9 +3393,10 @@ document.addEventListener("DOMContentLoaded", function() {{
       pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:5,color:"#6b7280",
         weight:1.5,fillColor:"#9ca3af",fillOpacity:0.55,dashArray:"4"}});}},
       onEachFeature:function(f,l){{var p=f.properties;
-        l.bindTooltip("<b>😴 "+p.nombre+"</b><br>Rating: "+p.rating+
-          " | Tx hist: "+p.tx_historicas+"<br>Días sin tx: "+p.dias_sin_trx,
-          {{sticky:true,opacity:0.97}});}}
+        var dormHeader="<div style='display:flex;justify-content:space-between;align-items:center'>"+
+          "<span style='color:#9ca3af;font-size:10px'>😴 DORMIDA</span>"+
+          "<span style='color:#ef4444;font-size:9px;font-weight:700'>"+p.dias_sin_trx+"d sin tx</span></div>";
+        l.bindTooltip(dormHeader+buildBizTT(p),{{sticky:true,opacity:0.97,maxWidth:280}});}}
     }}).addTo(theMap);
 
     // Metro
