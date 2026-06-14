@@ -1752,9 +1752,23 @@ PANEL_HTML = """
           <span style="font-size:10px;color:#0f172a">🆕 ≤ 30 días</span>
         </label>
       </div>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0)"
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setHunterFilterAll(true)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
+    </div>
+
+    <hr class="bhr">
+
+    <div class="bs">
+      <div class="bs-title">👤 Filtrar negocios por Hunter</div>
+      <div id="hunter-filter-checks"
+           style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;margin-bottom:4px">
+        <span style="color:#94a3b8;font-size:10px">Cargando...</span>
+      </div>
+      <div class="bbr">
+        <button class="bb" onclick="setHunterFilterAll(true)">Todos</button>
+        <button class="bb" onclick="setHunterFilterAll(false)">Ninguno</button>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -3398,7 +3412,7 @@ document.addEventListener("DOMContentLoaded", function() {{
     window.LYR_DORM = L.geoJSON(DORM_DATA, {{
       pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:5,color:"#6b7280",
         weight:1.5,fillColor:"#9ca3af",fillOpacity:0.55,dashArray:"4"}});}},
-      onEachFeature:function(f,l){{var p=f.properties;
+      onEachFeature:function(f,l){{l._p=f.properties;var p=f.properties;
         var dormHeader="<div style='display:flex;justify-content:space-between;align-items:center'>"+
           "<span style='color:#9ca3af;font-size:10px'>😴 DORMIDA</span>"+
           "<span style='color:#ef4444;font-size:9px;font-weight:700'>"+p.dias_sin_trx+"d sin tx</span></div>";
@@ -3674,11 +3688,72 @@ document.addEventListener("DOMContentLoaded", function() {{
     window._bizNuevosDays = 0;  // 0 = sin filtro, 7 = ≤7d, 30 = ≤30d
     window.filterBizNuevos = function(days) {{
       window._bizNuevosDays = parseInt(days) || 0;
-      // Sincronizar checkboxes
       var cb7  = document.getElementById('biz-nuevos-7d');
       var cb30 = document.getElementById('biz-nuevos-30d');
       if (cb7)  cb7.checked  = (window._bizNuevosDays === 7);
       if (cb30) cb30.checked = (window._bizNuevosDays === 30);
+      var q = (document.getElementById('biz-search')||{{}}).value||'';
+      window.searchNegocios(q);
+    }};
+
+    // ── Filtro por Hunter ─────────────────────────────────────────────
+    window._bizHunterSet = null; // null = todos visibles
+
+    window.initHunterFilter = function() {{
+      var container = document.getElementById('hunter-filter-checks');
+      if (!container) return;
+      // Recolectar hunters únicos de activos + dormidos
+      var hunterSet = {{}};
+      (window.HUNTERS_LIST || []).forEach(function(h) {{ if (h) hunterSet[h] = true; }});
+      // Incluir también "Sin asignar" si existe en datos
+      var layers = [];
+      if (window.LYR_BIZ) window.LYR_BIZ.eachLayer(function(l){{ layers.push(l); }});
+      if (window.LYR_DORM) window.LYR_DORM.eachLayer(function(l){{ layers.push(l); }});
+      layers.forEach(function(l) {{
+        var h = (l._p||{{}}).hunter || '';
+        if (h && h !== 'nan' && h !== 'None') hunterSet[h] = true;
+      }});
+      var hunters = Object.keys(hunterSet).sort();
+      if (!hunters.length) {{
+        container.innerHTML = '<span style="color:#94a3b8;font-size:10px">Sin hunters en datos</span>';
+        return;
+      }}
+      container.innerHTML = '';
+      hunters.forEach(function(h) {{
+        var lbl = document.createElement('label');
+        lbl.className = 'bchk';
+        lbl.style.cssText = 'font-size:10px;display:flex;align-items:center;gap:4px;padding:1px 0';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.className = 'hf-cb';
+        cb.value = h;
+        cb.onchange = function() {{ window.filterBizByHunter(); }};
+        var txt = document.createElement('span');
+        txt.style.cssText = 'color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        txt.textContent = h;
+        lbl.appendChild(cb);
+        lbl.appendChild(txt);
+        container.appendChild(lbl);
+      }});
+    }};
+
+    window.filterBizByHunter = function() {{
+      var cbs = document.querySelectorAll('.hf-cb');
+      var allChecked = true;
+      var selected = {{}};
+      cbs.forEach(function(cb) {{
+        if (cb.checked) selected[cb.value] = true;
+        else allChecked = false;
+      }});
+      window._bizHunterSet = allChecked ? null : selected;
+      var q = (document.getElementById('biz-search')||{{}}).value||'';
+      window.searchNegocios(q);
+    }};
+
+    window.setHunterFilterAll = function(checked) {{
+      document.querySelectorAll('.hf-cb').forEach(function(cb) {{ cb.checked = checked; }});
+      window._bizHunterSet = null;
       var q = (document.getElementById('biz-search')||{{}}).value||'';
       window.searchNegocios(q);
     }};
@@ -3782,18 +3857,34 @@ document.addEventListener("DOMContentLoaded", function() {{
       q = q.toLowerCase().trim();
       var vis=0, tot=0;
       var daysFilter = window._bizNuevosDays || 0;
+      var hunterSet  = window._bizHunterSet || null;
+      function matchLayer(layer) {{
+        var p = layer._p || {{}};
+        var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+        var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
+        var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
+                     (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
+        return matchQ && matchNew && matchH;
+      }}
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
-        var p = layer._p || {{}};
-        var matchQ   = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
-        var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
-        var show = matchQ && matchNew;
+        var show = matchLayer(layer);
         layer.setStyle({{fillOpacity:show?0.8:0,opacity:show?1:0,interactive:show}});
         if(show) vis++;
       }});
+      if (window.LYR_DORM) {{
+        window.LYR_DORM.eachLayer(function(layer) {{
+          var p = layer._p || {{}};
+          var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+          var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
+                       (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
+          var show = matchQ && matchH;
+          layer.setStyle({{fillOpacity:show?0.55:0,opacity:show?1:0,interactive:show}});
+        }});
+      }}
       var el=document.getElementById('biz-count');
       var suffix = daysFilter ? ' (≤'+daysFilter+'d)' : '';
-      if(el){{el.textContent=vis+' de '+tot+' negocios'+suffix;
+      if(el){{el.textContent=vis+' de '+tot+' activos'+suffix;
               el.style.color=vis===0?'#dc2626':'#64748b';}}
     }};
     window.updateHexTT = function() {{
@@ -3821,6 +3912,8 @@ document.addEventListener("DOMContentLoaded", function() {{
     draggable(document.getElementById('bmap-panel'),document.getElementById('bmap-header'));
     draggable(document.getElementById('hunter-panel'),document.getElementById('hunter-header'));
     draggable(document.getElementById('assign-panel'),document.getElementById('assign-head'));
+
+    window.initHunterFilter();
 
     console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)} · ACTIV:{len(activ_features)}');
 
