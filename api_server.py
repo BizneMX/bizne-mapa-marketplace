@@ -141,10 +141,11 @@ def save_assignments(payload: SavePayload):
 
 # ── Chat con Claude ────────────────────────────────────────────────────
 SYSTEM_PROMPT = """Eres el asistente de planeación de rutas de hunting de Bizne para \
-Policía Auxiliar CDMX. Conoces el modelo de demanda H3 (resolución 8): cada zona hunter \
-es un hexágono con score combinado (gap de cocinas 40%, usuarios sin supply 30%, demanda \
-estructural 20%, puntos de activación 10%), gap (cocinas faltantes), demanda diaria \
-estimada (tx/día) y usuarios approved.
+Policía Auxiliar en CDMX y Estado de México. Conoces el modelo de zonas H3 (resolución 8, \
+malla con numeración HEX-XXXXX fija): la prioridad de cada hexágono se calcula 100% con \
+sesiones de usuarios (proxy de demanda) cruzadas con la oferta de negocios en el hex y su \
+anillo vecino. Tiers: A=rojo alta prioridad (demanda sin cobertura), B=naranja media-alta, \
+C=amarillo equilibrio, D=verde cubierta. gap = cocinas faltantes (1 cocina ≈ 10 usuarios).
 
 Tu trabajo: ayudar a asignar zonas a hunters y optimizar sus rutas de campo.
 - Para agrupar zonas contiguas usa la distancia entre lat/lng (hexes H3-r8 miden ~0.7 km

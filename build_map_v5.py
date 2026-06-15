@@ -28,6 +28,7 @@ if _CI:
     TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
+    OTROS_CSV= _os.path.join(_DIR, 'pg_usuarios_otros_cache.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
     # Local dev paths
@@ -52,8 +53,28 @@ else:
         '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv',
     ]
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (3).csv'
+    OTROS_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/pg_usuarios_otros_cache.csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
+
+# ── Malla estática CDMX + Edomex — numeración HEX-XXXXX fija ─────────
+# Generada una sola vez por make_hex_grid.py y comiteada: los códigos de
+# hexágono no cambian entre builds (data/hex_grid_cdmx_edomex.csv).
+import csv as _csv
+GRID_CODE = {}
+try:
+    _grid_csv = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)),
+                              'data', 'hex_grid_cdmx_edomex.csv')
+    with open(_grid_csv, encoding='utf-8') as _gf:
+        for _row in _csv.DictReader(_gf):
+            GRID_CODE[_row['hex_id']] = _row['hex_code']
+    print(f"✅ Malla estática: {len(GRID_CODE):,} hexes CDMX+Edomex")
+except Exception as _e:
+    print(f"⚠ Malla estática no cargada: {_e}")
+
+def hex_code_of(hex_id):
+    """Código estable del hex: de la malla estática; fuera de ella, sufijo del hex_id."""
+    return GRID_CODE.get(hex_id, 'HX-' + str(hex_id)[-6:].upper())
 
 # ── Color maps ────────────────────────────────────────────────────────
 TIER_COLORS = {
@@ -297,7 +318,6 @@ df_hex.columns = df_hex.columns.str.strip()
 df_hex = df_hex.sort_values('hex_id').reset_index(drop=True)
 
 hex_features = []
-_hex_seq = 1   # contador global para HEX-XXXX
 for _, row in df_hex.iterrows():
     tier = str(row['zone_tier'])
     fill = TIER_COLORS.get(tier, '#94a3b8')
@@ -319,7 +339,7 @@ for _, row in df_hex.iterrows():
         "geometry": geo,
         "properties": {
             "hex_id":   str(row['hex_id']),
-            "hex_code": f"HEX-{_hex_seq:04d}",
+            "hex_code": hex_code_of(str(row['hex_id'])),
             "zone_tier": tier,
             "DI": di,
             "demanda_dia": round(float(row.get('demanda_estimada_dia',0)), 1),
@@ -338,7 +358,6 @@ for _, row in df_hex.iterrows():
         }
     }
     hex_features.append(feat)
-    _hex_seq += 1
 
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 print(f"  {len(hex_features)} hexes")
@@ -452,6 +471,11 @@ if QS_CSV and _os.path.exists(QS_CSV):
             'dias_creacion':   int(float(r.get('dias_desde_creacion', 0) or 0)),
             'food_types':      str(r.get('food_types','') or ''),
             'horario':         str(r.get('schedule', r.get('horario','')) or ''),
+            'tx_7d':           int(float(r.get('tx_7d', r.get('transacciones_ultimos_7_dias', 0)) or 0)),
+            'ventas_7d':       round(float(r.get('ventas_7d', r.get('ventas_ultimos_7_dias', 0)) or 0), 0),
+            'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
+            'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
+            'dias_a_primera_venta': None if pd.isna(r.get('dias_a_primera_venta', float('nan'))) else round(float(r.get('dias_a_primera_venta')), 1),
         }
     print(f"  QS lookup from QS_CSV: {len(qs_lookup)} negocios")
 else:
@@ -487,6 +511,11 @@ else:
             'colonia':        str(r.get('colonia', '') or ''),
             'food_types':     str(r.get('food_types', '') or ''),
             'horario':        str(r.get('horario', r.get('schedule', '')) or ''),
+            'tx_7d':          int(float(r.get('tx_7d', 0) or 0)),
+            'ventas_7d':      round(float(r.get('ventas_7d', 0) or 0), 0),
+            'tx_conectate_30d': int(float(r.get('tx_conectate_30d', 0) or 0)),
+            'categoria_negocio': str(r.get('categoria_negocio', '') or ''),
+            'dias_a_primera_venta': None if pd.isna(r.get('dias_a_primera_venta', float('nan'))) else round(float(r.get('dias_a_primera_venta')), 1),
         }
     print(f"  QS lookup from NEG_CSV: {len(qs_lookup)} negocios")
 
@@ -542,6 +571,11 @@ for _, row in df_neg.iterrows():
             "dias_creacion": qs_data.get('dias_creacion', 0),
             "food_types":    qs_data.get('food_types', str(row.get('food_types',''))),
             "horario":       qs_data.get('horario', str(row.get('horario', row.get('schedule','')))),
+            "tx_7d":         qs_data.get('tx_7d', 0),
+            "ventas_7d":     qs_data.get('ventas_7d', 0),
+            "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
+            "categoria_negocio": qs_data.get('categoria_negocio', ''),
+            "dias_a_primera_venta": qs_data.get('dias_a_primera_venta', None),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -576,43 +610,55 @@ dorm_features = []
 for _, row in df_dorm.iterrows():
     name_key  = str(row.get('name','')).strip().lower()
     qs_data   = qs_lookup.get(name_key, {})
-    sid       = int(qs_data.get('service_id', 0) or 0)
+    # Prefer row data (now expanded CSV) over qs_data (only has active biz)
+    def _rv(col, fallback=0):
+        v = row.get(col)
+        if v is None or (isinstance(v, float) and pd.isna(v)):
+            return qs_data.get(col, fallback)
+        return v
+    sid = int(float(_rv('service_id', qs_data.get('service_id', 0)) or 0))
     feat = {
         "type":"Feature",
         "geometry":{"type":"Point","coordinates":[float(row['lng']),float(row['lat'])]},
         "properties":{
             "nombre":        str(row.get('name','')),
             "delegacion":    str(row.get('delegacion','')),
-            "rating":        float(row.get('rating', 0)),
-            "tx_historicas": int(row.get('tx_historicas', 0)),
-            "tx_hist_real":  qs_data.get('tx_hist_real', int(row.get('tx_historicas', 0))),
+            "rating":        float(_rv('rating', 0)),
+            "tx_historicas": int(float(_rv('tx_historicas', 0))),
+            "tx_hist_real":  int(float(_rv('tx_hist_real', _rv('tx_historicas', 0)))),
             "tx_90d":        qs_data.get('tx_90d', 0),
-            "tx_30d":        qs_data.get('tx_30d', 0),
+            "tx_30d":        int(float(_rv('tx_30d', 0))),
             "tx_pa_30d":     int(tx_pa_by_service.get(sid, 0)),
             "tx_pa_hist":    int(tx_pa_hist_by_service.get(sid, 0)),
             "dormida":       True,
             "dias_sin_trx":  0 if pd.isna(row.get('dias_sin_trx')) else int(float(row.get('dias_sin_trx', 0))),
             "quality_score": 0 if pd.isna(row.get('quality_score')) else int(float(row.get('quality_score', 0))),
-            "quality_nivel": qs_data.get('nivel', ''),
-            "service_cohort":qs_data.get('service_cohort', ''),
-            "etapa":         qs_data.get('etapa', str(row.get('etapa_negocio', ''))),
+            "quality_nivel": str(_rv('quality_nivel', qs_data.get('nivel', ''))),
+            "service_cohort":str(_rv('service_cohort', '')),
+            "etapa":         str(_rv('etapa_negocio', qs_data.get('etapa', ''))),
             "capacidad":     int(float(row.get('capacidad_si_reactiva', 0) or 0)),
-            "ventas_30d":    round(float(qs_data.get('ventas_30d', 0) or 0), 0),
-            "tasa_acepta":   qs_data.get('tasa_acepta', 0),
-            "tiempo_acepta": qs_data.get('tiempo_acepta', 0),
-            "menu_bizne":    qs_data.get('menu_bizne', False),
-            "menu_dia":      qs_data.get('menu_dia', False),
-            "menu_carta":    qs_data.get('menu_carta', False),
+            "ventas_30d":    round(float(_rv('ventas_30d', 0) or 0), 0),
+            "ventas_7d":     round(float(_rv('ventas_7d', 0) or 0), 0),
+            "tasa_acepta":   round(float(_rv('tasa_aceptacion', qs_data.get('tasa_acepta', 0)) or 0), 1),
+            "tiempo_acepta": round(float(_rv('tiempo_acepta', 0) or 0), 1),
+            "menu_bizne":    bool(_rv('menu_bizne', False)),
+            "menu_dia":      bool(_rv('menu_de_dia', qs_data.get('menu_dia', False))),
+            "menu_carta":    bool(_rv('menu_a_la_carta', qs_data.get('menu_carta', False))),
             "service_id":    sid,
-            "phone_number":  qs_data.get('phone_number', ''),
-            "owner_name":    qs_data.get('owner_name', ''),
-            "hunter":        qs_data.get('hunter', ''),
-            "address":       qs_data.get('address', ''),
-            "colonia":       qs_data.get('colonia', ''),
-            "food_types":    qs_data.get('food_types', str(row.get('food_types', ''))),
-            "horario":       qs_data.get('horario', ''),
-            "creation_date": qs_data.get('creation_date', ''),
-            "dias_creacion": qs_data.get('dias_creacion', 0),
+            "phone_number":  str(_rv('phone_number', '')),
+            "owner_name":    str(_rv('owner_name', '')),
+            "hunter":        str(_rv('hunter', '')),
+            "address":       str(_rv('address', '')),
+            "colonia":       str(_rv('colonia', '')),
+            "food_types":    str(_rv('food_types', '')),
+            "horario":       str(_rv('horario', '')),
+            "creation_date": str(_rv('creation_date', '')),
+            "dias_creacion": int(float(_rv('dias_creacion', 0) or 0)),
+            "tx_7d":         int(float(_rv('tx_7d', 0))),
+            "tx_conectate_30d": int(float(_rv('tx_conectate_30d', 0))),
+            "categoria_negocio": str(_rv('categoria_negocio', '')),
+            "dias_a_primera_venta": None if pd.isna(_rv('dias_a_primera_venta', float('nan'))) else round(float(_rv('dias_a_primera_venta')), 1),
+            "fill_color":    '#9ca3af',
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -720,6 +766,26 @@ user_hex = df_aprov_loc2.groupby('hex_id').agg(
 user_hex['sin_compras'] = user_hex['usuarios'] - user_hex['con_tx']
 user_hex['tasa_conv_pct'] = (user_hex['con_tx']/user_hex['usuarios']*100).round(1)
 
+# Señal secundaria: sesiones de otras orgs policía (Conéctate CDMX + Bancaria Industrial)
+_df_conectate_loc = pd.DataFrame()   # para capas de mapa de Conéctate
+try:
+    _df_otros = pd.read_csv(OTROS_CSV, encoding='utf-8')
+    _df_otros.columns = _df_otros.columns.str.strip()
+    for _c in ['latitude', 'longitude']:
+        _df_otros[_c] = pd.to_numeric(_df_otros[_c], errors='coerce')
+    _df_otros = _df_otros[_df_otros['latitude'].between(-90, 90) & _df_otros['longitude'].between(-180, 180)]
+    _df_otros['hex_id'] = _df_otros.apply(lambda r: safe_h3(r['latitude'], r['longitude']), axis=1)
+    _df_otros = _df_otros[_df_otros['hex_id'].notna()]
+    user_hex_otros = _df_otros.groupby('hex_id').size().to_dict()
+    # Capa específica Conéctate Policía CDMX (excluyendo Bancaria)
+    if 'organization_name' in _df_otros.columns:
+        _df_conectate_loc = _df_otros[_df_otros['organization_name'] == 'Conéctate Policia CDMX'].copy()
+    print(f"  Usuarios otras orgs: {len(_df_otros):,} → {len(user_hex_otros):,} hexes "
+          f"(Conéctate: {len(_df_conectate_loc):,})")
+except Exception as _e:
+    user_hex_otros = {}
+    print(f"  Usuarios otras orgs: sin datos ({_e})")
+
 # Dormidas by hex
 df_dorm_copy = df_dorm.copy()
 df_dorm_copy['hex_id'] = df_dorm_copy.apply(lambda r: safe_h3(r['lat'],r['lng']), axis=1)
@@ -768,130 +834,116 @@ if activ_dem_hex:
         df_hex.at[_hx, 'priority_score']      = round(_mu / max(_n_act, 1), 3)
     df_hex = df_hex.reset_index()
 
-# Incluir hexes con gap>0 O con señal de activación (zonas de desarrollo potencial)
-_activ_hex_set = set(activ_dem_hex.keys()) if activ_dem_hex else set()
-df_hunt = df_hex[(df_hex['gap'] > 0) | (df_hex['hex_id'].isin(_activ_hex_set))].copy()
-df_hunt = df_hunt.merge(user_hex, on='hex_id', how='left')
-df_hunt['usuarios'] = df_hunt['usuarios'].fillna(0).astype(int)
-df_hunt['sin_compras'] = df_hunt['sin_compras'].fillna(0).astype(int)
-df_hunt['tasa_conv_pct'] = df_hunt['tasa_conv_pct'].fillna(0).round(1)
-df_hunt['neg_dormidos'] = df_hunt['hex_id'].map(dorm_per_hex).fillna(0).astype(int)
-
-# Señal de activación por hex (cuánta demanda de activación cae en cada hunter hex)
-df_hunt['activ_demand'] = df_hunt['hex_id'].map(activ_dem_hex).fillna(0)
-
-# ── Usuarios SIN supply cercano por hex ──────────────────────────────────────
-# df_aprov_loc ya tiene n_biz (negocios en radio H3 ring-1). Si n_biz == 0
-# el usuario está en zona sin oferta → señal de demanda real no atendida.
-_uns_hex = (
-    df_aprov_loc[df_aprov_loc['n_biz'] == 0]
-    .groupby('hex_id').size()
-    .reset_index(name='users_no_supply')
-)
-df_hunt = df_hunt.merge(_uns_hex, on='hex_id', how='left')
-df_hunt['users_no_supply'] = df_hunt['users_no_supply'].fillna(0).astype(int)
-
-# ── Nuevo modelo de scoring basado en gap + demanda real ──────────────────────
-# Componentes:
-#   gap_norm     — cocinas que faltan (driver principal)
-#   uns_norm     — usuarios sin cocina cercana (demanda real sin supply)
-#   demand_norm  — demanda estructural absoluta (tx esperadas/día)
-#   activ_norm   — puntos de activación (señal de campo)
-#   user_norm    — presencia total de usuarios (señal complementaria)
+# ── MODELO HUNTER v6 — prioridad = 100% sesiones de usuarios vs oferta ───────
+# Cobertura: CDMX + Estado de México completos via la malla estática GRID_CODE
+# (numeración HEX-XXXXX fija). Se emiten todos los hexes de la malla con señal
+# (sesiones u oferta); los sin señal conservan su número pero no se pintan.
 #
-# Pesos: gap 40% | sin-supply 30% | demanda 20% | activación 10%
-# Eliminamos el ratio demanda/negocios (priority_score) como driver principal
-# porque penalizaba zonas con muchos negocios aunque el gap fuera grande.
+#   Estrategia: el usuario que abre la app debe encontrar ≥3 opciones cercanas (~1km).
+#   gap   = max(0, 3 - biz_nb)  — cuántas opciones faltan para alcanzar la meta
+#   tier  = basado en gap (A=falta todo, D=cubierta)
+#   score = 50% gap + 35% demanda PA + 15% demanda otras orgs policía
 
-max_gap   = max(float(df_hunt['gap'].max()), 1.0)
-max_uns   = max(float(df_hunt['users_no_supply'].max()), 1.0)
-max_dem   = max(float(df_hunt['demanda_estimada_dia'].max()), 1.0)
-max_activ = max(float(df_hunt['activ_demand'].max()), 1.0)
-max_us    = max(float(df_hunt['usuarios'].max()), 1.0)
+HUNTER_TIER_DEFS = {
+    'A': ('A Alta prioridad', '#ff1744', 0.60),   # rojo    — gap = 3 (0 negocios cercanos)
+    'B': ('B Media-alta',     '#ff9100', 0.50),   # naranja — gap = 2 (1 negocio cercano)
+    'C': ('C Media',          '#ffd600', 0.40),   # amarillo — gap = 1 (2 negocios cercanos)
+    'D': ('D Cubierta',       '#00c853', 0.25),   # verde   — gap = 0 (≥3 negocios cercanos)
+}
+COVERAGE_TARGET = 3   # opciones mínimas visibles al usuario (~1km)
 
-df_hunt['gap_norm']    = df_hunt['gap'].astype(float) / max_gap
-df_hunt['uns_norm']    = df_hunt['users_no_supply'].astype(float) / max_uns
-df_hunt['demand_norm'] = df_hunt['demanda_estimada_dia'].astype(float) / max_dem
-df_hunt['activ_norm']  = df_hunt['activ_demand'].astype(float) / max_activ
-df_hunt['user_norm']   = df_hunt['usuarios'].astype(float) / max_us
+def hunter_tier_v6(biz_nb):
+    """Clasifica por gap respecto a la meta de 3 opciones cercanas."""
+    gap = max(0, COVERAGE_TARGET - biz_nb)
+    if gap >= 3: return 'A'
+    if gap >= 2: return 'B'
+    if gap >= 1: return 'C'
+    return 'D'   # gap = 0 → cubierta
 
-df_hunt['combined_score'] = (
-    0.40 * df_hunt['gap_norm']    +   # Cocinas que faltan (prioridad principal)
-    0.30 * df_hunt['uns_norm']    +   # Usuarios sin cocina cercana (demanda real sin supply)
-    0.20 * df_hunt['demand_norm'] +   # Demanda estructural absoluta (tx/día)
-    0.10 * df_hunt['activ_norm']       # Puntos de activación en campo
-).round(3)
+_uh       = {r['hex_id']: r for _, r in user_hex.iterrows()}
+_signal   = [hx for hx in GRID_CODE
+             if (hx in _uh and int(_uh[hx]['usuarios']) > 0) or biz_per_hex.get(hx, 0) > 0]
+_max_pa    = max([int(_uh[hx]['usuarios']) for hx in _signal if hx in _uh] + [1])
+_max_other = max(list(user_hex_otros.values()) + [1])
 
-df_hunt = df_hunt.sort_values('combined_score', ascending=False).reset_index(drop=True)
-df_hunt['rank'] = df_hunt.index + 1
+_hunt_rows = []
+for hx in _signal:
+    _u          = _uh.get(hx)
+    users       = int(_u['usuarios']) if _u is not None else 0
+    users_other = int(user_hex_otros.get(hx, 0))
+    biz_in      = int(biz_per_hex.get(hx, 0))
+    biz_nb      = int(biz_nearby(hx))
+    gap         = max(0, COVERAGE_TARGET - biz_nb)
+    gap_norm    = gap / COVERAGE_TARGET
+    pa_norm     = users / _max_pa
+    other_norm  = users_other / _max_other
+    _hunt_rows.append({
+        'hex_id': hx,
+        'tier': hunter_tier_v6(biz_nb),
+        'usuarios': users,
+        'users_other': users_other,
+        'sin_compras': int(_u['sin_compras']) if _u is not None else 0,
+        'tasa_conv_pct': float(_u['tasa_conv_pct']) if _u is not None else 0.0,
+        'biz_in': biz_in, 'biz_nb': biz_nb,
+        'cobertura': round(biz_nb / COVERAGE_TARGET, 2),
+        'gap': gap,
+        'score': round(gap_norm * 0.50 + pa_norm * 0.35 + other_norm * 0.15, 4),
+        'neg_dormidos': int(dorm_per_hex.get(hx, 0)),
+    })
 
-print(f"  Scoring Hunter — max_gap:{max_gap:.0f} | max_uns:{max_uns:.0f} | max_dem:{max_dem:.1f}")
-print(f"  Score range: {df_hunt['combined_score'].min():.3f} – {df_hunt['combined_score'].max():.3f}")
+# Normalizar score a 0–1 (el hex más prioritario = 1.0 → "100/100" en tooltip)
+_max_score = max([r['score'] for r in _hunt_rows] + [1e-9])
+for _r in _hunt_rows:
+    _r['score'] = round(_r['score'] / _max_score, 3)
 
-HUNTER_TIER_DEFS = [
-    ('A+ Máxima prioridad', '#7f1d1d', 0.85),
-    ('A Alta demanda sin supply', '#dc2626', 0.70),
-    ('B Señal mixta', '#f97316', 0.55),
-    ('C Zona activa', '#22c55e', 0.40),
-    ('D Desarrollo', '#3b82f6', 0.25),
-    ('E Monitoreo', '#94a3b8', 0.10),
-]
-def hunter_tier(score):
-    # Umbrales recalibrados para nueva distribución basada en gap+uns
-    if score >= 0.55:  return HUNTER_TIER_DEFS[0]
-    if score >= 0.38:  return HUNTER_TIER_DEFS[1]
-    if score >= 0.25:  return HUNTER_TIER_DEFS[2]
-    if score >= 0.15:  return HUNTER_TIER_DEFS[3]
-    if score >= 0.07:  return HUNTER_TIER_DEFS[4]
-    return HUNTER_TIER_DEFS[5]
-
-# Lookup hex_code por hex_id (asignados al construir hex_features)
-_hex_code_lookup = {f['properties']['hex_id']: f['properties']['hex_code'] for f in hex_features}
+_hunt_rows.sort(key=lambda r: (-r['score'], r['hex_id']))
 
 hunter_features = []
-for _, row in df_hunt.iterrows():
+for _rank, row in enumerate(_hunt_rows, 1):
     try:
-        geo = hex_geojson(str(row['hex_id']))
-    except:
+        geo = hex_geojson(row['hex_id'])
+    except Exception:
         continue
-    htier = hunter_tier(row['combined_score'])
-    zona_lbl, fill, base_op = htier
-    fill_op = round(min(0.75, base_op + row['combined_score']*0.2), 2)
+    zona_lbl, fill, base_op = HUNTER_TIER_DEFS[row['tier']]
+    _lat, _lng = h3.cell_to_latlng(row['hex_id'])
     feat = {
         "type":"Feature",
         "geometry": geo,
         "properties":{
-            "hex_id":   str(row['hex_id']),
-            "hex_code": _hex_code_lookup.get(str(row['hex_id']), ''),
-            "rank": int(row['rank']),
+            "hex_id":   row['hex_id'],
+            "hex_code": hex_code_of(row['hex_id']),
+            "rank": _rank,
             "zona": zona_lbl,
-            "delegacion": "CDMX",
-            "combined_score": float(row['combined_score']),
-            "gap_norm":    round(float(row.get('gap_norm', 0)), 3),
-            "uns_norm":    round(float(row.get('uns_norm', 0)), 3),
-            "demand_norm": round(float(row['demand_norm']), 3),
-            "user_norm":   round(float(row['user_norm']), 3),
-            "activ_norm":  round(float(row.get('activ_norm', 0)), 3),
-            "activ_demand": round(float(row.get('activ_demand', 0)), 1),
-            "users_no_supply": int(row.get('users_no_supply', 0)),
-            "gap": int(row['gap']),
-            "neg_activos": int(row.get('negocios_actuales',0)),
-            "neg_dormidos": int(row.get('neg_dormidos',0)),
-            "demanda_dia": round(float(row.get('demanda_estimada_dia',0)),1),
-            "has_users": int(row['usuarios'])>0,
-            "usuarios": int(row['usuarios']),
-            "sin_compras": int(row['sin_compras']),
-            "tasa_conv_pct": float(row['tasa_conv_pct']),
+            "delegacion": "CDMX/EdoMex",
+            "combined_score": row['score'],
+            "usuarios": row['usuarios'],
+            "has_users": row['usuarios'] > 0,
+            "sin_compras": row['sin_compras'],
+            "tasa_conv_pct": row['tasa_conv_pct'],
+            "neg_activos": row['biz_in'],
+            "neg_cercanos": row['biz_nb'],
+            "neg_dormidos": row['neg_dormidos'],
+            "cobertura": row['cobertura'],
+            "gap": row['gap'],
+            "users_other": row['users_other'],
+            "demanda_dia": row['usuarios'],   # proxy: sesiones de usuarios
+            "users_no_supply": row['usuarios'] if row['biz_nb'] == 0 else 0,
+            "activ_demand": 0,
             "fill_color": fill,
-            "fill_opacity": fill_op,
-            "lat": round(h3.cell_to_latlng(str(row['hex_id']))[0], 7),
-            "lng": round(h3.cell_to_latlng(str(row['hex_id']))[1], 7),
+            "fill_opacity": round(min(0.85, base_op + row['score'] * 0.25), 2),
+            "lat": round(_lat, 7),
+            "lng": round(_lng, 7),
         }
     }
     hunter_features.append(feat)
 
 HUNTER_DATA = json.dumps({"type":"FeatureCollection","features":hunter_features}, ensure_ascii=False)
-print(f"  {len(hunter_features)} hunter zones")
+# IDs de la malla completa (ordenados = numeración HEX-XXXXX); las geometrías
+# se calculan en el navegador con h3-js para no inflar el HTML con 29k polígonos.
+HUNTER_GRID_IDS_JSON = json.dumps(sorted(GRID_CODE), ensure_ascii=False)
+_tier_counts = Counter(r['tier'] for r in _hunt_rows)
+print(f"  {len(hunter_features)} hunter zones (malla {len(GRID_CODE):,}) · " +
+      ' · '.join(f"{t}:{_tier_counts.get(t,0)}" for t in 'ABCD'))
 
 # ══════════════════════════════════════════════════════════════════════
 # GAP GLOBAL — cobertura del modelo estructural
@@ -914,7 +966,11 @@ print(f"  Gap global: {total_gap_global} | Cobertura: {cobertura_global_pct}%")
 # NEGOCIOS NUEVOS — últimos 7 y 30 días + por hunter
 # ══════════════════════════════════════════════════════════════════════
 def _safe_dias(p):
-    try: return int(p.get('dias_creacion', 9999) or 9999)
+    v = p.get('dias_creacion', None)
+    if v is None or str(v).strip() in ('', 'nan', 'None'): return 9999
+    try:
+        iv = int(float(v))
+        return iv if iv >= 0 else 9999
     except: return 9999
 
 _nuevos_7  = [f for f in biz_features if _safe_dias(f['properties']) <= 7]
@@ -965,11 +1021,21 @@ def _norm_h(s):
     return _ud.normalize('NFC', str(s).strip()).lower()
 HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
-# Negocios por hunter en 7d y 30d + todos los hunters con cualquier negocio
-_hunter_7   = defaultdict(int)
-_hunter_30  = defaultdict(int)
-_hunter_all = set(HUNTERS_SISTEMA)  # siempre incluir lista maestra
-_hunter_display = {}  # nombre normalizado → nombre display original del CSV
+# Días desde el lunes de la semana ISO en curso (0=lunes, 6=domingo)
+from datetime import timedelta as _td
+_dias_inicio_semana = _hoy.weekday()  # 0=Mon … 6=Sun
+_lunes_semana = _hoy - _td(days=_dias_inicio_semana)
+_nuevos_semana = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_inicio_semana]
+neg_nuevos_semana = len(_nuevos_semana)
+_lunes_nombre = _lunes_semana.strftime('%d %b').lstrip('0')
+
+# Negocios por hunter en semana actual, 7d, 30d + % primera venta ≤7d
+_hunter_semana  = defaultdict(int)
+_hunter_7       = defaultdict(int)
+_hunter_30      = defaultdict(int)
+_hunter_30_list = defaultdict(list)  # lista de (dias_a_primera_venta) para negocios 30d
+_hunter_all     = set(HUNTERS_SISTEMA)
+_hunter_display = {}
 for f in biz_features:
     p  = f['properties']
     h  = str(p.get('hunter', '') or '').strip()
@@ -978,26 +1044,40 @@ for f in biz_features:
     if h_norm in HUNTERS_EXCLUIR_NORM: continue
     _hunter_all.add(h)
     d  = _safe_dias(p)
+    if d <= _dias_inicio_semana: _hunter_semana[h] += 1
     if d <= 7:  _hunter_7[h]  += 1
-    if d <= 30: _hunter_30[h] += 1
+    if d <= 30:
+        _hunter_30[h] += 1
+        dpv = p.get('dias_a_primera_venta')
+        _hunter_30_list[h].append(dpv)
 
 # Incluir TODOS los hunters (sistema + negocios), excluyendo inactivos
 _all_hunters = sorted(
     {h for h in (_hunter_all | set(_hunter_7.keys()) | set(_hunter_30.keys()))
      if _norm_h(h) not in HUNTERS_EXCLUIR_NORM},
-    key=lambda h: (_hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
+    key=lambda h: (_hunter_semana.get(h, 0) * 100 + _hunter_7.get(h, 0) * 10 + _hunter_30.get(h, 0)),
     reverse=True
 )
 hunter_actividad_rows = ''
 for h in _all_hunters:
-    n7  = _hunter_7.get(h, 0)
-    n30 = _hunter_30.get(h, 0)
-    clr7 = '#22c55e' if n7 > 0 else '#475569'
+    n_sem = _hunter_semana.get(h, 0)
+    n7    = _hunter_7.get(h, 0)
+    n30   = _hunter_30.get(h, 0)
+    # % negocios 30d con primera venta ≤7 días
+    _lista_dpv = _hunter_30_list.get(h, [])
+    _n_con_1v7 = sum(1 for v in _lista_dpv if v is not None and v <= 7)
+    pct_1v7 = round(_n_con_1v7 / n30 * 100) if n30 > 0 else None
+    clr_sem  = '#a78bfa' if n_sem > 0 else '#334155'
+    clr7     = '#22c55e' if n7 > 0 else '#475569'
+    clr_pct  = ('#22c55e' if (pct_1v7 or 0) >= 50 else '#f59e0b') if pct_1v7 is not None else '#334155'
+    pct_str  = f'{pct_1v7}%' if pct_1v7 is not None else '—'
     hunter_actividad_rows += (
         f'<tr>'
         f'<td style="padding:3px 8px;color:#e2e8f0">{h}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:{clr_sem};font-weight:700">{n_sem}</td>'
         f'<td style="padding:3px 8px;text-align:right;color:{clr7};font-weight:700">{n7}</td>'
         f'<td style="padding:3px 8px;text-align:right;color:#94a3b8">{n30}</td>'
+        f'<td style="padding:3px 8px;text-align:right;color:{clr_pct};font-weight:700">{pct_str}</td>'
         f'</tr>\n'
     )
 print(f"  Nuevos 7d: {neg_nuevos_7} | 30d: {neg_nuevos_30} | %tx7d: {pct_nuevos_7_tx_7d}%")
@@ -1018,7 +1098,7 @@ for feat in hunter_features[:30]:
     p = feat['properties']
     center = h3.cell_to_latlng(p['hex_id'])
     hunt_rows_json.append({
-        'tier': 'A_PRIORIDAD_ALTA' if p['combined_score']>=0.55 else 'B_PRIORIDAD_MEDIA',
+        'tier': 'A_PRIORIDAD_ALTA' if p['zona'].startswith('A') else 'B_PRIORIDAD_MEDIA',
         'zona': p['zona'],
         'lat': round(center[0],7),
         'lng': round(center[1],7),
@@ -1130,10 +1210,18 @@ heat_ok   = [[round(r.lat_v,5), round(r.lng_v,5), 1.0] for r in df_trx_loc[~df_t
 heat_fail = [[round(r.lat_v,5), round(r.lng_v,5), 1.0] for r in df_trx_loc[df_trx_loc['status_trx'].str.contains('incompleta',case=False)].itertuples()]
 heat_users_pts = [[round(r['lat'],5), round(r['lng'],5), 1.0] for _, r in df_aprov_loc2.iterrows() if abs(r['lat'])>5]
 
-HEAT_TRX_OK   = json.dumps(heat_ok, ensure_ascii=False)
-HEAT_TRX_FAIL = json.dumps(heat_fail, ensure_ascii=False)
-HEAT_USERS    = json.dumps(heat_users_pts, ensure_ascii=False)
-print(f"  Heat: ok={len(heat_ok)}, fail={len(heat_fail)}, users={len(heat_users_pts)}")
+heat_conectate_pts = [
+    [round(float(r['latitude']),5), round(float(r['longitude']),5), 1.0]
+    for _, r in _df_conectate_loc.iterrows()
+    if pd.notna(r.get('latitude')) and abs(float(r.get('latitude', 0))) > 5
+]
+
+HEAT_TRX_OK      = json.dumps(heat_ok, ensure_ascii=False)
+HEAT_TRX_FAIL    = json.dumps(heat_fail, ensure_ascii=False)
+HEAT_USERS       = json.dumps(heat_users_pts, ensure_ascii=False)
+HEAT_CONECTATE   = json.dumps(heat_conectate_pts, ensure_ascii=False)
+print(f"  Heat: ok={len(heat_ok)}, fail={len(heat_fail)}, users={len(heat_users_pts)}, "
+      f"conectate={len(heat_conectate_pts)}")
 
 # Hex-level heat (aggregated)
 def build_hex_heat(points, label):
@@ -1155,9 +1243,10 @@ def build_hex_heat(points, label):
         }})
     return json.dumps({"type":"FeatureCollection","features":feats}, ensure_ascii=False)
 
-HEX_HEAT_OK    = build_hex_heat(heat_ok,   'Tx OK')
-HEX_HEAT_FAIL  = build_hex_heat(heat_fail, 'Tx Fail')
-HEX_HEAT_USERS = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts], 'Usuarios')
+HEX_HEAT_OK        = build_hex_heat(heat_ok,              'Tx OK')
+HEX_HEAT_FAIL      = build_hex_heat(heat_fail,            'Tx Fail')
+HEX_HEAT_USERS     = build_hex_heat([[p[0],p[1],1] for p in heat_users_pts],     'Usuarios PA')
+HEX_HEAT_CONECTATE = build_hex_heat([[p[0],p[1],1] for p in heat_conectate_pts], 'Conéctate')
 print("  Hex heat maps built")
 
 # ── Heat users por organización (Session Demand no se duplica por org — demasiado pesado) ──
@@ -1186,6 +1275,7 @@ HEAD = """
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.css"/>
 <script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.3/dist/leaflet.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+<script src="https://unpkg.com/h3-js@4.1.0/dist/h3-js.umd.js"></script>
 <style>
 /* ── KPI dashboard ─────────────────────────────────────────── */
 #kpi-dash{position:fixed;top:10px;left:10px;z-index:1005;background:#f8fafc;
@@ -1548,6 +1638,7 @@ HUNTER_HTML = f"""
   <div style="background:#0d1117;padding:5px 10px;display:flex;gap:12px;align-items:center;
     font-size:10px;border-bottom:1px solid #1e2d40;flex-wrap:wrap">
     <span style="color:#94a3b8">{_mes_nombre[:3]}: <b style="color:#a78bfa;font-size:11px">{neg_nuevos_mes}</b></span>
+    <span style="color:#94a3b8" title="Semana en curso (desde {_lunes_nombre})">Sem: <b style="color:#c084fc;font-size:11px">{neg_nuevos_semana}</b></span>
     <span style="color:#94a3b8">7d: <b style="color:#22c55e">{neg_nuevos_7}</b></span>
     <span style="color:#94a3b8">30d: <b style="color:#00BFA5">{neg_nuevos_30}</b></span>
     <span style="color:#94a3b8">1ªTx: <b style="color:{'#22c55e' if pct_nuevos_7_tx_7d>=50 else '#f59e0b'}">{pct_nuevos_7_tx_7d}%</b></span>
@@ -1560,8 +1651,10 @@ HUNTER_HTML = f"""
     <table style="width:100%;border-collapse:collapse;font-size:10px">
       <thead><tr style="position:sticky;top:0;background:#0f172a">
         <th style="padding:4px 8px;color:#64748b;text-align:left;font-size:9px;letter-spacing:.3px">HUNTER</th>
+        <th style="padding:4px 8px;color:#a78bfa;text-align:right;font-size:9px" title="Nuevos negocios activados en la semana en curso">Sem</th>
         <th style="padding:4px 8px;color:#22c55e;text-align:right;font-size:9px">7d</th>
         <th style="padding:4px 8px;color:#00BFA5;text-align:right;font-size:9px">30d</th>
+        <th style="padding:4px 8px;color:#f59e0b;text-align:right;font-size:9px" title="% negocios (últimos 30d) con primera venta en ≤7 días">1ªV≤7d</th>
       </tr></thead>
       <tbody style="color:#e2e8f0">
 {hunter_actividad_rows}
@@ -1610,7 +1703,7 @@ PANEL_HTML = """
       <label class="bchk"><input type="checkbox" id="ly_dormidas" onchange="toggleLayer('dormidas',this.checked)">
         <span class="bdot" style="background:#9ca3af"></span> Negocios Dormidos</label>
       <label class="bchk"><input type="checkbox" id="ly_hunter"   onchange="toggleLayer('hunter',this.checked)">
-        <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter</label>
+        <span class="bdot" style="background:#f97316;border-radius:50%"></span> Zonas Hunter <span style="font-size:8px;color:#94a3b8">(+ malla CDMX+Edomex)</span></label>
       <label class="bchk"><input type="checkbox" id="ly_sdemand"  onchange="toggleLayer('sdemand',this.checked)">
         <span class="bdot" style="background:#7c3aed;border-radius:50%"></span> Demanda por Sesiones</label>
       <label class="bchk"><input type="checkbox" id="ly_metro"    onchange="toggleLayer('metro',this.checked)">
@@ -1633,6 +1726,16 @@ PANEL_HTML = """
         <span class="bdot" style="background:#ef4444"></span> Tx incompletas</label>
       <label class="bchk"><input type="checkbox" id="ht_users" onchange="toggleHeat('users',this.checked)">
         <span class="bdot" style="background:#a78bfa"></span> Última sesión usuarios</label>
+      <label class="bchk"><input type="checkbox" id="ht_conectate" onchange="toggleHeat('conectate',this.checked)">
+        <span class="bdot" style="background:#0ea5e9"></span> Conéctate Policía</label>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:6px">
+        <span style="font-size:9px;color:#94a3b8;white-space:nowrap">Tamaño:</span>
+        <button onclick="setHeatSize(6,4)"  id="hs_xs" class="bb">XS</button>
+        <button onclick="setHeatSize(10,6)" id="hs_s"  class="bb">S</button>
+        <button onclick="setHeatSize(16,10)" id="hs_m" class="bb" style="font-weight:700;border-color:#7dd3fc;color:#7dd3fc">M</button>
+        <button onclick="setHeatSize(26,16)" id="hs_l" class="bb">L</button>
+        <button onclick="setHeatSize(40,25)" id="hs_xl" class="bb">XL</button>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -1645,6 +1748,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#ef4444"></span> Tx incompletas</label>
       <label class="bchk"><input type="checkbox" id="hh_users" onchange="toggleHexHeat('users',this.checked)">
         <span class="bdot" style="background:#a78bfa"></span> Última sesión usuarios</label>
+      <label class="bchk"><input type="checkbox" id="hh_conectate" onchange="toggleHexHeat('conectate',this.checked)">
+        <span class="bdot" style="background:#0ea5e9"></span> Conéctate Policía</label>
     </div>
 
     <hr class="bhr">
@@ -1682,9 +1787,23 @@ PANEL_HTML = """
           <span style="font-size:10px;color:#0f172a">🆕 ≤ 30 días</span>
         </label>
       </div>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0)"
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setHunterFilterAll(true)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
+    </div>
+
+    <hr class="bhr">
+
+    <div class="bs">
+      <div class="bs-title">👤 Filtrar negocios por Hunter</div>
+      <div id="hunter-filter-checks"
+           style="max-height:130px;overflow-y:auto;display:flex;flex-direction:column;gap:1px;margin-bottom:4px">
+        <span style="color:#94a3b8;font-size:10px">Cargando...</span>
+      </div>
+      <div class="bbr">
+        <button class="bb" onclick="setHunterFilterAll(true)">Todos</button>
+        <button class="bb" onclick="setHunterFilterAll(false)">Ninguno</button>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -1761,14 +1880,20 @@ PANEL_HTML = """
 
     <div class="bs">
       <div class="bs-title">🍽 Tooltip Negocios</div>
+      <label class="bchk"><input type="checkbox" id="bf_categoria"  checked onchange="updateBizTT()"> Categoría</label>
+      <label class="bchk"><input type="checkbox" id="bf_food_types" checked onchange="updateBizTT()"> Tipo de negocio</label>
+      <label class="bchk"><input type="checkbox" id="bf_hunter"    checked onchange="updateBizTT()"> Hunter</label>
+      <label class="bchk"><input type="checkbox" id="bf_horario"   checked onchange="updateBizTT()"> Horario</label>
       <label class="bchk"><input type="checkbox" id="bf_rating"    checked onchange="updateBizTT()"> Rating ⭐</label>
-      <label class="bchk"><input type="checkbox" id="bf_capacidad" checked onchange="updateBizTT()"> Capacidad</label>
-      <label class="bchk"><input type="checkbox" id="bf_tx_hist"   checked onchange="updateBizTT()"> Trx históricas</label>
-      <label class="bchk"><input type="checkbox" id="bf_tx_30d"    checked onchange="updateBizTT()"> Tx 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_7d"     checked onchange="updateBizTT()"> Trx 7d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_30d"    checked onchange="updateBizTT()"> Trx 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_ventas_7d" checked onchange="updateBizTT()"> Ventas 7d</label>
+      <label class="bchk"><input type="checkbox" id="bf_ventas_30d" checked onchange="updateBizTT()"> Ventas 30d</label>
+      <label class="bchk"><input type="checkbox" id="bf_tx_hist"   onchange="updateBizTT()"> Trx históricas</label>
       <label class="bchk"><input type="checkbox" id="bf_acepta"    checked onchange="updateBizTT()"> Tasa aceptación %</label>
       <label class="bchk"><input type="checkbox" id="bf_tiempo"    checked onchange="updateBizTT()"> T. aceptación p50</label>
       <div style="font-size:9px;color:#64748b;margin-top:4px;padding:3px 6px;background:#f1f5f9;border-radius:4px">
-        🍽 Menús siempre visibles en tooltip</div>
+        🍽 Menús y % por org siempre visibles</div>
       <div class="bbr">
         <button class="bb" onclick="document.querySelectorAll('[id^=bf_]').forEach(function(c){c.checked=true});updateBizTT()">Todos</button>
         <button class="bb" onclick="document.querySelectorAll('[id^=bf_]').forEach(function(c){c.checked=false});updateBizTT()">Ninguno</button>
@@ -2233,12 +2358,16 @@ var ACTIV_DATA          = {ACTIV_DATA};
 var HEAT_TRX_OK         = {HEAT_TRX_OK};
 var HEAT_TRX_FAIL       = {HEAT_TRX_FAIL};
 var HEAT_USERS          = {HEAT_USERS};
+var HEAT_CONECTATE      = {HEAT_CONECTATE};
 var HEX_HEAT_OK         = {HEX_HEAT_OK};
 var HEX_HEAT_FAIL       = {HEX_HEAT_FAIL};
 var HEX_HEAT_USERS      = {HEX_HEAT_USERS};
+var HEX_HEAT_CONECTATE  = {HEX_HEAT_CONECTATE};
 
 // ── Hunters para asignación ─────────────────────────────────────
 var HUNTERS_LIST = {HUNTERS_LIST_JSON};
+// ── Malla completa CDMX+Edomex (ids ordenados = HEX-00001…) ─────
+var HUNTER_GRID_IDS = {HUNTER_GRID_IDS_JSON};
 // ── Datos por organización × fecha ──────────────────────────────
 var ORG_DATE_KPI_DATA   = {ORG_DATE_KPI_DATA};
 var HEAT_USERS_BY_ORG   = {HEAT_USERS_BY_ORG};
@@ -2268,42 +2397,109 @@ function _copyBtn(value, label) {{
 }}
 
 function openHunterPopup(p, latlng) {{
-  var coordStr = p.lat.toFixed(7)+', '+p.lng.toFixed(7);
+  var coordStr  = p.lat.toFixed(7)+', '+p.lng.toFixed(7);
+  var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
+  var covPct    = Math.round((p.neg_cercanos / 3) * 100);
+  var covColor  = covPct >= 100 ? '#00c853' : covPct >= 67 ? '#ffd600' : covPct >= 34 ? '#ff9100' : '#ff1744';
+  var covTxt    = p.neg_cercanos+'/3 opciones ('+Math.min(covPct,100)+'%)';
+
   var html =
-    '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:240px">'+
+    '<div style="font-family:system-ui,sans-serif;font-size:12px;color:#e2e8f0;min-width:260px;max-width:300px">'+
     '<b style="color:'+p.fill_color+'">'+p.zona+'</b> · <b>Rank #'+p.rank+'</b>'+
-    '<hr style="border:none;border-top:1px solid #334155;margin:6px 0">'+
-    '<div style="margin-bottom:4px">'+
-    '<span style="color:#94a3b8">📍 Coordenadas:</span><br>'+
-    '<span style="font-family:monospace;font-size:11px">'+coordStr+'</span>'+
-    _copyBtn(coordStr, '📋 Copiar coords')+
-    '</div>'+
-    '<div id="hunter-addr-'+p.hex_code+'" style="color:#94a3b8;font-size:11px;margin-top:4px">'+
-    '🔍 Buscando dirección...</div>'+
+    ' · <span style="color:#7dd3fc;font-family:monospace;font-size:10px">'+p.hex_code+'</span>'+
+    '<hr style="border:none;border-top:1px solid #334155;margin:5px 0">'+
+    '<div style="font-size:9px;color:#94a3b8;margin-bottom:3px">Score (gap 50% · PA 35% · otras 15%): '+
+    '<b style="color:#f1f5f9">'+Math.round(p.combined_score*100)+'/100</b></div>'+
+    '<b>👮 Sesiones PA:</b> '+p.usuarios+' usuarios'+
+    (p.users_no_supply > 0 ? ' · <span style="color:#ff1744;font-weight:700">⚠ sin cocina cerca</span>' : '')+'<br>'+
+    p.sin_compras+' sin comprar · Conv: '+p.tasa_conv_pct+'%<br>'+
+    ((p.users_other||0) > 0 ? '<b>👮 Otras orgs:</b> <span style="color:#7dd3fc">'+(p.users_other||0)+' usuarios</span><br>' : '')+
+    '<b>🏪 Oferta:</b> <span style="color:#00BFA5">'+p.neg_activos+'</span> en hex · '+
+    p.neg_cercanos+' cercanos '+
+    '<span style="color:'+dormColor+'">· 😴 '+p.neg_dormidos+' dorm.</span><br>'+
+    '<b>Cobertura:</b> <span style="color:'+covColor+';font-weight:700">'+covTxt+'</span><br>'+
+    '<b>🎯 Faltantes:</b> <span style="color:'+(p.gap > 0 ? '#ff1744' : '#64748b')+';font-weight:700">'+
+    p.gap+(p.gap===1?' negocio':' negocios')+' (meta: 3)</span>'+
+    '<hr style="border:none;border-top:1px solid #334155;margin:5px 0">'+
+    // Hunter buttons
+    '<div id="hp-hunters-'+p.hex_id+'" style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px"></div>'+
+    // Coords
+    '<div style="font-size:10px;color:#64748b;margin-bottom:3px">'+
+    '📍 <span style="font-family:monospace;color:#94a3b8">'+coordStr+'</span>'+
+    _copyBtn(coordStr,'📋')+'</div>'+
+    // Address
+    '<div id="hp-addr-'+p.hex_id+'" style="font-size:10px;color:#475569">🔍 Cargando dirección...</div>'+
     '</div>';
+
   _hunterPopup.setLatLng(latlng).setContent(html).openOn(window.THE_MAP);
 
-  // Reverse geocode con Nominatim
-  fetch('https://nominatim.openstreetmap.org/reverse?lat='+p.lat+'&lon='+p.lng+'&format=json&addressdetails=1')
-    .then(function(r){{ return r.json(); }})
-    .then(function(d){{
-      var addr = d.display_name || 'Dirección no disponible';
-      // Versión corta: colonia + delegación
-      var a = d.address || {{}};
-      var short = [a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough, a.city||a.town]
-        .filter(Boolean).join(', ') || addr;
-      var el = document.getElementById('hunter-addr-'+p.hex_code);
-      if (el) {{
-        el.innerHTML = '<span style="color:#94a3b8">🏘 Dirección:</span><br>'+
-          '<span style="font-size:11px">'+short+'</span>'+
-          _copyBtn(short, '📋 Copiar dir.')+
-          '<br><span style="font-size:9px;color:#475569">'+addr+'</span>';
-      }}
-    }})
-    .catch(function(){{
-      var el = document.getElementById('hunter-addr-'+p.hex_code);
-      if (el) el.textContent = 'Dirección no disponible';
-    }});
+  // Poblar botones de hunter
+  var huntersEl = document.getElementById('hp-hunters-'+p.hex_id);
+  if (huntersEl) {{
+    var assigned = window._rbGetAssignment && window._rbGetAssignment(p.hex_id);
+    if (assigned) {{
+      var _sp = document.createElement('span');
+      _sp.style.cssText = 'font-size:10px;color:#94a3b8';
+      _sp.innerHTML = 'Ruta: <b style="color:#86efac">'+assigned+'</b>';
+      var _qb = document.createElement('button');
+      _qb.textContent = '✕ Quitar';
+      _qb.style.cssText = 'background:none;border:1px solid #dc2626;border-radius:4px;'+
+        'color:#dc2626;cursor:pointer;font-size:10px;padding:1px 7px;margin-left:6px';
+      _qb.onclick = (function(hid) {{
+        return function() {{
+          window._rbUnassign && window._rbUnassign(hid);
+          window.THE_MAP && window.THE_MAP.closePopup();
+        }};
+      }})(p.hex_id);
+      huntersEl.appendChild(_sp);
+      huntersEl.appendChild(_qb);
+    }} else {{
+      (window.HUNTERS_LIST||[]).forEach(function(h) {{
+        var color = (window._hunterColorMap&&window._hunterColorMap[h])||'#94a3b8';
+        var btn = document.createElement('button');
+        btn.textContent = h;
+        btn.style.cssText = 'font-size:9px;padding:2px 8px;border-radius:10px;cursor:pointer;'+
+          'border:1px solid '+color+';background:none;color:'+color+';font-weight:700';
+        btn.onclick = (function(hunter, hexId) {{
+          return function() {{
+            window._rbAssignZone && window._rbAssignZone(hexId, hunter);
+            window.THE_MAP && window.THE_MAP.closePopup();
+          }};
+        }})(h, p.hex_id);
+        huntersEl.appendChild(btn);
+      }});
+    }}
+  }}
+
+  // Dirección — cache compartido con el tooltip
+  window._addrCache = window._addrCache || {{}};
+  var addrEl = document.getElementById('hp-addr-'+p.hex_id);
+  if (addrEl) {{
+    if (window._addrCache[p.hex_id]) {{
+      addrEl.innerHTML = window._addrCache[p.hex_id];
+    }} else {{
+      fetch('https://nominatim.openstreetmap.org/reverse?lat='+p.lat+'&lon='+p.lng+'&format=json')
+        .then(function(r){{ return r.json(); }})
+        .then(function(d){{
+          var a = d.address || {{}};
+          var short = [a.road, a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough]
+            .filter(Boolean).join(', ') || d.display_name || 'Sin datos';
+          var full = d.display_name || '';
+          var addrHtml = '<span style="color:#cbd5e1">🏘 '+short+'</span>'+
+            _copyBtn(short,'📋')+
+            (full ? '<br><span style="font-size:9px;color:#475569">'+full+'</span>' : '');
+          window._addrCache[p.hex_id] = addrHtml;
+          // Actualizar tanto popup como tooltip si están abiertos
+          ['hp-addr-','tt-addr-'].forEach(function(pfx){{
+            var el = document.getElementById(pfx+p.hex_id);
+            if (el) el.innerHTML = addrHtml;
+          }});
+        }})
+        .catch(function(){{
+          if (addrEl) addrEl.textContent = 'Dirección no disponible';
+        }});
+    }}
+  }}
 }}
 
 // Copiar — delegación de eventos para .hpop-copy y .copy-coord-btn
@@ -2345,6 +2541,85 @@ document.addEventListener('click', function(e){{
     }}
   }}
 }});
+// ── Asignación rápida desde tooltip de Zonas Hunter ────────────────────────
+// Pobla el <select class="tt-hunter-sel"> con HUNTERS_LIST al abrir el tooltip,
+// y muestra el estado actual de asignación si la zona ya tiene hunter.
+(function setupTooltipAssign() {{
+  function bindTooltipOpen(m) {{
+    m.on('tooltipopen', function(e) {{
+      var el = e.tooltip && e.tooltip.getElement();
+      if (!el) return;
+      var row = el.querySelector('.tt-assign-row');
+      if (!row) return;
+      var hexId = row.getAttribute('data-hex');
+      // Estado de asignación actual (expuesto por route_builder.js)
+      var who = window._rbGetAssignment && window._rbGetAssignment(hexId);
+      if (who) {{
+        var span = document.createElement('span');
+        span.style.cssText = 'font-size:10px;color:#94a3b8';
+        span.innerHTML = 'Ruta: <b style="color:#86efac">' + who + '</b>';
+        var btn = document.createElement('button');
+        btn.textContent = '✕ Quitar';
+        btn.style.cssText = 'margin-left:8px;font-size:10px;padding:2px 7px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer';
+        btn.onclick = (function(hx) {{ return function() {{ window._rbUnassignZone && window._rbUnassignZone(hx); }}; }})(hexId);
+        row.innerHTML = '';
+        row.appendChild(span);
+        row.appendChild(btn);
+        return;
+      }}
+      if (row.children.length > 0) return;  // ya poblado
+      (window.HUNTERS_LIST || []).forEach(function(h) {{
+        var color = (window._hunterColorMap && window._hunterColorMap[h]) || '#94a3b8';
+        var btn = document.createElement('button');
+        btn.textContent = h;
+        btn.style.cssText = 'font-size:9px;padding:2px 8px;border-radius:10px;cursor:pointer;' +
+          'border:1px solid ' + color + ';background:none;color:' + color + ';font-weight:700';
+        btn.onclick = (function(hunter, hid) {{
+          return function() {{ window._rbAssignZone && window._rbAssignZone(hid, hunter); }};
+        }})(h, hexId);
+        row.appendChild(btn);
+      }});
+      // ── Dirección por geocode con cache ───────────────────────────
+      window._addrCache = window._addrCache || {{}};
+      var addrEl = el.querySelector('[id^="tt-addr-"]');
+      if (addrEl) {{
+        var hid = addrEl.id.replace('tt-addr-', '');
+        if (window._addrCache[hid]) {{
+          addrEl.innerHTML = window._addrCache[hid];
+        }} else {{
+          var lat = addrEl.getAttribute('data-lat');
+          var lng = addrEl.getAttribute('data-lng');
+          fetch('https://nominatim.openstreetmap.org/reverse?lat='+lat+'&lon='+lng+'&format=json')
+            .then(function(r) {{ return r.json(); }})
+            .then(function(d) {{
+              var a = d.address || {{}};
+              var short = [a.road, a.neighbourhood||a.suburb||a.quarter, a.city_district||a.borough]
+                .filter(Boolean).join(', ') || d.display_name || 'Sin datos';
+              var full  = d.display_name || '';
+              var addrHtml = '<span style="color:#cbd5e1">🏘 '+short+'</span>'+
+                '<button class="hpop-copy" data-val="'+encodeURIComponent(short)+'" data-lbl="📋" '+
+                'style="background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;'+
+                'cursor:pointer;font-size:10px;padding:1px 5px;margin-left:4px;">📋</button>'+
+                (full ? '<br><span style="font-size:9px;color:#475569">'+full+'</span>' : '');
+              window._addrCache[hid] = addrHtml;
+              var live = document.getElementById('tt-addr-'+hid);
+              if (live) live.innerHTML = addrHtml;
+            }})
+            .catch(function() {{
+              var live = document.getElementById('tt-addr-'+hid);
+              if (live) live.textContent = 'Dirección no disponible';
+            }});
+        }}
+      }}
+    }});
+  }}
+  // Esperar a que el mapa esté listo
+  var _t = setInterval(function() {{
+    if (window.THE_MAP) {{ bindTooltipOpen(window.THE_MAP); clearInterval(_t); }}
+  }}, 300);
+}})();
+
+
 function refreshMap(){{
   var btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
@@ -2420,7 +2695,7 @@ function switchOrg(org) {{
     var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
     if (window.THE_MAP) {{
       if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
-      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:20,blur:15,maxZoom:14,
+      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:8,blur:5,maxZoom:17,
         gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
       var htCb = document.getElementById('ht_users');
       if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
@@ -2923,10 +3198,30 @@ var HEX_FIELDS = [
   {{key:"demanda_activacion",id:"hf_activ",label:"Dem. Activación"}},
 ];
 var BIZ_FIELDS = [
+  {{key:"categoria_negocio", id:"bf_categoria", label:"Categoría",   fmt:function(v){{return v||"—";}}}},
+  {{key:"food_types",   id:"bf_food_types", label:"Tipo de negocio", fmt:function(v){{return v||"—";}}}},
+  {{key:"hunter",       id:"bf_hunter",    label:"Hunter",           fmt:function(v){{return v||"—";}}}},
+  {{key:"horario",      id:"bf_horario",   label:"Horario",
+    fmt:function(v){{
+      if(!v||!v.trim())return'—';
+      var parts=v.split(';').filter(function(s){{return s.trim();}});
+      if(!parts.length)return'—';
+      var abbr={{'Lunes':'Lu','Martes':'Ma','Miércoles':'Mi','Jueves':'Ju','Viernes':'Vi','Sábado':'Sá','Domingo':'Do'}};
+      var grp={{}};
+      parts.forEach(function(ent){{
+        var m=ent.trim().match(/^(\S+)\s+(.+)$/);
+        if(m){{var d=abbr[m[1]]||m[1].slice(0,2);var h=m[2].trim();if(!grp[h])grp[h]=[];grp[h].push(d);}}
+      }});
+      var ks=Object.keys(grp);
+      if(ks.length===1)return"<span style='color:#94a3b8;font-size:9px'>"+grp[ks[0]].join(' ')+"</span> <span style='font-size:9px'>"+ks[0]+"</span>";
+      return"<div style='font-size:9px;line-height:1.6'>"+ks.map(function(h){{return"<span style='color:#94a3b8'>"+grp[h].join(' ')+"</span> "+h;}}).join('<br>')+"</div>";
+    }}}},
   {{key:"rating",       id:"bf_rating",    label:"Rating",           fmt:function(v){{return "⭐ "+v;}}}},
-  {{key:"capacidad",    id:"bf_capacidad", label:"Capacidad",        fmt:function(v){{return v+" com/día";}}}},
+  {{key:"tx_7d",        id:"bf_tx_7d",    label:"Trx 7d"}},
+  {{key:"tx_30d",       id:"bf_tx_30d",   label:"Trx 30d"}},
+  {{key:"ventas_7d",    id:"bf_ventas_7d", label:"Ventas 7d",        fmt:function(v){{return "$"+Number(v).toLocaleString('es-MX',{{maximumFractionDigits:0}});}}}},
+  {{key:"ventas_30d",   id:"bf_ventas_30d",label:"Ventas 30d",       fmt:function(v){{return "$"+Number(v).toLocaleString('es-MX',{{maximumFractionDigits:0}});}}}},
   {{key:"tx_historicas",id:"bf_tx_hist",  label:"Trx históricas"}},
-  {{key:"tx_30d",       id:"bf_tx_30d",   label:"Tx 30d"}},
   {{key:"tasa_acepta",  id:"bf_acepta",   label:"Tasa aceptación",  fmt:function(v){{return v+"%";}}}},
   {{key:"tiempo_acepta",id:"bf_tiempo",   label:"T. aceptación p50",fmt:function(v){{return v+" min";}}}},
 ];
@@ -2968,12 +3263,26 @@ function buildBizTT(p) {{
     var cb = document.getElementById(f.id);
     if (cb && cb.checked) {{ var v=f.fmt?f.fmt(p[f.key]):p[f.key]; s+="<b>"+f.label+":</b> "+v+"<br>"; }}
   }});
+  // % Transacciones por organización — always visible
+  var txTotal = p.tx_30d || 0;
+  var txPA = p.tx_pa_30d || 0;
+  var txConectate = p.tx_conectate_30d || 0;
+  var txB2C = Math.max(0, txTotal - txPA - txConectate);
+  var pctPA = txTotal > 0 ? Math.round(txPA / txTotal * 100) : 0;
+  var pctConectate = txTotal > 0 ? Math.round(txConectate / txTotal * 100) : 0;
+  var pctB2C = txTotal > 0 ? Math.max(0, 100 - pctPA - pctConectate) : 0;
+  var orgRow = txTotal > 0
+    ? "<span style='color:#f97316;font-size:9px'>PA "+pctPA+"%</span>" +
+      (txConectate > 0 ? " · <span style='color:#0ea5e9;font-size:9px'>CP "+pctConectate+"%</span>" : "") +
+      (pctB2C > 0     ? " · <span style='color:#94a3b8;font-size:9px'>B2C "+pctB2C+"%</span>" : "")
+    : "<span style='color:#475569;font-size:9px'>Sin trx</span>";
+  s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
+    "<span style='font-size:9px;color:#94a3b8'>% ORG (30d)</span> "+orgRow+"<br>";
   // Menús — always visible
   var mBizne = p.menu_bizne ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
   var mDia   = p.menu_dia   ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
   var mCarta = p.menu_carta ? "<span style='color:#22c55e'>✅</span>" : "<span style='color:#64748b'>—</span>";
-  s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
-    "<span style='font-size:9px;color:#94a3b8'>MENÚS</span><br>"+
+  s += "<span style='font-size:9px;color:#94a3b8'>MENÚS</span> "+
     mBizne+" <b style='font-size:9px'>Bizne</b> &nbsp; "+
     mDia  +" <b style='font-size:9px'>Del día</b> &nbsp; "+
     mCarta+" <b style='font-size:9px'>A la carta</b>";
@@ -2981,48 +3290,38 @@ function buildBizTT(p) {{
 }}
 function buildHunterTT(p) {{
   var dormColor = p.neg_dormidos > 0 ? '#f59e0b' : '#64748b';
-  var unsColor  = p.users_no_supply > 0 ? '#f97316' : '#64748b';
-  // Barra de score desglosada
-  var gPct  = Math.round((p.gap_norm  ||0)*100);
-  var uPct  = Math.round((p.uns_norm  ||0)*100);
-  var dPct  = Math.round((p.demand_norm||0)*100);
-  var aPct  = Math.round((p.activ_norm ||0)*100);
-  var scoreBar =
-    "<div style='margin:4px 0 2px;font-size:9px;color:#94a3b8'>Score: <b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
-    "<div style='display:flex;gap:1px;height:5px;border-radius:3px;overflow:hidden;margin-bottom:3px'>"+
-      "<div style='width:"+(gPct*0.40)+"%;background:#ef4444' title='Gap'></div>"+
-      "<div style='width:"+(uPct*0.30)+"%;background:#f97316' title='Sin supply'></div>"+
-      "<div style='width:"+(dPct*0.20)+"%;background:#3b82f6' title='Demanda'></div>"+
-      "<div style='width:"+(aPct*0.10)+"%;background:#E879F9' title='Activación'></div>"+
-    "</div>"+
-    "<div style='display:flex;gap:8px;font-size:8px;color:#64748b'>"+
-      "<span style='color:#ef4444'>🍽 gap "+gPct+"%</span>"+
-      "<span style='color:#f97316'>🚫 supply "+uPct+"%</span>"+
-      "<span style='color:#3b82f6'>📊 dem "+dPct+"%</span>"+
-      "<span style='color:#E879F9'>⚡ activ "+aPct+"%</span>"+
-    "</div>";
-  return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b><br>"+
+  var covPct = Math.round((p.neg_cercanos / 3) * 100);
+  var covColor = covPct >= 100 ? '#00c853' : covPct >= 67 ? '#ffd600' : covPct >= 34 ? '#ff9100' : '#ff1744';
+  var covTxt = p.neg_cercanos + '/3 opciones (' + Math.min(covPct,100) + '%)';
+  return "<b style='color:"+p.fill_color+"'>"+p.zona+"</b> · <b>Rank #"+p.rank+"</b>"+
+    " · <span style='color:#7dd3fc;font-family:monospace;font-size:10px'>"+p.hex_code+"</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    scoreBar+
-    "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<b>🏪 Activos:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span>  "+
-    "<b style='color:#ef4444'>Gap:</b> <span style='color:#ef4444;font-weight:700'>"+p.gap+" 🍽</span>  "+
-    "<span style='color:"+dormColor+"'>😴 "+p.neg_dormidos+" dorm.</span><br>"+
-    "<b>Demanda est.:</b> "+p.demanda_dia+" tx/día<br>"+
-    "<b>👤 Usuarios:</b> "+p.usuarios+
+    "<div style='margin:2px 0;font-size:9px;color:#94a3b8'>Score (gap 50% · PA 35% · otras orgs 15%): "+
+    "<b style='color:#f1f5f9'>"+Math.round(p.combined_score*100)+"/100</b></div>"+
+    "<b>👮 Sesiones PA:</b> "+p.usuarios+" usuarios"+
     (p.users_no_supply > 0
-      ? " · <span style='color:"+unsColor+";font-weight:700'>⚠ "+p.users_no_supply+" sin cocina cercana</span>"
+      ? " · <span style='color:#ff1744;font-weight:700'>⚠ sin cocina cercana</span>"
+      : "")+"<br>"+
+    p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
+    ((p.users_other||0) > 0
+      ? "<b>👮 Otras orgs policía:</b> <span style='color:#7dd3fc'>"+(p.users_other||0)+" usuarios</span><br>"
       : "")+
-    "<br>"+p.sin_compras+" sin comprar · Conv: "+p.tasa_conv_pct+"%<br>"+
-    (p.activ_demand > 0
-      ? "<span style='color:#E879F9;font-size:9px'>⚡ Activación: +"+p.activ_demand+" tx/día</span><br>"
-      : "")+
+    "<b>🏪 Oferta:</b> <span style='color:#00BFA5'>"+p.neg_activos+"</span> en el hex · "+
+    p.neg_cercanos+" cercanos (~1km) "+
+    "<span style='color:"+dormColor+"'>· 😴 "+p.neg_dormidos+" dorm.</span><br>"+
+    "<b>Cobertura:</b> <span style='color:"+covColor+";font-weight:700'>"+covTxt+"</span><br>"+
+    "<b>🎯 Opciones faltantes:</b> <span style='color:"+(p.gap > 0 ? '#ff1744' : '#64748b')+";font-weight:700'>"+
+    p.gap+(p.gap === 1 ? " negocio faltante" : " negocios faltantes")+" (meta: 3)</span><br>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:4px 0'>"+
-    "<span style='color:#94a3b8;font-size:10px'>📍 "+
-    p.lat.toFixed(7)+", "+p.lng.toFixed(7)+
+    "<div class='tt-assign-row' data-hex='"+p.hex_id+"' style='display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px'></div>"+
+    "<div style='font-size:10px;color:#64748b;margin-bottom:3px'>"+
+    "📍 <span style='font-family:monospace;color:#94a3b8'>"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"</span>"+
     " <button class='copy-coord-btn' data-coord='"+p.lat.toFixed(7)+", "+p.lng.toFixed(7)+"' "+
     "style='background:none;border:1px solid #334155;border-radius:4px;color:#94a3b8;cursor:pointer;"+
-    "font-size:10px;padding:1px 5px;margin-left:2px;'>📋</button></span>";
+    "font-size:10px;padding:1px 5px;margin-left:3px;'>📋</button></div>"+
+    "<div id='tt-addr-"+p.hex_id+"' data-lat='"+p.lat.toFixed(7)+"' data-lng='"+p.lng.toFixed(7)+"' "+
+    "style='font-size:10px;color:#475569;min-height:14px'>🔍 Cargando dirección...</div>"+
+    "<div style='margin-top:5px;text-align:right;font-size:9px;color:#334155'>📌 Click para fijar</div>";
 }}
 function buildHeatHexTT(p, label, color) {{
   return "<b style='color:"+color+"'>⬡ "+label+"</b><br>"+
@@ -3087,7 +3386,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       style:function(f){{return {{color:f.properties.fill_color,weight:1.2,
         fillColor:f.properties.fill_color,fillOpacity:f.properties.fill_opacity,dashArray:"4 3"}};}},
       onEachFeature:function(f,l){{l._p=f.properties;
-        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,opacity:0.97}});
+        l.bindTooltip(buildHunterTT(f.properties),{{sticky:true,interactive:true,opacity:0.97,maxWidth:280}});
         l.on('click', function(e){{
           L.DomEvent.stopPropagation(e);
           var p = f.properties;
@@ -3148,10 +3447,11 @@ document.addEventListener("DOMContentLoaded", function() {{
     window.LYR_DORM = L.geoJSON(DORM_DATA, {{
       pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:5,color:"#6b7280",
         weight:1.5,fillColor:"#9ca3af",fillOpacity:0.55,dashArray:"4"}});}},
-      onEachFeature:function(f,l){{var p=f.properties;
-        l.bindTooltip("<b>😴 "+p.nombre+"</b><br>Rating: "+p.rating+
-          " | Tx hist: "+p.tx_historicas+"<br>Días sin tx: "+p.dias_sin_trx,
-          {{sticky:true,opacity:0.97}});}}
+      onEachFeature:function(f,l){{l._p=f.properties;var p=f.properties;
+        var dormHeader="<div style='display:flex;justify-content:space-between;align-items:center'>"+
+          "<span style='color:#9ca3af;font-size:10px'>😴 DORMIDA</span>"+
+          "<span style='color:#ef4444;font-size:9px;font-weight:700'>"+p.dias_sin_trx+"d sin tx</span></div>";
+        l.bindTooltip(dormHeader+buildBizTT(p),{{sticky:true,opacity:0.97,maxWidth:280}});}}
     }}).addTo(theMap);
 
     // Metro
@@ -3239,9 +3539,10 @@ document.addEventListener("DOMContentLoaded", function() {{
     }}).addTo(theMap);
 
     // Heat maps (smooth)
-    window.LYR_HEAT_OK   = L.heatLayer(HEAT_TRX_OK,  {{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
-    window.LYR_HEAT_FAIL = L.heatLayer(HEAT_TRX_FAIL,{{radius:20,blur:15,maxZoom:14,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
-    window.LYR_HEAT_USERS= L.heatLayer(HEAT_USERS,   {{radius:25,blur:18,maxZoom:14,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
+    window.LYR_HEAT_OK        = L.heatLayer(HEAT_TRX_OK,   {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#22c55e',0.7:'#86efac',1:'#fff'}}}});
+    window.LYR_HEAT_FAIL      = L.heatLayer(HEAT_TRX_FAIL, {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#ef4444',0.7:'#fca5a5',1:'#fff'}}}});
+    window.LYR_HEAT_USERS     = L.heatLayer(HEAT_USERS,    {{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#7c3aed',0.65:'#a78bfa',1:'#fff'}}}});
+    window.LYR_HEAT_CONECTATE = L.heatLayer(HEAT_CONECTATE,{{radius:8,blur:5,maxZoom:17,gradient:{{0.4:'#0284c7',0.65:'#38bdf8',1:'#fff'}}}});
 
     // Hex heat layers
     window.LYR_HHEX_OK = L.geoJSON(HEX_HEAT_OK, {{
@@ -3257,7 +3558,74 @@ document.addEventListener("DOMContentLoaded", function() {{
     window.LYR_HHEX_USERS = L.geoJSON(HEX_HEAT_USERS, {{
       pane:'heatHexPane',
       style:function(f){{return {{color:'#a78bfa',weight:0.5,fillColor:'#a78bfa',fillOpacity:f.properties.fill_opacity}};}},
-      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Última sesión','#a78bfa'),{{sticky:true,opacity:0.96}});}}
+      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Última sesión PA','#a78bfa'),{{sticky:true,opacity:0.96}});}}
+    }});
+    window.LYR_HHEX_CONECTATE = L.geoJSON(HEX_HEAT_CONECTATE, {{
+      pane:'heatHexPane',
+      style:function(f){{return {{color:'#0ea5e9',weight:0.5,fillColor:'#0ea5e9',fillOpacity:f.properties.fill_opacity}};}},
+      onEachFeature:function(f,l){{l.bindTooltip(buildHeatHexTT(f.properties,'Conéctate Policía','#0ea5e9'),{{sticky:true,opacity:0.96}});}}
+    }});
+
+    // ── Malla completa CDMX+Edomex: contornos sin relleno (canvas) ──
+    // 29k hexes — geometrías calculadas con h3-js en chunks de polylines
+    // sobre un solo canvas (interactive:false) para mantener el mapa fluido.
+    window.LYR_GRID = L.layerGroup();
+    (function buildGrid() {{
+      if (!window.h3 || !window.h3.cellToBoundary) {{ setTimeout(buildGrid, 400); return; }}
+      // Pane propio DEBAJO de hunterPane (330) y transparente al mouse: el
+      // canvas en overlayPane interceptaba el hover y mataba los tooltips
+      // de las zonas hunter.
+      if (!window.THE_MAP.getPane('gridPane')) {{
+        window.THE_MAP.createPane('gridPane');
+        window.THE_MAP.getPane('gridPane').style.zIndex = '320';
+        window.THE_MAP.getPane('gridPane').style.pointerEvents = 'none';
+      }}
+      var renderer = L.canvas({{pane: 'gridPane', padding: 0.4}});
+      var CHUNK = 1500;
+      for (var i = 0; i < HUNTER_GRID_IDS.length; i += CHUNK) {{
+        var lines = [];
+        for (var j = i; j < Math.min(i + CHUNK, HUNTER_GRID_IDS.length); j++) {{
+          var b = window.h3.cellToBoundary(HUNTER_GRID_IDS[j]);
+          b.push(b[0]);
+          lines.push(b);
+        }}
+        window.LYR_GRID.addLayer(L.polyline(lines, {{
+          pane: 'gridPane', renderer: renderer, color: '#94a3b8', weight: 0.6,
+          opacity: 0.35, interactive: false,
+        }}));
+      }}
+      // La malla es parte de la capa Zonas Hunter: aparece si está activa
+      var cb = document.getElementById('ly_hunter');
+      var hunterOn = (cb && cb.checked) ||
+                     (window.THE_MAP && window.LYR_HUNTER && window.THE_MAP.hasLayer(window.LYR_HUNTER));
+      if (window.THE_MAP && hunterOn) window.LYR_GRID.addTo(window.THE_MAP);
+    }})();
+    // Click en el mapa con la malla visible → código fijo del hex
+    var _gridPopup = L.popup({{maxWidth: 200}});
+    function _gridCodeOf(cell) {{
+      var lo = 0, hi = HUNTER_GRID_IDS.length - 1;
+      while (lo <= hi) {{
+        var mid = (lo + hi) >> 1;
+        if (HUNTER_GRID_IDS[mid] === cell) return 'HEX-' + String(mid + 1).padStart(5, '0');
+        HUNTER_GRID_IDS[mid] < cell ? (lo = mid + 1) : (hi = mid - 1);
+      }}
+      return null;
+    }}
+    window.THE_MAP && window.THE_MAP.on('click', function(e) {{
+      if (typeof _assignMode !== 'undefined' && _assignMode) return;
+      // Si el Route Builder está cargado, él es el dueño del click del mapa
+      // (popup con asignación a rutas, incluso en hexes sin señal).
+      if (window._rbMapClick) {{ window._rbMapClick(e); return; }}
+      if (!window.LYR_GRID || !window.THE_MAP.hasLayer(window.LYR_GRID)) return;
+      if (!window.h3 || !window.h3.latLngToCell) return;
+      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+      var code = _gridCodeOf(cell);
+      if (!code) return;
+      _gridPopup.setLatLng(e.latlng).setContent(
+        '<div style="font-family:system-ui;font-size:12px">' +
+        '<b style="font-family:monospace;color:#0f4c81">' + code + '</b>' +
+        '<span style="color:#64748b;font-size:10px"> · sin señal</span></div>'
+      ).openOn(window.THE_MAP);
     }});
 
     // Toggle helpers
@@ -3269,11 +3637,15 @@ document.addEventListener("DOMContentLoaded", function() {{
                  activ:window.LYR_ACTIV}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
-      // Sync hunter hex code labels
+      // Sync hunter hex code labels + malla completa (parte de la capa hunter)
       if (name === 'hunter' && window.LYR_HUNTER) {{
         window.LYR_HUNTER.eachLayer(function(l) {{
           if (l._codeLabel) {{ show ? l._codeLabel.addTo(m) : m.removeLayer(l._codeLabel); }}
         }});
+        if (window.LYR_GRID) {{
+          show ? (!m.hasLayer(window.LYR_GRID) && m.addLayer(window.LYR_GRID))
+               : (m.hasLayer(window.LYR_GRID) && m.removeLayer(window.LYR_GRID));
+        }}
       }}
     }};
     // ── Inicializar barras verticales del embudo ──────────────────
@@ -3299,15 +3671,21 @@ document.addEventListener("DOMContentLoaded", function() {{
 
     window.toggleHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
-      var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS}};
+      var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS,conectate:window.LYR_HEAT_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
     window.toggleHexHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
-      var map = {{ok:window.LYR_HHEX_OK,fail:window.LYR_HHEX_FAIL,users:window.LYR_HHEX_USERS}};
+      var map = {{ok:window.LYR_HHEX_OK,fail:window.LYR_HHEX_FAIL,users:window.LYR_HHEX_USERS,conectate:window.LYR_HHEX_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
+    }};
+    window.setHeatSize = function(radius, blur) {{
+      [window.LYR_HEAT_OK, window.LYR_HEAT_FAIL, window.LYR_HEAT_USERS, window.LYR_HEAT_CONECTATE].forEach(function(lyr) {{
+        if (lyr) {{ lyr.setOptions({{radius:radius,blur:blur}}); lyr.redraw(); }}
+      }});
+      document.querySelectorAll('[id^=hs_]').forEach(function(b) {{ b.style.fontWeight=''; b.style.borderColor=''; b.style.color=''; }});
     }};
     window.filterTiers = function() {{
       if (!window.LYR_HEX) return;
@@ -3345,11 +3723,72 @@ document.addEventListener("DOMContentLoaded", function() {{
     window._bizNuevosDays = 0;  // 0 = sin filtro, 7 = ≤7d, 30 = ≤30d
     window.filterBizNuevos = function(days) {{
       window._bizNuevosDays = parseInt(days) || 0;
-      // Sincronizar checkboxes
       var cb7  = document.getElementById('biz-nuevos-7d');
       var cb30 = document.getElementById('biz-nuevos-30d');
       if (cb7)  cb7.checked  = (window._bizNuevosDays === 7);
       if (cb30) cb30.checked = (window._bizNuevosDays === 30);
+      var q = (document.getElementById('biz-search')||{{}}).value||'';
+      window.searchNegocios(q);
+    }};
+
+    // ── Filtro por Hunter ─────────────────────────────────────────────
+    window._bizHunterSet = null; // null = todos visibles
+
+    window.initHunterFilter = function() {{
+      var container = document.getElementById('hunter-filter-checks');
+      if (!container) return;
+      // Recolectar hunters únicos de activos + dormidos
+      var hunterSet = {{}};
+      (window.HUNTERS_LIST || []).forEach(function(h) {{ if (h) hunterSet[h] = true; }});
+      // Incluir también "Sin asignar" si existe en datos
+      var layers = [];
+      if (window.LYR_BIZ) window.LYR_BIZ.eachLayer(function(l){{ layers.push(l); }});
+      if (window.LYR_DORM) window.LYR_DORM.eachLayer(function(l){{ layers.push(l); }});
+      layers.forEach(function(l) {{
+        var h = (l._p||{{}}).hunter || '';
+        if (h && h !== 'nan' && h !== 'None') hunterSet[h] = true;
+      }});
+      var hunters = Object.keys(hunterSet).sort();
+      if (!hunters.length) {{
+        container.innerHTML = '<span style="color:#94a3b8;font-size:10px">Sin hunters en datos</span>';
+        return;
+      }}
+      container.innerHTML = '';
+      hunters.forEach(function(h) {{
+        var lbl = document.createElement('label');
+        lbl.className = 'bchk';
+        lbl.style.cssText = 'font-size:10px;display:flex;align-items:center;gap:4px;padding:1px 0';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        cb.className = 'hf-cb';
+        cb.value = h;
+        cb.onchange = function() {{ window.filterBizByHunter(); }};
+        var txt = document.createElement('span');
+        txt.style.cssText = 'color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+        txt.textContent = h;
+        lbl.appendChild(cb);
+        lbl.appendChild(txt);
+        container.appendChild(lbl);
+      }});
+    }};
+
+    window.filterBizByHunter = function() {{
+      var cbs = document.querySelectorAll('.hf-cb');
+      var allChecked = true;
+      var selected = {{}};
+      cbs.forEach(function(cb) {{
+        if (cb.checked) selected[cb.value] = true;
+        else allChecked = false;
+      }});
+      window._bizHunterSet = allChecked ? null : selected;
+      var q = (document.getElementById('biz-search')||{{}}).value||'';
+      window.searchNegocios(q);
+    }};
+
+    window.setHunterFilterAll = function(checked) {{
+      document.querySelectorAll('.hf-cb').forEach(function(cb) {{ cb.checked = checked; }});
+      window._bizHunterSet = null;
       var q = (document.getElementById('biz-search')||{{}}).value||'';
       window.searchNegocios(q);
     }};
@@ -3453,18 +3892,34 @@ document.addEventListener("DOMContentLoaded", function() {{
       q = q.toLowerCase().trim();
       var vis=0, tot=0;
       var daysFilter = window._bizNuevosDays || 0;
+      var hunterSet  = window._bizHunterSet || null;
+      function matchLayer(layer) {{
+        var p = layer._p || {{}};
+        var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+        var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
+        var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
+                     (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
+        return matchQ && matchNew && matchH;
+      }}
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
-        var p = layer._p || {{}};
-        var matchQ   = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
-        var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
-        var show = matchQ && matchNew;
+        var show = matchLayer(layer);
         layer.setStyle({{fillOpacity:show?0.8:0,opacity:show?1:0,interactive:show}});
         if(show) vis++;
       }});
+      if (window.LYR_DORM) {{
+        window.LYR_DORM.eachLayer(function(layer) {{
+          var p = layer._p || {{}};
+          var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
+          var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
+                       (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
+          var show = matchQ && matchH;
+          layer.setStyle({{fillOpacity:show?0.55:0,opacity:show?1:0,interactive:show}});
+        }});
+      }}
       var el=document.getElementById('biz-count');
       var suffix = daysFilter ? ' (≤'+daysFilter+'d)' : '';
-      if(el){{el.textContent=vis+' de '+tot+' negocios'+suffix;
+      if(el){{el.textContent=vis+' de '+tot+' activos'+suffix;
               el.style.color=vis===0?'#dc2626':'#64748b';}}
     }};
     window.updateHexTT = function() {{
@@ -3492,6 +3947,8 @@ document.addEventListener("DOMContentLoaded", function() {{
     draggable(document.getElementById('bmap-panel'),document.getElementById('bmap-header'));
     draggable(document.getElementById('hunter-panel'),document.getElementById('hunter-header'));
     draggable(document.getElementById('assign-panel'),document.getElementById('assign-head'));
+
+    window.initHunterFilter();
 
     console.log('✅ Bizne Map v5 loaded · HEX:{len(hex_features)} · BIZ:{len(biz_features)} · HUNTER:{len(hunter_features)} · SD:{len(sd_features)} · ACTIV:{len(activ_features)}');
 

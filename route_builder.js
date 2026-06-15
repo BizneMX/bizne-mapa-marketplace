@@ -49,6 +49,52 @@
     ZONES.forEach(function (z) { ZONE_BY_ID[z.hex_id] = z; });
   }
 
+  // ── Malla completa: cualquier hex de HUNTER_GRID_IDS es asignable ─
+  function gridCodeOf(hexId) {
+    var ids = window.HUNTER_GRID_IDS;
+    if (!ids) return null;
+    var lo = 0, hi = ids.length - 1;
+    while (lo <= hi) {
+      var mid = (lo + hi) >> 1;
+      if (ids[mid] === hexId) return 'HEX-' + String(mid + 1).padStart(5, '0');
+      ids[mid] < hexId ? (lo = mid + 1) : (hi = mid - 1);
+    }
+    return null;
+  }
+
+  function gridIdByCode(code) {
+    var m = String(code).toUpperCase().match(/^HEX-?0*(\d{1,5})$/);
+    if (!m || !window.HUNTER_GRID_IDS) return null;
+    return window.HUNTER_GRID_IDS[parseInt(m[1], 10) - 1] || null;
+  }
+
+  function ensureZone(hexId) {
+    if (ZONE_BY_ID[hexId]) return ZONE_BY_ID[hexId];
+    if (!window.h3 || !window.h3.cellToLatLng) return null;
+    var code = gridCodeOf(hexId);
+    if (!code) return null;                      // fuera de CDMX+Edomex
+    var c = window.h3.cellToLatLng(hexId);
+    var z = {
+      hex_id: hexId, hex_code: code, zona: 'S Sin señal', tier: 'S',
+      rank: 0, gap: 0, demanda_dia: 0, usuarios: 0, combined_score: 0,
+      lat: c[0], lng: c[1], empty: true,
+    };
+    ZONE_BY_ID[hexId] = z;
+    return z;
+  }
+
+  function featureOf(hexId) {
+    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === hexId; });
+    if (f || !window.h3) return f;
+    var b = window.h3.cellToBoundary(hexId);
+    b.push(b[0]);
+    return {
+      type: 'Feature',
+      geometry: { type: 'Polygon', coordinates: [b.map(function (p) { return [p[1], p[0]]; })] },
+      properties: { hex_id: hexId },
+    };
+  }
+
   function assignedHunterOf(hexId) {
     var hunters = Object.keys(window._assignments || {});
     for (var i = 0; i < hunters.length; i++) {
@@ -75,7 +121,7 @@
       var color = hunterColor(h);
       var zones = _assignments[h];
       zones.forEach(function (z, i) {
-        var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === z.hex_id; });
+        var f = featureOf(z.hex_id);
         if (!f) return;
         rbLayers.addLayer(L.geoJSON(f, {
           pane: 'heatHexPane',
@@ -106,7 +152,7 @@
 
   // ── Mutaciones de estado ──────────────────────────────────────────
   function assignZone(hexId, hunter, index) {
-    var z = ZONE_BY_ID[hexId];
+    var z = ensureZone(hexId);
     if (!z) return;
     unassignZone(hexId, true);
     if (!_assignments[hunter]) _assignments[hunter] = [];
@@ -183,6 +229,11 @@
     '.rb-lane-btns button,.rb-hbtn{font-size:9px;padding:3px 8px;border-radius:5px;border:1px solid #334155;',
     '  background:none;color:#94a3b8;cursor:pointer}',
     '.rb-lane-btns button:hover,.rb-hbtn:hover{background:#1e3a52}',
+    '.rb-lane-zones.rb-drop-over{background:rgba(249,115,22,.13);outline:1.5px dashed #f97316;outline-offset:-2px;border-radius:6px}',
+    '#rb-map-drag-badge{position:fixed;z-index:9999;display:none;align-items:center;gap:5px;',
+    '  background:#0f172a;border:1.5px solid #f97316;border-radius:8px;padding:5px 11px;',
+    '  font-size:10px;font-weight:700;cursor:grab;user-select:none;white-space:nowrap;',
+    '  box-shadow:0 2px 10px rgba(0,0,0,.6);pointer-events:auto;transition:opacity .08s}',
     '#rb-chat{position:fixed;left:50%;transform:translateX(-50%);bottom:12px;width:min(680px,90vw);z-index:1500;',
     '  background:#0f172a;border-radius:12px;box-shadow:0 6px 28px rgba(0,0,0,.55);display:none;',
     '  flex-direction:column;font-family:system-ui,sans-serif;max-height:170px;color:#e2e8f0}',
@@ -201,8 +252,8 @@
 
   var TIER_BADGE = {
     'A': 'background:#450a0a;color:#f87171', 'B': 'background:#431407;color:#fb923c',
-    'C': 'background:#422006;color:#fbbf24', 'D': 'background:#172554;color:#93c5fd',
-    'E': 'background:#1e293b;color:#94a3b8',
+    'C': 'background:#422006;color:#fbbf24', 'D': 'background:#052e16;color:#4ade80',
+    'E': 'background:#1e293b;color:#94a3b8', 'S': 'background:#1e293b;color:#94a3b8',
   };
 
   function buildUI() {
@@ -278,9 +329,10 @@
   // ── Columna izquierda ─────────────────────────────────────────────
   function cardHTML(z, opts) {
     var who = assignedHunterOf(z.hex_id);
-    var badge = TIER_BADGE[z.tier] || TIER_BADGE.E;
-    var dot = z.tier === 'A' ? '🔴' : (z.tier === 'B' ? '🟠' : '');
-    return '<span class="tier" style="' + badge + '">' + dot + z.tier + '</span>' +
+    var tier = z.tier || 'S';
+    var badge = TIER_BADGE[tier] || TIER_BADGE.E;
+    var dot = tier === 'A' ? '🔴' : tier === 'B' ? '🟠' : tier === 'C' ? '🟡' : tier === 'D' ? '🟢' : '';
+    return '<span class="tier" style="' + badge + '">' + dot + tier + '</span>' +
       '<span class="hx">' + (z.hex_code || z.hex_id.slice(-4)) + '</span>' +
       '<span class="meta">Dem ' + z.demanda_dia + '/d · Gap ' + z.gap + ' · 👥' + z.usuarios + '</span>' +
       (opts && opts.order ? '' :
@@ -300,6 +352,13 @@
       }
       return true;
     });
+    // Búsqueda por código de la malla completa: si no hay match entre las
+    // zonas con señal, resolver el HEX-XXXXX contra HUNTER_GRID_IDS.
+    if (!rows.length && curQuery) {
+      var gid = gridIdByCode(curQuery);
+      var gz = gid && ensureZone(gid);
+      if (gz) rows = [gz];
+    }
     document.getElementById('rb-zcount').textContent = rows.length;
     el.innerHTML = '';
     rows.slice(0, 250).forEach(function (z) {
@@ -326,7 +385,7 @@
 
   function highlightHex(z) {
     clearHighlight();
-    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === z.hex_id; });
+    var f = featureOf(z.hex_id);
     if (!f || !window.THE_MAP) return;
     hoverLayer = L.geoJSON(f, {
       pane: 'heatHexPane',
@@ -389,9 +448,15 @@
         d.className = 'rb-card' + (dbAssigned[z.hex_id] ? ' fromdb' : '');
         if (dbAssigned[z.hex_id]) d.style.borderColor = color;
         d.setAttribute('data-hex', z.hex_id);
-        var zz = ZONE_BY_ID[z.hex_id] || z;
+        var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
-          cardHTML(zz, { order: true });
+          cardHTML(zz, { order: true }) +
+          '<button data-rmhex="' + z.hex_id + '" style="margin-left:auto;flex-shrink:0;background:none;border:none;' +
+          'color:#64748b;cursor:pointer;font-size:13px;padding:0 2px;line-height:1" title="Quitar zona">✕</button>';
+        d.querySelector('[data-rmhex]').onclick = function (e) {
+          e.stopPropagation();
+          unassignZone(this.getAttribute('data-rmhex'));
+        };
         zEl.appendChild(d);
       });
       if (window.Sortable) {
@@ -495,8 +560,10 @@
     box.appendChild(d);
     (actions || []).forEach(function (a) {
       if (a.action !== 'assign') return;
-      var hexId = a.hex_id || (ZONES.find(function (z) { return z.hex_code === a.hex_code; }) || {}).hex_id;
-      if (!hexId || !ZONE_BY_ID[hexId]) return;
+      var hexId = a.hex_id ||
+        (ZONES.find(function (z) { return z.hex_code === a.hex_code; }) || {}).hex_id ||
+        gridIdByCode(a.hex_code);             // hexes sin señal de la malla completa
+      if (!hexId || !ensureZone(hexId)) return;
       var b = document.createElement('button');
       b.className = 'rb-action-btn';
       b.textContent = '✅ Asignar ' + (a.hex_code || ZONE_BY_ID[hexId].hex_code || hexId) + ' → ' + a.hunter;
@@ -568,6 +635,12 @@
     var tb = document.getElementById('assign-tool-btn');
     if (tb) tb.classList.toggle('active', rbOpen);
     if (rbOpen) {
+      // Asegurar capa Zonas Hunter + malla visibles para poder seleccionar
+      if (window.THE_MAP && typeof window.toggleLayer === 'function') {
+        var lyCb = document.getElementById('ly_hunter');
+        if (lyCb && !lyCb.checked) { lyCb.checked = true; }
+        window.toggleLayer('hunter', true);
+      }
       var wk = document.getElementById('rb-week');
       if (wk && typeof getISOWeek === 'function') wk.textContent = getISOWeek();
       // Cargar asignaciones locales de la semana (mismo storage que v5)
@@ -582,11 +655,258 @@
     }
   };
 
+  // ── Click en el mapa → asignar cualquier hex (con o sin señal) ────
+  var _rbPopup = null;
+
+  // Negocios activos en el hex + anillo-1 (para hexes fuera de HUNTER_DATA)
+  function bizNearbyOf(cell) {
+    if (!window.h3 || !window.h3.gridDisk || !window.BIZ_DATA) return null;
+    var ring = {};
+    window.h3.gridDisk(cell, 1).forEach(function (c) { ring[c] = true; });
+    var n = 0;
+    BIZ_DATA.features.forEach(function (f) {
+      var c = f.geometry.coordinates;
+      if (ring[window.h3.latLngToCell(c[1], c[0], 8)]) n++;
+    });
+    return n;
+  }
+
+  function indicatorsHTML(cell, z) {
+    var f = HUNTER_DATA.features.find(function (x) { return x.properties.hex_id === cell; });
+    var row = function (label, val) {
+      return '<div style="display:flex;justify-content:space-between;gap:10px">' +
+        '<span style="color:#94a3b8">' + label + '</span><span style="font-weight:600">' + val + '</span></div>';
+    };
+    var s = '<div style="font-size:10.5px;margin:5px 0;padding:5px 7px;background:rgba(148,163,184,.12);' +
+            'border-radius:6px;line-height:1.55">';
+    if (f) {
+      var p = f.properties;
+      var covPct = Math.min(100, Math.round(((p.neg_cercanos || 0) / 3) * 100));
+      var cov = (p.neg_cercanos || 0) + '/3 opciones (' + covPct + '%)';
+      s += row('Score', Math.round((p.combined_score || 0) * 100) + '/100') +
+           row('👮 Sesiones PA', p.usuarios + (p.sin_compras ? ' (' + p.sin_compras + ' sin comprar)' : '')) +
+           ((p.users_other || 0) > 0 ? row('👮 Otras orgs', (p.users_other || 0) + ' usuarios') : '') +
+           row('📈 Conversión', (p.tasa_conv_pct || 0) + '%') +
+           row('🏪 Oferta', p.neg_activos + ' en hex · ' + (p.neg_cercanos || 0) + ' cerca (~1km)') +
+           row('Cobertura', cov) +
+           (p.gap > 0 ? row('🎯 Faltantes', p.gap + ' negocio(s) (meta: 3)') : row('✅ Cubierta', '≥3 opciones cerca'));
+    } else {
+      var nb = bizNearbyOf(cell);
+      s += row('👤 Sesiones', '0 — sin señal') +
+           row('🏪 Oferta cercana', nb === null ? '—' : nb + '/3 negocios');
+    }
+    s += row('📍', z.lat.toFixed(5) + ', ' + z.lng.toFixed(5)) + '</div>';
+    return s;
+  }
+
+  function showAssignPopup(cell, latlng) {
+    var z = ensureZone(cell);
+    if (!z || !_rbPopup) return;
+    var who = assignedHunterOf(cell);
+    var html = '<div style="font-family:system-ui;font-size:12px;min-width:210px">' +
+      '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
+      (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>'
+               : '<span style="font-size:10px">' + z.zona + '</span>') +
+      indicatorsHTML(cell, z);
+    if (who) {
+      html += '<div style="margin-top:4px">En la ruta de <b>' + who + '</b> ' +
+        '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
+        'padding:2px 8px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer">' +
+        '✕ Quitar</button></div>';
+    } else {
+      html += '<div style="display:flex;gap:5px;margin-top:5px">' +
+        '<select id="rb-pop-h" style="flex:1;font-size:11px;padding:3px">' +
+        (window.HUNTERS_LIST || []).map(function (h) { return '<option>' + h + '</option>'; }).join('') +
+        '</select>' +
+        '<button onclick="window._rbAssignFromPopup(\'' + cell + '\')" style="font-size:11px;padding:3px 10px;' +
+        'background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700">➕ Asignar</button></div>';
+    }
+    html += '</div>';
+    _rbPopup.setLatLng(latlng).setContent(html).openOn(THE_MAP);
+  }
+
+  function setupMapClick() {
+    if (!window.THE_MAP || !window.L) return;
+    _rbPopup = L.popup({ maxWidth: 240 });
+    // Handler único del click del mapa. Se expone como window._rbMapClick para
+    // que el handler informativo de v5 delegue aquí (sin importar el orden en
+    // que se registren); _lastClick deduplica si ambos llegan a dispararse.
+    var _lastClick = 0;
+    window._rbMapClick = function (e) {
+      if (typeof _assignMode !== 'undefined' && _assignMode) return;
+      if (!window.h3 || !window.h3.latLngToCell) return;
+      var now = Date.now();
+      if (now - _lastClick < 150) return;      // dedup v5 + propio
+      _lastClick = now;
+      var cell = window.h3.latLngToCell(e.latlng.lat, e.latlng.lng, 8);
+      var z = ensureZone(cell);
+      if (!z) return;                          // fuera de la malla CDMX+Edomex
+      if (rbOpen) {
+        showAssignPopup(cell, e.latlng);
+      } else {
+        // Route Builder cerrado: solo en hexes vacíos (las zonas con señal
+        // conservan su popup original de coordenadas/dirección)
+        if (!z.empty) return;
+        _rbPopup.setLatLng(e.latlng).setContent(
+          '<div style="font-family:system-ui;font-size:12px;min-width:210px">' +
+          '<b style="font-family:monospace;color:#0f4c81">' + z.hex_code + '</b> ' +
+          (z.empty ? '<span style="color:#94a3b8;font-size:10px">sin señal</span>' : '') +
+          indicatorsHTML(cell, z) +
+          '<button onclick="window._rbOpenAndAssign(\'' + cell + '\',' + e.latlng.lat + ',' + e.latlng.lng + ')" ' +
+          'style="margin-top:5px;font-size:11px;padding:4px 10px;background:#0f4c81;color:#fff;border:none;' +
+          'border-radius:5px;cursor:pointer;font-weight:600">🗺 Asignar a una ruta</button></div>'
+        ).openOn(THE_MAP);
+      }
+    };
+    THE_MAP.on('click', window._rbMapClick);
+    window._rbAssignFromPopup = function (hexId) {
+      var sel = document.getElementById('rb-pop-h');
+      var h = sel ? sel.value : null;
+      if (!h) return;
+      if (openLanes.indexOf(h) < 0) openLanes.push(h);
+      assignZone(hexId, h);
+      THE_MAP.closePopup();
+    };
+    window._rbUnassign = function (hexId) {
+      unassignZone(hexId);
+      THE_MAP.closePopup();
+    };
+    // Asignación rápida desde el tooltip de hover (no requiere Route Builder abierto)
+    window._rbAssignZone = function (hexId, hunter) {
+      if (!hunter) return;
+      if (openLanes.indexOf(hunter) < 0) openLanes.push(hunter);
+      assignZone(hexId, hunter);
+      // Cierra el tooltip para dar feedback visual
+      THE_MAP.closeTooltip();
+    };
+    window._rbUnassignZone = function (hexId) {
+      unassignZone(hexId);
+      THE_MAP.closeTooltip();
+    };
+    // Consulta quién tiene asignada una zona (usado por el tooltip interactivo)
+    window._rbGetAssignment = function (hexId) {
+      return assignedHunterOf(hexId) || null;
+    };
+    window._rbOpenAndAssign = function (hexId, lat, lng) {
+      if (!rbOpen) window.toggleRouteBuilder();
+      showAssignPopup(hexId, L.latLng(lat, lng));
+    };
+  }
+
+  // ── Drag directo de hex → Hunter Lane (Pointer Events) ───────────
+  function setupMapDrag() {
+    var ghost = document.createElement('div');
+    ghost.id = 'rb-map-drag-badge';
+    ghost.style.pointerEvents = 'none';  // ghost no bloquea elementFromPoint
+    document.body.appendChild(ghost);
+
+    // dragState: { hexId, zone, startX, startY, active, ready, holdTimer }
+    // ready = long-press confirmado (350ms sin moverse); active = drag en movimiento
+    var dragState = null;
+    var TIER_COLOR = { A:'#f87171', B:'#fb923c', C:'#fbbf24', D:'#4ade80', S:'#94a3b8' };
+    var HOLD_MS = 350;   // ms de hold para entrar en modo drag
+    var MOVE_CANCEL = 6; // px de movimiento antes del hold que cancela el drag
+
+    function startGhost(z, x, y) {
+      var tc = TIER_COLOR[z.tier] || '#94a3b8';
+      ghost.innerHTML =
+        '<span style="color:' + tc + ';font-weight:800">' + z.tier + '</span>' +
+        '<span style="color:#7dd3fc;font-family:monospace"> ' + (z.hex_code || z.hex_id.slice(-6)) + '</span>';
+      ghost.style.display = 'flex';
+      ghost.style.left = (x + 14) + 'px';
+      ghost.style.top  = (y - 22) + 'px';
+    }
+
+    function clearDrag() {
+      if (dragState) {
+        clearTimeout(dragState.holdTimer);
+        if (dragState.active && window.THE_MAP) THE_MAP.dragging.enable();
+      }
+      ghost.style.display = 'none';
+      document.querySelectorAll('.rb-lane-zones.rb-drop-over').forEach(function (el) {
+        el.classList.remove('rb-drop-over');
+      });
+      dragState = null;
+    }
+
+    function onPointerDown(e) {
+      if (!rbOpen || e.button !== 0) return;
+      if (!window.h3 || !window.THE_MAP) return;
+      var mc = THE_MAP.getContainer();
+      var rect = mc.getBoundingClientRect();
+      var pt = L.point(e.clientX - rect.left, e.clientY - rect.top);
+      var latlng = THE_MAP.containerPointToLatLng(pt);
+      var cell = window.h3.latLngToCell(latlng.lat, latlng.lng, 8);
+      var z = ZONE_BY_ID[cell] || ensureZone(cell);
+      if (!z) return;
+      var cmdDrag = e.metaKey || e.ctrlKey;  // ⌘ Mac / Ctrl Win
+      dragState = { hexId: cell, zone: z, startX: e.clientX, startY: e.clientY,
+                    active: false, ready: cmdDrag, holdTimer: null };
+      if (!cmdDrag) {
+        // Sin modificador: confirmar intención después de HOLD_MS sin moverse
+        dragState.holdTimer = setTimeout(function () {
+          if (dragState) dragState.ready = true;
+        }, HOLD_MS);
+      }
+    }
+
+    function onPointerMove(e) {
+      if (!dragState) return;
+      var dx = e.clientX - dragState.startX, dy = e.clientY - dragState.startY;
+      // Movimiento antes del hold → es pan, dejar a Leaflet
+      if (!dragState.ready) {
+        if (Math.sqrt(dx * dx + dy * dy) > MOVE_CANCEL) {
+          clearTimeout(dragState.holdTimer);
+          dragState = null;
+        }
+        return;
+      }
+      // Long press confirmado: activar drag al mover más de 8px
+      if (!dragState.active) {
+        if (Math.sqrt(dx * dx + dy * dy) < 8) return;
+        dragState.active = true;
+        THE_MAP.dragging.disable();
+        startGhost(dragState.zone, e.clientX, e.clientY);
+      }
+      ghost.style.left = (e.clientX + 14) + 'px';
+      ghost.style.top  = (e.clientY - 22) + 'px';
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      document.querySelectorAll('.rb-lane-zones').forEach(function (el) {
+        el.classList.toggle('rb-drop-over', el === under || el.contains(under));
+      });
+    }
+
+    function onPointerUp(e) {
+      if (!dragState) return;
+      var state = dragState;
+      clearDrag();
+      if (!state.active) return;
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      document.querySelectorAll('.rb-lane-zones').forEach(function (el) {
+        if (el === under || el.contains(under)) {
+          assignZone(state.hexId, el.getAttribute('data-hunter'));
+        }
+      });
+    }
+
+    var _t = setInterval(function () {
+      if (!window.THE_MAP) return;
+      clearInterval(_t);
+      var mc = THE_MAP.getContainer();
+      mc.addEventListener('pointerdown', onPointerDown);
+      document.addEventListener('pointermove', onPointerMove);
+      document.addEventListener('pointerup', onPointerUp);
+      document.addEventListener('pointercancel', clearDrag);
+    }, 300);
+  }
+
   // ── Init ──────────────────────────────────────────────────────────
   function init() {
     if (!window.HUNTER_DATA || !window.L) { setTimeout(init, 400); return; }
     buildZones();
     buildUI();
+    setupMapClick();
+    setupMapDrag();
     // El botón 🗺 existente ahora abre el Route Builder; el panel clásico
     // queda accesible como window.toggleAssignPanelLegacy().
     if (typeof window.toggleAssignPanel === 'function') {

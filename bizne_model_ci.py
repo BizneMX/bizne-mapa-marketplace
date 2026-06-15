@@ -238,6 +238,7 @@ SELECT
     latitude, longitude, is_active, sleep,
     transacciones_historicas, transacciones_hist_real,
     transacciones_ultimos_90_dias, transacciones_ultimos_30_dias,
+    transacciones_ultimos_7_dias, ventas_ultimos_7_dias,
     ticket_promedio_ultimos_90_dias, ticket_promedio_ultimos_30_dias,
     comidas_ultimos_30_dias, ventas_ultimos_30_dias, bizne_fee_ultimos_30_dias,
     transacciones_acceptadas_ultimos_30_dias, delivery_ultimos_30_dias,
@@ -256,7 +257,7 @@ SELECT
          WHEN dias_desde_creacion<=30 AND transacciones_historicas>0 THEN 'Nuevo con tracción'
          WHEN dias_desde_creacion<=90 THEN 'En crecimiento'
          ELSE 'Maduro' END AS etapa_negocio,
-    service_cohort, food_types, allow_delivery, max_delivery_distance,
+    service_cohort, food_types, categoria_negocio, allow_delivery, max_delivery_distance,
     last_transaction_register, bizne_creation_date,
     schedule
 FROM (
@@ -285,6 +286,8 @@ FROM (
             COALESCE(t90.transacciones_ultimos_90_dias,0) AS transacciones_ultimos_90_dias,
             t90.ticket_promedio_ultimos_90_dias,
             COALESCE(sm30.transacciones_ultimos_30_dias,0) AS transacciones_ultimos_30_dias,
+            COALESCE(sm7.transacciones_ultimos_7_dias,0) AS transacciones_ultimos_7_dias,
+            COALESCE(sm7.ventas_ultimos_7_dias,0) AS ventas_ultimos_7_dias,
             COALESCE(sm30.comidas_ultimos_30_dias,0) AS comidas_ultimos_30_dias,
             sm30.ticket_promedio_ultimos_30_dias,
             COALESCE(sm30.bizne_fee_ultimos_30_dias,0) AS bizne_fee_ultimos_30_dias,
@@ -301,6 +304,7 @@ FROM (
             ROUND((1-COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS tasa_no_aceptados_ultimos_30_dias,
             ROUND((s.calification_sum/NULLIF(s.calification_count::float,0))::numeric,2) AS rating,
             u.name AS hunter,
+            COALESCE(scat.name, '') AS categoria_negocio,
             CASE WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<1500 THEN '5 - Low Critico'
                  WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<5000 THEN '4 - Low'
                  WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<10000 THEN '3 - Growth'
@@ -357,6 +361,17 @@ FROM (
             GROUP BY ss.id
         ) sm30 ON sm30.id = s.id
         LEFT JOIN (
+            SELECT ss.id,
+                COUNT(t.id) AS transacciones_ultimos_7_dias,
+                COALESCE(SUM(t.amount),0) AS ventas_ultimos_7_dias
+            FROM transaction_transaction t
+            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+            JOIN service_service ss ON tt.service_id = ss.id
+            WHERE t.created_date >= NOW() - INTERVAL '7 days'
+              AND t.hidden IS FALSE
+            GROUP BY ss.id
+        ) sm7 ON sm7.id = s.id
+        LEFT JOIN (
             SELECT ss2.id AS service_id,
                 COALESCE(BOOL_OR(lm.name ILIKE '%carta%' AND ss2.menu_image_status='approved'),FALSE) AS menu_a_la_carta,
                 COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'),FALSE) AS menu_bizne,
@@ -380,6 +395,7 @@ FROM (
             GROUP BY csft.service_id
         ) ft ON ft.service_id = s.id
         LEFT JOIN user_user u ON u.id = s.hunter_id
+        LEFT JOIN service_servicecategory scat ON scat.id = s.category_id
         WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
     ) _base
 ) _scored
@@ -632,6 +648,21 @@ LEFT JOIN user_user uu ON uu.id = u.user_id
 ORDER BY transacciones DESC
 """
 
+SQL_USUARIOS_OTROS = """
+SELECT
+    uu2.id AS user_id,
+    oo.name AS organization_name,
+    ST_Y(uu2.coordinates) AS latitude,
+    ST_X(uu2.coordinates) AS longitude
+FROM user_user uu2
+LEFT JOIN organization_organization oo ON oo.id = uu2.organization_id
+WHERE oo.name IN ('Conéctate Policia CDMX', 'Policía Bancaria Industrial')
+  AND uu2.completed_register IS TRUE
+  AND uu2.coordinates IS NOT NULL
+  AND (uu2.name IS NULL OR uu2.name NOT ILIKE '%test%')
+  AND (uu2.email IS NULL OR uu2.email NOT ILIKE '%test%')
+"""
+
 SQL_TRANSACCIONES = """
 SELECT
     t.id, t.created_date,
@@ -650,6 +681,34 @@ LEFT JOIN organization_organization o ON u.organization_id = o.id
 WHERE t.created_date >= NOW() - INTERVAL '30 days'
   AND o.name IN ('Policia Auxiliar')
   AND tt.service_id <> 326
+"""
+
+SQL_TRX_ORG_PER_BIZ = """
+SELECT
+    tt.service_id,
+    SUM(CASE WHEN o.name ILIKE '%Policia Auxiliar%' OR o.name ILIKE '%Policía Auxiliar%' THEN 1 ELSE 0 END) AS tx_pa_30d,
+    SUM(CASE WHEN o.name ILIKE '%Conéctate%' OR o.name ILIKE '%Conectate%' THEN 1 ELSE 0 END) AS tx_conectate_30d,
+    COUNT(t.id) AS tx_total_30d
+FROM transaction_transaction t
+JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+JOIN user_user u ON tt.user_id = u.id
+LEFT JOIN organization_organization o ON u.organization_id = o.id
+WHERE t.created_date >= NOW() - INTERVAL '30 days'
+  AND t.hidden IS FALSE
+  AND tt.service_id IS NOT NULL
+GROUP BY tt.service_id
+"""
+
+SQL_PRIMERA_VENTA = """
+SELECT
+    tt.service_id,
+    EXTRACT(EPOCH FROM (MIN(t.created_date) - s.created_date)) / 86400.0 AS dias_a_primera_venta
+FROM service_service s
+JOIN transaction_transactionticket tt ON tt.service_id = s.id
+JOIN transaction_transaction t ON t.ticket_id = tt.id
+WHERE s.created_date >= NOW() - INTERVAL '35 days'
+  AND t.hidden IS FALSE
+GROUP BY tt.service_id, s.created_date
 """
 
 SQL_UPCS = """
@@ -679,6 +738,7 @@ for _col in [
     "tasa_aceptacion_ultimos_30_dias", "tasa_no_aceptados_ultimos_30_dias",
     "transacciones_historicas", "transacciones_hist_real",
     "transacciones_ultimos_90_dias", "transacciones_ultimos_30_dias",
+    "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias",
     "ventas_ultimos_30_dias", "rating", "kitchen_quality_score",
     "tiempo_p50_aceptacion_min_ultimos_30_dias", "dias_desde_creacion",
     "dias_desde_ultima_transaccion", "latitude", "longitude",
@@ -707,6 +767,32 @@ df_biz_raw["effective_capacity"] = df_biz_raw.apply(
           else CAPACITY_INACTIVE),
     axis=1
 )
+
+# Días a primera venta para negocios creados en últimos 35 días
+_df_1venta = _query_mcp(SQL_PRIMERA_VENTA, "PrimeraVenta", "pg_primera_venta_cache.csv")
+if _df_1venta is not None and len(_df_1venta) > 0:
+    _df_1venta["service_id"] = pd.to_numeric(_df_1venta["service_id"], errors="coerce").fillna(0).astype(int)
+    _df_1venta["dias_a_primera_venta"] = pd.to_numeric(_df_1venta["dias_a_primera_venta"], errors="coerce")
+    df_biz_raw["service_id"] = pd.to_numeric(df_biz_raw["service_id"], errors="coerce").fillna(0).astype(int)
+    df_biz_raw = df_biz_raw.merge(_df_1venta[["service_id", "dias_a_primera_venta"]], on="service_id", how="left")
+else:
+    df_biz_raw["dias_a_primera_venta"] = float("nan")
+
+# Breakdown de transacciones por organización (PA, Conéctate) por negocio — últimos 30d
+_df_trx_org = _query_mcp(SQL_TRX_ORG_PER_BIZ, "TrxPorOrg", "pg_trx_org_cache.csv")
+if _df_trx_org is not None and len(_df_trx_org) > 0:
+    for _c in ["tx_pa_30d", "tx_conectate_30d", "tx_total_30d"]:
+        if _c in _df_trx_org.columns:
+            _df_trx_org[_c] = pd.to_numeric(_df_trx_org[_c], errors="coerce").fillna(0).astype(int)
+    _df_trx_org["service_id"] = pd.to_numeric(_df_trx_org["service_id"], errors="coerce").fillna(0).astype(int)
+    df_biz_raw["service_id"] = pd.to_numeric(df_biz_raw["service_id"], errors="coerce").fillna(0).astype(int)
+    df_biz_raw = df_biz_raw.merge(
+        _df_trx_org[["service_id", "tx_conectate_30d"]],
+        on="service_id", how="left"
+    )
+    df_biz_raw["tx_conectate_30d"] = df_biz_raw["tx_conectate_30d"].fillna(0).astype(int)
+else:
+    df_biz_raw["tx_conectate_30d"] = 0
 
 # Solo negocios en CDMX
 in_cdmx = (
@@ -800,6 +886,7 @@ for _, r in df_admin.iterrows():
 ANALYTICS_PATH = None   # mantenido por compatibilidad
 
 df_su_raw = _query_mcp(SQL_USUARIOS, "Usuarios", "pg_usuarios_cache.csv")
+df_su_otros_raw = _query_mcp(SQL_USUARIOS_OTROS, "Usuarios Otras Orgs", "pg_usuarios_otros_cache.csv")
 df_su_raw = _coerce_numeric(df_su_raw)
 df_su_raw["created_date"] = pd.to_datetime(df_su_raw["created_date"], utc=True, errors="coerce").dt.tz_localize(None)
 
@@ -904,6 +991,10 @@ df_metro["hex_id"]        = df_metro.apply(lambda r: to_hex(r.lat, r.lng), axis=
 df_admin["hex_id"]        = df_admin.apply(lambda r: to_hex(r.lat, r.lng), axis=1)
 df_su["hex_id"]           = df_su.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_su_potential["hex_id"] = df_su_potential.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
+# Otras orgs: coerce coords y asignar hex
+for _col in ["latitude", "longitude"]:
+    df_su_otros_raw[_col] = pd.to_numeric(df_su_otros_raw[_col], errors="coerce")
+df_su_otros_raw["hex_id"] = df_su_otros_raw.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_tx["hex_id"]           = df_tx.apply(lambda r: to_hex(r.latitude, r.longitude), axis=1)
 df_tx_complete            = df_tx[df_tx["status_trx"] == "Transacción completa"].copy()
 df_tx_incomplete          = df_tx[df_tx["status_trx"] == "Transacción incompleta"].copy()
@@ -2364,6 +2455,8 @@ _biz_quality_cols = [
     "service_id", "phone_number", "owner_name", "hunter",
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
     "schedule",
+    "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias", "tx_conectate_30d",
+    "categoria_negocio", "dias_a_primera_venta",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
@@ -2381,22 +2474,46 @@ kepler_biz = df_biz[_biz_cols].rename(columns={
     "bizne_creation_date":                       "creation_date",
     "dias_desde_creacion":                       "dias_creacion",
     "schedule":                                  "horario",
+    "transacciones_ultimos_7_dias":              "tx_7d",
+    "ventas_ultimos_7_dias":                     "ventas_7d",
 }).round(4)
 
 kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False, encoding="utf-8")
 print(f"✅ kepler_real_negocios.csv       ({len(kepler_biz):,} negocios activos)")
 
 # ── CSV: Cocinas Dormidas (capa separada) ─────────────────────────────────────
-kepler_dorm = df_biz_dorm[[
+_dorm_base_cols = [
     "latitude", "longitude", "name", "delegacion", "rating",
-    "transacciones_historicas", "dias_desde_ultima_transaccion",
-    "kitchen_quality_score", "etapa_negocio",
-]].rename(columns={
-    "latitude":                    "lat",
-    "longitude":                   "lng",
-    "transacciones_historicas":    "tx_historicas",
-    "dias_desde_ultima_transaccion":"dias_sin_trx",
-    "kitchen_quality_score":       "quality_score",
+    "transacciones_historicas", "transacciones_hist_real",
+    "dias_desde_ultima_transaccion", "kitchen_quality_score", "etapa_negocio",
+]
+_dorm_extra_cols = [
+    "transacciones_ultimos_30_dias", "transacciones_ultimos_7_dias",
+    "ventas_ultimos_30_dias", "ventas_ultimos_7_dias",
+    "tasa_aceptacion_ultimos_30_dias", "tiempo_p50_aceptacion_min_ultimos_30_dias",
+    "menu_bizne", "menu_de_dia", "menu_a_la_carta", "service_cohort",
+    "hunter", "food_types", "schedule", "service_id", "phone_number",
+    "owner_name", "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
+    "kitchen_quality_nivel", "tx_conectate_30d", "categoria_negocio", "dias_a_primera_venta",
+]
+_dorm_cols = _dorm_base_cols + [c for c in _dorm_extra_cols if c in df_biz_dorm.columns]
+kepler_dorm = df_biz_dorm[_dorm_cols].rename(columns={
+    "latitude":                                  "lat",
+    "longitude":                                 "lng",
+    "transacciones_historicas":                  "tx_historicas",
+    "transacciones_hist_real":                   "tx_hist_real",
+    "transacciones_ultimos_30_dias":             "tx_30d",
+    "transacciones_ultimos_7_dias":              "tx_7d",
+    "ventas_ultimos_30_dias":                    "ventas_30d",
+    "ventas_ultimos_7_dias":                     "ventas_7d",
+    "tasa_aceptacion_ultimos_30_dias":           "tasa_aceptacion",
+    "tiempo_p50_aceptacion_min_ultimos_30_dias": "tiempo_acepta",
+    "dias_desde_ultima_transaccion":             "dias_sin_trx",
+    "kitchen_quality_score":                     "quality_score",
+    "kitchen_quality_nivel":                     "quality_nivel",
+    "bizne_creation_date":                       "creation_date",
+    "dias_desde_creacion":                       "dias_creacion",
+    "schedule":                                  "horario",
 }).round(4)
 kepler_dorm["capacidad_si_reactiva"] = CAPACITY_INACTIVE
 kepler_dorm.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_dormidas.csv"), index=False, encoding="utf-8")

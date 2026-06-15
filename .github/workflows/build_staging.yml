@@ -5,9 +5,11 @@ on:
   push:
     branches: [db-migration]
     paths:
+      - 'build_map_v5.py'
       - 'build_map_v6.py'
       - 'bizne_model_ci.py'
       - 'route_builder.js'
+      - 'data/**'
       - '.github/workflows/build_staging.yml'
 
 jobs:
