@@ -29,6 +29,7 @@ if _CI:
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
     OTROS_CSV= _os.path.join(_DIR, 'pg_usuarios_otros_cache.csv')
+    KYC_CSV  = _os.path.join(_DIR, 'kepler_kyc_sin_consumo.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
     # Local dev paths
@@ -54,6 +55,7 @@ else:
     ]
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (3).csv'
     OTROS_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/pg_usuarios_otros_cache.csv'
+    KYC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_kyc_sin_consumo.csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
@@ -453,6 +455,23 @@ except Exception as e:
 ACTIV_DATA = json.dumps({"type":"FeatureCollection","features":activ_features}, ensure_ascii=False)
 # Rebuild HEX_DATA con boost incorporado
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
+
+# ── KYC sin consumo ───────────────────────────────────────────────────────────
+_kyc_feats = []
+try:
+    with open(KYC_CSV, newline='', encoding='utf-8') as _kf:
+        for _kr in _csv.DictReader(_kf):
+            try:
+                _klat, _klng = float(_kr['lat']), float(_kr['lng'])
+                _kyc_feats.append({'type':'Feature',
+                    'geometry':{'type':'Point','coordinates':[_klng, _klat]},
+                    'properties':{'dias_kyc': int(float(_kr.get('dias_kyc', 999))),
+                                  'org': str(_kr.get('organization_name',''))}})
+            except: pass
+    print(f"  KYC sin consumo: {len(_kyc_feats)} features")
+except Exception as e:
+    print(f"  ⚠ KYC_CSV no cargado: {e}")
+KYC_DATA = json.dumps({"type":"FeatureCollection","features":_kyc_feats}, ensure_ascii=False)
 
 # ══════════════════════════════════════════════════════════════════════
 # 3. BIZ DATA — active businesses (colored by kitchen_quality_score)
@@ -1389,10 +1408,7 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   background:#dc2626;color:#fff;border:none;border-radius:8px;
   padding:7px 12px;font-size:11px;cursor:pointer;}
 /* ── Guide ─────────────────────────────────────────────────── */
-#guide-btn-wrap{position:fixed;bottom:24px;right:24px;z-index:1010;}
-#guide-btn-wrap button{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
-  border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer;
-  box-shadow:0 3px 10px rgba(0,0,0,.4);}
+#guide-btn-wrap{display:none;}
 #guide-overlay{display:none;position:fixed;inset:0;z-index:2000;
   background:rgba(0,0,0,.7);align-items:flex-start;justify-content:center;padding-top:40px;}
 #guide-overlay.open{display:flex;}
@@ -1460,11 +1476,8 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}
 #marquee-panel .mp-clear:hover{color:#ef4444;border-color:#ef4444;}
 /* ── Panel de asignación de zonas hunter ────────────────────── */
-#assign-tool-btn{position:fixed;bottom:162px;right:24px;z-index:2002;
-  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
-  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
-#assign-tool-btn:hover,#assign-tool-btn.active{border-color:#f97316;color:#f97316;background:#1a0d00;}
+#assign-tool-btn.active{background:#1a0d00;}
+#assign-tool-btn.active .ftb-icon{color:#f97316;}
 #assign-panel{display:none;position:fixed;top:60px;right:70px;
   z-index:3000;width:400px;max-height:80vh;background:#0f172a;border-radius:14px;
   box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
@@ -1486,17 +1499,25 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   z-index:2999;background:#7c2d12;color:#fff;padding:8px 20px;border-radius:20px;
   font-size:12px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.5);
   pointer-events:none;white-space:nowrap;}
-#marquee-tool-btn{position:fixed;bottom:118px;right:24px;z-index:2002;
-  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
-  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
-#marquee-tool-btn:hover,#marquee-tool-btn.active{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}
+#marquee-tool-btn.active{background:#0f1e38;}
+#marquee-tool-btn.active .ftb-icon{color:#60a5fa;}
+/* ── Figma toolbar ───────────────────────────────────────────── */
+#figma-toolbar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  z-index:1200;display:flex;gap:4px;background:#0f172a;border:1px solid #334155;
+  border-radius:14px;padding:6px 10px;box-shadow:0 4px 24px rgba(0,0,0,.5);}
+.ftb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 14px;
+  border-radius:10px;border:none;background:none;cursor:pointer;color:#cbd5e1;transition:background .15s;}
+.ftb:hover{background:#1e293b;color:#f8fafc;}
+.ftb.active{background:#1e3a5f;color:#7dd3fc;}
+.ftb-icon{font-size:18px;line-height:1;}
+.ftb-label{font-size:9px;font-weight:600;letter-spacing:.3px;}
+/* ── Session filter ──────────────────────────────────────────── */
+.sf-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
+  background:none;color:#94a3b8;cursor:pointer;}
+.sf-btn.active{background:#1e3a5f;color:#7dd3fc;border-color:#3b82f6;}
 /* ── Chat panel ─────────────────────────────────────────────── */
-#chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
-#chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
-  border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;
-  box-shadow:0 3px 10px rgba(0,0,0,.4);}
-#chat-panel{display:none;position:fixed;bottom:134px;right:20px;z-index:2001;
+#chat-wrap{display:none;}
+#chat-panel{display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:2001;
   width:370px;height:500px;background:#0f172a;border-radius:14px;
   box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
   flex-direction:column;overflow:hidden;border:1px solid #1e3a52;}
@@ -1745,6 +1766,19 @@ PANEL_HTML = """
         <span class="bdot" style="background:#06b6d4"></span> Sectores PA</label>
       <label class="bchk"><input type="checkbox" id="ly_activ"    onchange="toggleLayer('activ',this.checked)">
         <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
+      <label class="bchk"><input type="checkbox" id="ly_kyc"     onchange="toggleLayer('kyc',this.checked)">
+        <span class="bdot" style="background:#a855f7;box-shadow:0 0 5px #a855f7"></span> KYC sin consumo</label>
+      <div style="margin:6px 0 2px">
+        <div style="font-size:9px;color:#64748b;margin-bottom:3px">Filtro KYC sin consumo:</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          <button class="sf-btn active" data-d="7" onclick="applySessionFilter(7)">7D</button>
+          <button class="sf-btn" data-d="14" onclick="applySessionFilter(14)">14D</button>
+          <button class="sf-btn" data-d="30" onclick="applySessionFilter(30)">30D</button>
+          <button class="sf-btn" data-d="0" onclick="applySessionFilter(0)">Todo</button>
+          <input type="date" id="sf-date" title="Filtrar desde fecha"
+            style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#cbd5e1">
+        </div>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -2074,9 +2108,7 @@ GUIDE_HTML = f"""
 """
 
 CHAT_HTML = """
-<div id="chat-wrap">
-  <button id="chat-toggle-btn" onclick="toggleChat()" title="Consultar negocios">💬</button>
-</div>
+<div id="chat-wrap" style="display:none"></div>
 <div id="chat-panel">
   <div id="chat-head">
     <div id="chat-head-title">🤖 <span>Consultor Bizne</span></div>
@@ -2117,8 +2149,12 @@ function removeAccents(s) {
 window.toggleChat = function() {
   var panel = document.getElementById('chat-panel');
   panel.classList.toggle('open');
-  if (panel.classList.contains('open'))
+  if (panel.classList.contains('open')) {
+    _ftbActive(0);
     setTimeout(function(){document.getElementById('chat-input').focus();},50);
+  } else {
+    _ftbActive(-1);
+  }
 };
 
 window.chatSendText = function(txt) {
@@ -2386,6 +2422,7 @@ var SEC_DATA            = {SEC_DATA};
 var HUNTER_DATA         = {HUNTER_DATA};
 var SESSION_DEMAND_DATA = {SESSION_DEMAND_DATA};
 var ACTIV_DATA          = {ACTIV_DATA};
+var KYC_DATA            = {KYC_DATA};
 var HEAT_TRX_OK         = {HEAT_TRX_OK};
 var HEAT_TRX_FAIL       = {HEAT_TRX_FAIL};
 var HEAT_USERS          = {HEAT_USERS};
@@ -2821,6 +2858,7 @@ function _initAssignPanel() {{
 function toggleAssignPanel() {{
   var p = document.getElementById('assign-panel');
   if (p.classList.toggle('open')) {{
+    if (typeof _ftbActive === 'function') _ftbActive(1);
     _initAssignPanel();
     // Mostrar semana actual
     var wLabel = document.getElementById('az-current-week');
@@ -2838,6 +2876,7 @@ function toggleAssignPanel() {{
     }} catch(e) {{}}
   }} else {{
     if (_assignMode) toggleAssignMode(); // apagar modo selección al cerrar
+    if (typeof _ftbActive === 'function') _ftbActive(-1);
   }}
 }}
 
@@ -3228,6 +3267,38 @@ function toggleMode() {{
   }}
 }}
 
+// ── Figma toolbar active state ───────────────────────────────────────────────
+function _ftbActive(idx) {{
+  document.querySelectorAll('.ftb').forEach(function(b, i) {{
+    b.classList.toggle('active', i === idx);
+  }});
+}}
+
+// ── Filtro temporal KYC sin consumo ─────────────────────────────────────────
+var _sfDays = 7;
+function applySessionFilter(days) {{
+  _sfDays = days;
+  document.querySelectorAll('.sf-btn').forEach(function(b) {{
+    b.classList.toggle('active', parseInt(b.getAttribute('data-d')) === days);
+  }});
+  if (window.LYR_KYC) {{
+    window.LYR_KYC.eachLayer(function(l) {{
+      var d = l.feature && l.feature.properties && l.feature.properties.dias_kyc;
+      var show = (days === 0) || (d !== undefined && d <= days);
+      l.setStyle({{opacity: show ? .8 : 0, fillOpacity: show ? .7 : 0}});
+    }});
+  }}
+}}
+// Date picker
+document.addEventListener('DOMContentLoaded', function() {{
+  var sfDate = document.getElementById('sf-date');
+  if (sfDate) sfDate.addEventListener('change', function() {{
+    if (!this.value) return;
+    var msAgo = (Date.now() - new Date(this.value).getTime()) / 86400000;
+    applySessionFilter(Math.round(msAgo));
+  }});
+}});
+
 var HEX_FIELDS = [
   {{key:"DI",id:"hf_DI",label:"DI"}},
   {{key:"demanda_dia",id:"hf_demanda_dia",label:"Demanda/día"}},
@@ -3294,6 +3365,7 @@ function buildBizTT(p) {{
   var nivelColor = {{'Excelente':'#22c55e','Alta':'#00BFA5','Media':'#f59e0b','Baja':'#f97316','Crítica':'#ef4444'}}[nivel] || p.fill_color;
   var cohort = p.service_cohort ? "<span style='background:#1e3a52;padding:1px 5px;border-radius:3px;font-size:9px;color:#a78bfa'>"+p.service_cohort+"</span>" : "";
   var s = "<b>"+p.nombre+"</b><br>"+
+    (p.colonia ? "<span style='color:#94a3b8;font-size:9px'>📍 "+p.colonia+"</span><br>" : "")+
     "<i style='color:#64748b'>"+p.delegacion+"</i><br>"+
     "<b style='color:#94a3b8;font-size:9px'>Etapa:</b> <span style='font-size:10px'>"+p.etapa+"</span>  "+cohort+"<br>"+
     "<b style='color:"+nivelColor+"'>⭐ Score calidad: "+p.quality_score+"</b> "+
@@ -3408,6 +3480,21 @@ document.addEventListener("DOMContentLoaded", function() {{
         theMap.createPane(name);
         theMap.getPane(name).style.zIndex = zIdx;
         if (name !== 'hexPane') theMap.getPane(name).style.pointerEvents = 'auto';
+      }}
+    }});
+
+    // KYC sin consumo (off by default)
+    window.LYR_KYC = L.geoJSON(KYC_DATA, {{
+      pointToLayer: function(f, ll) {{
+        return L.circleMarker(ll, {{radius:5,fillColor:'#a855f7',color:'#7c3aed',
+          weight:1,opacity:.8,fillOpacity:.7}});
+      }},
+      onEachFeature: function(f, l) {{
+        var p = f.properties;
+        l.bindTooltip('<b style="color:#c084fc">KYC sin consumo</b><br>'+
+          '<span style="color:#f1f5f9">'+p.dias_kyc+' días sin compra</span><br>'+
+          '<span style="color:#94a3b8;font-size:9px">'+(p.org||'')+'</span>',
+          {{sticky:true,className:'biz-tt'}});
       }}
     }});
 
@@ -3674,7 +3761,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV}};
+                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
       // Sync hunter hex code labels + malla completa (parte de la capa hunter)
@@ -4002,7 +4089,7 @@ document.addEventListener("DOMContentLoaded", function() {{
 
       // Ocultar todos los paneles del dashboard y controles
       ['kpi-dash','bmap-panel','hunter-panel','hunter-toggle',
-       'assign-tool-btn','marquee-tool-btn','dr-panel',
+       'figma-toolbar','dr-panel',
        'guide-btn','mode-btn'].forEach(function(id) {{
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -4091,6 +4178,7 @@ function toggleMarqueeTool() {
   _mqActive = !_mqActive;
   var btn = document.getElementById('marquee-tool-btn');
   if (btn) btn.classList.toggle('active', _mqActive);
+  if (typeof _ftbActive === 'function') _ftbActive(_mqActive ? 2 : -1);
   if (_mqActive) {
     if (m) m.dragging.disable();
     document.getElementById('map').style.cursor = 'crosshair';
@@ -4316,7 +4404,20 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 {CHAT_HTML}
 <!-- Assign zones tool -->
 <div id="assign-mode-bar">🎯 Modo asignación activo — haz clic en zonas Hunter para seleccionarlas</div>
-<button id="assign-tool-btn" title="Planear rutas de hunting" onclick="toggleAssignPanel()">🗺</button>
+<div id="figma-toolbar">
+  <button id="chat-toggle-btn" class="ftb" onclick="toggleChat()" title="Chat AI">
+    <span class="ftb-icon">💬</span><span class="ftb-label">Chat AI</span>
+  </button>
+  <button id="assign-tool-btn" class="ftb" onclick="toggleAssignPanel()" title="Rutas">
+    <span class="ftb-icon">🗺</span><span class="ftb-label">Rutas</span>
+  </button>
+  <button id="marquee-tool-btn" class="ftb" onclick="toggleMarqueeTool()" title="Selector">
+    <span class="ftb-icon">▭</span><span class="ftb-label">Selector</span>
+  </button>
+  <button class="ftb" onclick="document.getElementById('guide-overlay').classList.add('open')" title="Ayuda">
+    <span class="ftb-icon">❓</span><span class="ftb-label">Ayuda</span>
+  </button>
+</div>
 <div id="assign-panel">
   <div id="assign-head">
     <span>🗺 Planear Rutas de Hunting</span>
@@ -4383,7 +4484,6 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 </div>
 <!-- Marquee selector -->
 <div id="marquee-rect"></div>
-<button id="marquee-tool-btn" title="Selector de área — arrastra para seleccionar negocios y exportar CSV" onclick="toggleMarqueeTool()">▭</button>
 <div id="marquee-panel">
   <span class="mp-count" id="mp-count-lbl">0 negocios</span>
   <button class="mp-btn" id="mp-dl-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>

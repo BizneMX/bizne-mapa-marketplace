@@ -1546,6 +1546,20 @@ print(f"  Con coords reales  : {su_sin_compra['tiene_coords_reales'].sum()}")
 print(f"  En centroide admin : {n_sin_coords}  (aparecen agrupados en el mapa)")
 print(f"Usuarios APPROVED con compras        : {len(su_con_compra)}")
 
+# ── Export: KYC sin consumo para capa del mapa ──────────────────────────────
+_kyc_ts = pd.to_datetime(su_sin_compra['kyc_last_update'], errors='coerce', utc=True)
+su_sin_compra['dias_kyc'] = (
+    pd.Timestamp.now('UTC') - _kyc_ts
+).dt.days.fillna(999).clip(lower=0).astype(int)
+_kyc_export = su_sin_compra[su_sin_compra['tiene_coords_reales']][[
+    'latitude', 'longitude', 'user_id', 'dias_kyc', 'organization_name'
+]].rename(columns={'latitude': 'lat', 'longitude': 'lng'}).round(4)
+_kyc_export.to_csv(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), 'kepler_kyc_sin_consumo.csv'),
+    index=False, encoding='utf-8'
+)
+print(f"  → kepler_kyc_sin_consumo.csv: {len(_kyc_export):,} usuarios con coords reales")
+
 # ════════════════════════════════════════
 # CAPAS (FeatureGroups — toggle en mapa)
 # ════════════════════════════════════════
