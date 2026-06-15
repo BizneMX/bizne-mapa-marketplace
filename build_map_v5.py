@@ -966,7 +966,11 @@ print(f"  Gap global: {total_gap_global} | Cobertura: {cobertura_global_pct}%")
 # NEGOCIOS NUEVOS — últimos 7 y 30 días + por hunter
 # ══════════════════════════════════════════════════════════════════════
 def _safe_dias(p):
-    try: return int(p.get('dias_creacion', 9999) or 9999)
+    v = p.get('dias_creacion', None)
+    if v is None or str(v).strip() in ('', 'nan', 'None'): return 9999
+    try:
+        iv = int(float(v))
+        return iv if iv >= 0 else 9999
     except: return 9999
 
 _nuevos_7  = [f for f in biz_features if _safe_dias(f['properties']) <= 7]
@@ -1018,10 +1022,12 @@ def _norm_h(s):
 HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
 # Días desde el lunes de la semana ISO en curso (0=lunes, 6=domingo)
+from datetime import timedelta as _td
 _dias_inicio_semana = _hoy.weekday()  # 0=Mon … 6=Sun
+_lunes_semana = _hoy - _td(days=_dias_inicio_semana)
 _nuevos_semana = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_inicio_semana]
 neg_nuevos_semana = len(_nuevos_semana)
-_lunes_nombre = (_hoy - __import__('datetime').timedelta(days=_dias_inicio_semana)).strftime('%-d %b')
+_lunes_nombre = _lunes_semana.strftime('%d %b').lstrip('0')
 
 # Negocios por hunter en semana actual, 7d, 30d + % primera venta ≤7d
 _hunter_semana  = defaultdict(int)
