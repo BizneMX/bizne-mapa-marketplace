@@ -4415,3 +4415,34 @@ for pattern, label in checks:
     if not ok: all_ok = False
     print(f"  {'✅' if ok else '❌'} {label}")
 print(f"\n{'✅ ALL OK' if all_ok else '❌ ISSUES FOUND'}")
+
+# ── Inyectar Route Builder (route_builder.js + SortableJS) ────────────────────
+_RB_MARKER  = '<!-- route-builder-v6 -->'
+_SORTABLE   = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js'
+_RB_JS_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'route_builder.js')
+
+if _os.path.exists(_RB_JS_PATH):
+    print("\n== Inyectando Route Builder en index.html ==")
+    with open(_RB_JS_PATH, encoding='utf-8') as _f:
+        _rb_js = _f.read()
+    with open(OUT, encoding='utf-8') as _f:
+        _html = _f.read()
+    # Quitar inyección previa si existe
+    if _RB_MARKER in _html:
+        _start = _html.index(_RB_MARKER)
+        _end   = _html.rindex(_RB_MARKER) + len(_RB_MARKER)
+        _html  = _html[:_start] + _html[_end:]
+    _api_url = _os.environ.get('RB_API_URL', '')
+    _rb_block = (
+        f'{_RB_MARKER}\n'
+        f'<script src="{_SORTABLE}"></script>\n'
+        f'<script>window.RB_CONFIG = {{"apiUrl": {json.dumps(_api_url)}}};</script>\n'
+        f'<script>\n{_rb_js}\n</script>\n'
+        f'{_RB_MARKER}'
+    )
+    _html = _html.replace('</body>', _rb_block + '\n</body>', 1) if '</body>' in _html else _html + _rb_block
+    with open(OUT, 'w', encoding='utf-8') as _f:
+        _f.write(_html)
+    print(f"  ✅ Route Builder inyectado ({len(_rb_js):,} chars · API: {_api_url or '(localStorage)'})")
+else:
+    print(f"\n⚠ route_builder.js no encontrado — Route Builder no incluido")
