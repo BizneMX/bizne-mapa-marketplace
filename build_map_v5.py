@@ -217,6 +217,21 @@ _DATE_RANGES = {
     'todo': None,
 }
 
+_TRX_DATE_COL = 'created_date'
+# Parsear created_date de df_trx una sola vez para filtros eficientes
+if _TRX_DATE_COL in df_trx.columns:
+    df_trx[_TRX_DATE_COL] = pd.to_datetime(df_trx[_TRX_DATE_COL], errors='coerce', utc=True).dt.tz_localize(None)
+
+def _trx_kpi_for_group(df_trx_grp):
+    """Calcula trx_ok, trx_fail, tasa_acepta para un subset de df_trx filtrado."""
+    if df_trx_grp is None or len(df_trx_grp) == 0:
+        return {'trx_ok': 0, 'trx_fail': 0, 'tasa_acepta': 0.0}
+    ok   = int((df_trx_grp['status_trx'].str.contains('completa', case=False) &
+                ~df_trx_grp['status_trx'].str.contains('incompleta', case=False)).sum())
+    fail = int(df_trx_grp['status_trx'].str.contains('incompleta', case=False).sum())
+    tasa = round(ok / (ok + fail) * 100, 1) if (ok + fail) > 0 else 0.0
+    return {'trx_ok': ok, 'trx_fail': fail, 'tasa_acepta': tasa}
+
 def _kpi_for_group(df_grp):
     """Calcula métricas de usuarios para un subset ya filtrado (org × fecha)."""
     df_ap = df_grp[df_grp['kyc_status'] == 'APPROVED']
@@ -247,17 +262,33 @@ def _kpi_for_group(df_grp):
         'pct_sin_supply': pct_sup,
     }
 
+# Pre-filtrar df_trx por org una sola vez
+import re as _re
+_ORG_TRX_COL = 'organizacion' if 'organizacion' in df_trx.columns else None
+def _trx_for_org(org):
+    if not _ORG_TRX_COL or org == 'Todas':
+        return df_trx
+    return df_trx[df_trx[_ORG_TRX_COL].str.contains(
+        _re.escape(org), case=False, na=False)]
+
 # Pre-computar ORG_DATE_KPI_DATA[org][dateRange]
 _org_date_kpi = {}
 for _org in _all_orgs:
-    _df_org = df_u if _org == 'Todas' else df_u[df_u[_ORG_COL] == _org]
+    _df_org      = df_u if _org == 'Todas' else df_u[df_u[_ORG_COL] == _org]
+    _df_trx_org  = _trx_for_org(_org)
     _org_date_kpi[_org] = {}
     for _rng, _cutoff in _DATE_RANGES.items():
+        # Filtro de usuarios por fecha
         if _cutoff is not None and 'created_date' in _df_org.columns:
             _df_rng = _df_org[_df_org['created_date'] >= _cutoff]
         else:
             _df_rng = _df_org
-        _org_date_kpi[_org][_rng] = _kpi_for_group(_df_rng)
+        # Filtro de transacciones por fecha (df_trx solo tiene 30d; rangos más largos usan todo)
+        if _cutoff is not None and _TRX_DATE_COL in _df_trx_org.columns:
+            _df_trx_rng = _df_trx_org[_df_trx_org[_TRX_DATE_COL] >= _cutoff]
+        else:
+            _df_trx_rng = _df_trx_org
+        _org_date_kpi[_org][_rng] = {**_kpi_for_group(_df_rng), **_trx_kpi_for_group(_df_trx_rng)}
 
 ORG_DATE_KPI_DATA = json.dumps(_org_date_kpi, ensure_ascii=False)
 ORG_LIST_JSON     = json.dumps(_all_orgs, ensure_ascii=False)
@@ -1572,9 +1603,9 @@ KPI_HTML = f"""
       </div>
       <div class="ks">Sin convertir: <b style="color:#dc2626" id="kpi-aprov-sin">{k['aprobados_sin_convertir']}%</b> · T. 1ª compra: <b id="kpi-dias-prom">{k['dias_prom_primer_consumo']}d</b></div>
     </div>
-    <div class="kc"><div class="kl">Tx completadas</div><div class="kv g">{k['trx_completadas']}</div></div>
-    <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r">{k['trx_incompletas']}</div></div>
-    <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}">{k['tasa_aceptacion']}%</div></div>
+    <div class="kc"><div class="kl">Tx completadas</div><div class="kv g" id="kpi-trx-ok">{k['trx_completadas']}</div></div>
+    <div class="kc"><div class="kl">Tx incompletas</div><div class="kv r" id="kpi-trx-fail">{k['trx_incompletas']}</div></div>
+    <div class="kc"><div class="kl">Tasa aceptación</div><div class="kv {tc_col}" id="kpi-tasa-acepta">{k['tasa_aceptacion']}%</div></div>
 
     <div class="kdiv"></div>
 
@@ -2657,6 +2688,13 @@ function updateKPIMetrics() {{
     _setText('kpi-dias-prom',   d.dias_prom + 'd');
     _setText('kpi-sin-supply',  d.pct_sin_supply + '%');
     _setColor('kpi-sin-supply', supColor);
+
+    // Transacciones — responden al filtro de org × rango
+    _setText('kpi-trx-ok',      d.trx_ok !== undefined ? d.trx_ok : '—');
+    _setText('kpi-trx-fail',    d.trx_fail !== undefined ? d.trx_fail : '—');
+    var tasaVal = d.tasa_acepta !== undefined ? d.tasa_acepta : null;
+    _setText('kpi-tasa-acepta', tasaVal !== null ? tasaVal + '%' : '—');
+    _setColor('kpi-tasa-acepta', tasaVal !== null ? (tasaVal >= 88 ? '#16a34a' : '#d97706') : '#94a3b8');
 
     // Barras verticales del embudo
     var H = 32, total = Math.max(d.signups||1, 1);
@@ -4415,3 +4453,34 @@ for pattern, label in checks:
     if not ok: all_ok = False
     print(f"  {'✅' if ok else '❌'} {label}")
 print(f"\n{'✅ ALL OK' if all_ok else '❌ ISSUES FOUND'}")
+
+# ── Inyectar Route Builder (route_builder.js + SortableJS) ────────────────────
+_RB_MARKER  = '<!-- route-builder-v6 -->'
+_SORTABLE   = 'https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js'
+_RB_JS_PATH = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'route_builder.js')
+
+if _os.path.exists(_RB_JS_PATH):
+    print("\n== Inyectando Route Builder en index.html ==")
+    with open(_RB_JS_PATH, encoding='utf-8') as _f:
+        _rb_js = _f.read()
+    with open(OUT, encoding='utf-8') as _f:
+        _html = _f.read()
+    # Quitar inyección previa si existe
+    if _RB_MARKER in _html:
+        _start = _html.index(_RB_MARKER)
+        _end   = _html.rindex(_RB_MARKER) + len(_RB_MARKER)
+        _html  = _html[:_start] + _html[_end:]
+    _api_url = _os.environ.get('RB_API_URL', '')
+    _rb_block = (
+        f'{_RB_MARKER}\n'
+        f'<script src="{_SORTABLE}"></script>\n'
+        f'<script>window.RB_CONFIG = {{"apiUrl": {json.dumps(_api_url)}}};</script>\n'
+        f'<script>\n{_rb_js}\n</script>\n'
+        f'{_RB_MARKER}'
+    )
+    _html = _html.replace('</body>', _rb_block + '\n</body>', 1) if '</body>' in _html else _html + _rb_block
+    with open(OUT, 'w', encoding='utf-8') as _f:
+        _f.write(_html)
+    print(f"  ✅ Route Builder inyectado ({len(_rb_js):,} chars · API: {_api_url or '(localStorage)'})")
+else:
+    print(f"\n⚠ route_builder.js no encontrado — Route Builder no incluido")
