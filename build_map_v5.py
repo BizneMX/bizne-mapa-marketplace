@@ -3190,13 +3190,15 @@ function clearAllAssignments() {{
 
 // ── Exportar asignaciones a CSV ───────────────────────────────────
 function exportAssignments() {{
-  var rows = ['hunter,orden_ruta,hex_id,rank,zona,gap,demanda_dia,usuarios,lat,lng,score'];
+  var DAY_NAMES = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+  var rows = ['hunter,orden_ruta,hex_id,rank,zona,gap,demanda_dia,usuarios,lat,lng,score,dia,semana'];
   Object.keys(_assignments).forEach(function(h) {{
     var sorted = _assignments[h].slice().sort(function(a,b){{ return a.rank-b.rank; }});
     sorted.forEach(function(z, i) {{
       rows.push([h, i+1, z.hex_id, z.rank, '"'+z.zona+'"', z.gap,
                  z.demanda_dia||'', z.usuarios||'',
-                 z.lat, z.lng, z.combined_score||''].join(','));
+                 z.lat, z.lng, z.combined_score||'',
+                 DAY_NAMES[z.day_of_week||0]||'', z.week||''].join(','));
     }});
   }});
   if (rows.length === 1) {{ alert('No hay asignaciones para exportar.'); return; }}

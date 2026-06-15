@@ -160,6 +160,8 @@
       hex_id: z.hex_id, hex_code: z.hex_code, rank: z.rank, zona: z.zona, gap: z.gap,
       lat: z.lat, lng: z.lng, demanda_dia: z.demanda_dia, usuarios: z.usuarios,
       combined_score: z.combined_score,
+      week: (typeof getISOWeek === 'function' ? getISOWeek() : ''),
+      day_of_week: 0,
     };
     if (index === undefined || index < 0 || index > _assignments[hunter].length) {
       _assignments[hunter].push(entry);
@@ -184,6 +186,16 @@
     list.forEach(function (z) { byId[z.hex_id] = z; });
     _assignments[hunter] = orderedIds.map(function (id) { return byId[id]; }).filter(Boolean);
     renderAll();
+  }
+
+  function setZoneDay(hexId, hunter, day) {
+    if (!_assignments[hunter]) return;
+    var z = _assignments[hunter].find(function (z) { return z.hex_id === hexId; });
+    if (!z) return;
+    z.day_of_week = parseInt(day, 10);
+    if (typeof saveAssignmentsToStorage === 'function') saveAssignmentsToStorage();
+    // Re-render solo las lanes para actualizar botones de Maps por día
+    renderLanes();
   }
 
   function renderAll() {
@@ -431,15 +443,29 @@
       var lane = document.createElement('div');
       lane.className = 'rb-lane';
       lane.style.borderColor = color;
-      var mapsUrl = zones.length ? 'https://www.google.com/maps/dir/' +
-        zones.map(function (z) { return z.lat + ',' + z.lng; }).join('/') : '';
+      var DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+      var dayGroups = [[], [], [], [], [], []];
+      zones.forEach(function (z) { dayGroups[z.day_of_week || 0].push(z); });
+      var mapsBtns = '';
+      for (var d = 1; d <= 5; d++) {
+        if (dayGroups[d].length) {
+          var dUrl = 'https://www.google.com/maps/dir/' +
+            dayGroups[d].map(function (z) { return z.lat + ',' + z.lng; }).join('/');
+          mapsBtns += '<button onclick="window.open(\'' + dUrl + '\',\'_blank\')">🗺 ' +
+            DAY_LABELS_SHORT[d - 1] + '</button>';
+        }
+      }
+      if (!mapsBtns && zones.length) {
+        var allUrl = 'https://www.google.com/maps/dir/' +
+          zones.map(function (z) { return z.lat + ',' + z.lng; }).join('/');
+        mapsBtns = '<button onclick="window.open(\'' + allUrl + '\',\'_blank\')">🗺 Google Maps</button>';
+      }
       lane.innerHTML =
         '<div class="rb-lane-head" style="color:' + color + '">' +
         '<span style="width:9px;height:9px;border-radius:50%;background:' + color + '"></span>' +
         h + ' <span style="color:#64748b;font-weight:400">· ' + zones.length + ' zonas</span></div>' +
         '<div class="rb-lane-zones" data-hunter="' + h + '"></div>' +
-        '<div class="rb-lane-btns">' +
-        (mapsUrl ? '<button onclick="window.open(\'' + mapsUrl + '\',\'_blank\')">🗺 Google Maps</button>' : '') +
+        '<div class="rb-lane-btns">' + mapsBtns +
         '<button class="rb-lane-share" data-h="' + h + '">🔗 Link hunter</button></div>';
       el.appendChild(lane);
       var zEl = lane.querySelector('.rb-lane-zones');
@@ -449,13 +475,23 @@
         if (dbAssigned[z.hex_id]) d.style.borderColor = color;
         d.setAttribute('data-hex', z.hex_id);
         var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
+        var DAY_OPTS = ['— Día —', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+        var daySelHtml = '<select data-dayhex="' + z.hex_id + '" data-hunter="' + h + '" ' +
+          'style="font-size:9px;border:none;background:transparent;color:#94a3b8;cursor:pointer;' +
+          'margin-left:4px;flex-shrink:0" title="Asignar día">' +
+          DAY_OPTS.map(function (dl, di) {
+            return '<option value="' + di + '"' + ((z.day_of_week || 0) === di ? ' selected' : '') + '>' + dl + '</option>';
+          }).join('') + '</select>';
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
-          cardHTML(zz, { order: true }) +
+          cardHTML(zz, { order: true }) + daySelHtml +
           '<button data-rmhex="' + z.hex_id + '" style="margin-left:auto;flex-shrink:0;background:none;border:none;' +
           'color:#64748b;cursor:pointer;font-size:13px;padding:0 2px;line-height:1" title="Quitar zona">✕</button>';
         d.querySelector('[data-rmhex]').onclick = function (e) {
           e.stopPropagation();
           unassignZone(this.getAttribute('data-rmhex'));
+        };
+        d.querySelector('[data-dayhex]').onchange = function () {
+          setZoneDay(this.getAttribute('data-dayhex'), this.getAttribute('data-hunter'), this.value);
         };
         zEl.appendChild(d);
       });
@@ -521,6 +557,8 @@
         payload.assignments.push({
           hex_id: z.hex_id, hex_code: z.hex_code || (ZONE_BY_ID[z.hex_id] || {}).hex_code || '',
           hunter_name: h, route_order: i + 1, notes: z.zona || '',
+          week: z.week || payload.week,
+          day_of_week: z.day_of_week || 0,
         });
       });
     });
@@ -646,7 +684,16 @@
       // Cargar asignaciones locales de la semana (mismo storage que v5)
       try {
         var saved = localStorage.getItem('bizne_assign_' + getISOWeek());
-        if (saved && !Object.keys(_assignments).length) _assignments = JSON.parse(saved);
+        if (saved && !Object.keys(_assignments).length) {
+          _assignments = JSON.parse(saved);
+          var _wk = getISOWeek();
+          Object.keys(_assignments).forEach(function (h) {
+            _assignments[h].forEach(function (z) {
+              if (!z.week) z.week = _wk;
+              if (z.day_of_week === undefined) z.day_of_week = 0;
+            });
+          });
+        }
       } catch (e) {}
       renderAll();
       loadFromDB();
