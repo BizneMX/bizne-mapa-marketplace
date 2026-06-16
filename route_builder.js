@@ -378,8 +378,10 @@
       d.className = 'rb-card' + (assignedHunterOf(z.hex_id) ? ' assigned' : '');
       d.setAttribute('data-hex', z.hex_id);
       d.innerHTML = cardHTML(z);
+      d.style.cursor = 'pointer';
       d.onmouseenter = function () { highlightHex(z); };
       d.onmouseleave = clearHighlight;
+      d.onclick = function () { zoomToHex(z); };
       el.appendChild(d);
     });
     if (window.Sortable) {
@@ -406,6 +408,11 @@
   }
   function clearHighlight() {
     if (hoverLayer && window.THE_MAP) { THE_MAP.removeLayer(hoverLayer); hoverLayer = null; }
+  }
+  function zoomToHex(z) {
+    if (!window.THE_MAP || !z.lat || !z.lng) return;
+    THE_MAP.setView([z.lat, z.lng], 15, { animate: true, duration: 0.4 });
+    highlightHex(z);
   }
 
   // ── Columna derecha: picker + lanes ───────────────────────────────
