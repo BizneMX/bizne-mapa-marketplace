@@ -626,6 +626,9 @@ for _, row in df_neg.iterrows():
             "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
             "categoria_negocio": qs_data.get('categoria_negocio', ''),
             "dias_a_primera_venta": qs_data.get('dias_a_primera_venta', None),
+            "dias_sin_trx": (int(float(qs_data['dias_sin_trx']))
+                             if str(qs_data.get('dias_sin_trx','')).strip() not in ('','nan','None','')
+                             else None),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -1515,6 +1518,10 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 .sf-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
   background:none;color:#94a3b8;cursor:pointer;}
 .sf-btn.active{background:#1e3a5f;color:#7dd3fc;border-color:#3b82f6;}
+/* ── Sin ventas filter ───────────────────────────────────────── */
+.sv-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
+  background:none;color:#94a3b8;cursor:pointer;}
+.sv-btn.active{background:#1e1a00;color:#fbbf24;border-color:#d97706;}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{display:none;}
 #chat-panel{display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:2001;
@@ -1852,7 +1859,16 @@ PANEL_HTML = """
           <span style="font-size:10px;color:#0f172a">🆕 ≤ 30 días</span>
         </label>
       </div>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setHunterFilterAll(true)"
+      <div style="margin:6px 0 2px">
+        <div style="font-size:9px;color:#64748b;margin-bottom:3px">Sin ventas en:</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="sv-btn active" data-sv="0" onclick="setSinVentas(0)">Todo</button>
+          <button class="sv-btn" data-sv="7" onclick="setSinVentas(7)">7D</button>
+          <button class="sv-btn" data-sv="30" onclick="setSinVentas(30)">30D</button>
+          <button class="sv-btn" data-sv="-1" onclick="setSinVentas(-1)">Histórico</button>
+        </div>
+      </div>
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setSinVentas(0);setHunterFilterAll(true)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
     </div>
@@ -3274,6 +3290,17 @@ function _ftbActive(idx) {{
   }});
 }}
 
+// ── Filtro sin ventas (negocios activos + dormidos) ──────────────────────────
+var _svFilter = 0;
+function setSinVentas(days) {{
+  _svFilter = days;
+  document.querySelectorAll('.sv-btn').forEach(function(b) {{
+    b.classList.toggle('active', parseInt(b.getAttribute('data-sv')) === days);
+  }});
+  if (typeof searchNegocios === 'function') searchNegocios(
+    (document.getElementById('biz-search') || {{}}).value || '');
+}}
+
 // ── Filtro temporal KYC sin consumo ─────────────────────────────────────────
 var _sfDays = 7;
 function applySessionFilter(days) {{
@@ -3370,6 +3397,12 @@ function buildBizTT(p) {{
     "<b style='color:#94a3b8;font-size:9px'>Etapa:</b> <span style='font-size:10px'>"+p.etapa+"</span>  "+cohort+"<br>"+
     "<b style='color:"+nivelColor+"'>⭐ Score calidad: "+p.quality_score+"</b> "+
     "<span style='font-size:9px;color:"+nivelColor+"'>("+nivel+")</span><br>"+
+    "<div style='display:flex;gap:10px;font-size:9px;color:#94a3b8;margin:2px 0'>"+
+      "<span>📅 <b style='color:#e2e8f0'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
+      (p.dias_sin_trx != null
+        ? "<span>🔴 <b style='color:#fca5a5'>"+(p.dias_sin_trx===9999?'∞':p.dias_sin_trx)+"d</b> sin venta</span>"
+        : "<span style='color:#475569'>Sin ventas</span>")+
+    "</div>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>";
   BIZ_FIELDS.forEach(function(f) {{
     var cb = document.getElementById(f.id);
@@ -4020,13 +4053,21 @@ document.addEventListener("DOMContentLoaded", function() {{
       var vis=0, tot=0;
       var daysFilter = window._bizNuevosDays || 0;
       var hunterSet  = window._bizHunterSet || null;
+      var svFilter = window._svFilter || 0;
+      function matchSinVentas(p) {{
+        if (svFilter === 0) return true;
+        if (svFilter === 7)  return (parseInt(p.tx_7d)  || 0) === 0;
+        if (svFilter === 30) return (parseInt(p.tx_30d) || 0) === 0;
+        if (svFilter === -1) return (parseInt(p.tx_historicas) || 0) === 0;
+        return true;
+      }}
       function matchLayer(layer) {{
         var p = layer._p || {{}};
         var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
         var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
         var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
                      (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
-        return matchQ && matchNew && matchH;
+        return matchQ && matchNew && matchH && matchSinVentas(p);
       }}
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
@@ -4040,7 +4081,7 @@ document.addEventListener("DOMContentLoaded", function() {{
           var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
           var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
                        (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
-          var show = matchQ && matchH;
+          var show = matchQ && matchH && matchSinVentas(p);
           layer.setStyle({{fillOpacity:show?0.55:0,opacity:show?1:0,interactive:show}});
         }});
       }}

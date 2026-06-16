@@ -2470,7 +2470,7 @@ _biz_quality_cols = [
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
     "schedule",
     "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias", "tx_conectate_30d",
-    "categoria_negocio", "dias_a_primera_venta",
+    "categoria_negocio", "dias_a_primera_venta", "dias_desde_ultima_transaccion",
 ]
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
@@ -2490,6 +2490,7 @@ kepler_biz = df_biz[_biz_cols].rename(columns={
     "schedule":                                  "horario",
     "transacciones_ultimos_7_dias":              "tx_7d",
     "ventas_ultimos_7_dias":                     "ventas_7d",
+    "dias_desde_ultima_transaccion":             "dias_sin_trx",
 }).round(4)
 
 kepler_biz.to_csv(os.path.join(os.path.dirname(os.path.abspath(__file__)), "kepler_real_negocios.csv"), index=False, encoding="utf-8")
