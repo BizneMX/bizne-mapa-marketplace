@@ -1544,6 +1544,11 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
 .sv-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
   background:none;color:#94a3b8;cursor:pointer;}
 .sv-btn.active{background:#1e1a00;color:#fbbf24;border-color:#d97706;}
+/* ── Dark tooltip (KYC y otros) ─────────────────────────────── */
+.biz-tt{background:#0f172a!important;border:1px solid #334155!important;
+  color:#e2e8f0!important;border-radius:8px!important;padding:6px 10px!important;
+  font-size:11px!important;box-shadow:0 4px 16px rgba(0,0,0,.6)!important;}
+.biz-tt::before{border-top-color:#334155!important;}
 /* ── Chat panel ─────────────────────────────────────────────── */
 #chat-wrap{display:none;}
 #chat-panel{display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:2001;
@@ -3561,8 +3566,8 @@ document.addEventListener("DOMContentLoaded", function() {{
       }},
       onEachFeature: function(f, l) {{
         var p = f.properties;
-        l.bindTooltip('<b style="color:#c084fc">KYC sin consumo</b><br>'+
-          '<span style="color:#f1f5f9">'+p.dias_kyc+' días sin compra</span><br>'+
+        l.bindTooltip('<b style="color:#d8b4fe">KYC sin consumo</b><br>'+
+          '<span style="color:#e2e8f0">'+p.dias_kyc+' días sin compra</span><br>'+
           '<span style="color:#94a3b8;font-size:9px">'+(p.org||'')+'</span>',
           {{sticky:true,className:'biz-tt'}});
       }}
