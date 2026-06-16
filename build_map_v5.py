@@ -2808,7 +2808,7 @@ function switchOrg(org) {{
     var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
     if (window.THE_MAP) {{
       if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
-      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:8,blur:5,maxZoom:17,
+      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:_heatRadius||8,blur:_heatBlur||5,maxZoom:17,
         gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
       var htCb = document.getElementById('ht_users');
       if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
@@ -3870,7 +3870,14 @@ document.addEventListener("DOMContentLoaded", function() {{
       var m = window.THE_MAP; if (!m) return;
       var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS,conectate:window.LYR_HEAT_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
-      show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
+      if (show) {{
+        if (!m.hasLayer(lyr)) {{
+          try {{ lyr.setOptions({{radius:_heatRadius||8,blur:_heatBlur||5}}); }} catch(e) {{}}
+          m.addLayer(lyr);
+        }}
+      }} else {{
+        m.hasLayer(lyr) && m.removeLayer(lyr);
+      }}
     }};
     window.toggleHexHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
@@ -3878,9 +3885,13 @@ document.addEventListener("DOMContentLoaded", function() {{
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
+    var _heatRadius = 8, _heatBlur = 5;
     window.setHeatSize = function(radius, blur) {{
+      _heatRadius = radius; _heatBlur = blur;
       [window.LYR_HEAT_OK, window.LYR_HEAT_FAIL, window.LYR_HEAT_USERS, window.LYR_HEAT_CONECTATE].forEach(function(lyr) {{
-        if (lyr) {{ lyr.setOptions({{radius:radius,blur:blur}}); lyr.redraw(); }}
+        if (!lyr) return;
+        try {{ lyr.setOptions({{radius:radius,blur:blur}}); }} catch(e) {{}}
+        try {{ if (lyr._map) lyr.redraw(); }} catch(e) {{}}
       }});
       document.querySelectorAll('[id^=hs_]').forEach(function(b) {{ b.style.fontWeight=''; b.style.borderColor=''; b.style.color=''; }});
     }};
