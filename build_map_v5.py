@@ -3398,7 +3398,7 @@ function buildBizTT(p) {{
     "<b style='color:"+nivelColor+"'>⭐ Score calidad: "+p.quality_score+"</b> "+
     "<span style='font-size:9px;color:"+nivelColor+"'>("+nivel+")</span><br>"+
     "<div style='display:flex;gap:10px;font-size:9px;color:#94a3b8;margin:2px 0'>"+
-      "<span>📅 <b style='color:#e2e8f0'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
+      "<span>📅 <b style='color:#ffffff'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
       (p.dias_sin_trx != null
         ? "<span>🔴 <b style='color:#fca5a5'>"+(p.dias_sin_trx===9999?'∞':p.dias_sin_trx)+"d</b> sin venta</span>"
         : "<span style='color:#475569'>Sin ventas</span>")+
