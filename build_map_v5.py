@@ -1057,10 +1057,22 @@ neg_nuevos_30 = len(_nuevos_30)
 # Negocios nuevos en el mes calendario en curso (desde el día 1 del mes actual)
 from datetime import datetime as _dt
 _hoy = _dt.now()
-_dias_del_mes = (_hoy - _hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)).days
-_nuevos_mes = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_del_mes]
-neg_nuevos_mes = len(_nuevos_mes)
+_primer_dia_mes = _hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0).date()
 _mes_nombre = _hoy.strftime('%B %Y').capitalize()
+
+def _creation_date_obj(p):
+    """Retorna la fecha de creación como date, o None si no está disponible."""
+    s = str(p.get('creation_date', '') or '').strip()
+    if not s or s in ('nan', 'None', ''): return None
+    try:
+        return _dt.fromisoformat(s[:10]).date()
+    except Exception:
+        return None
+
+_nuevos_mes = [f for f in biz_features
+               if (_cdo := _creation_date_obj(f['properties'])) is not None
+               and _cdo >= _primer_dia_mes]
+neg_nuevos_mes = len(_nuevos_mes)
 
 # Negocios con transacción: si dias_creacion<=7 y tx_historicas>0 → tuvieron tx en sus primeros 7 días
 def _has_tx(p):
@@ -1096,11 +1108,13 @@ def _norm_h(s):
     return _ud.normalize('NFC', str(s).strip()).lower()
 HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
-# Días desde el lunes de la semana ISO en curso (0=lunes, 6=domingo)
+# Semana ISO en curso: desde el lunes de esta semana
 from datetime import timedelta as _td
-_dias_inicio_semana = _hoy.weekday()  # 0=Mon … 6=Sun
-_lunes_semana = _hoy - _td(days=_dias_inicio_semana)
-_nuevos_semana = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_inicio_semana]
+_lunes_semana = (_hoy - _td(days=_hoy.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+_lunes_date   = _lunes_semana.date()
+_nuevos_semana = [f for f in biz_features
+                  if (_cds := _creation_date_obj(f['properties'])) is not None
+                  and _cds >= _lunes_date]
 neg_nuevos_semana = len(_nuevos_semana)
 _lunes_nombre = _lunes_semana.strftime('%d %b').lstrip('0')
 
@@ -1118,8 +1132,9 @@ for f in biz_features:
     h_norm = _norm_h(h)
     if h_norm in HUNTERS_EXCLUIR_NORM: continue
     _hunter_all.add(h)
-    d  = _safe_dias(p)
-    if d <= _dias_inicio_semana: _hunter_semana[h] += 1
+    d   = _safe_dias(p)
+    _cd = _creation_date_obj(p)
+    if _cd is not None and _cd >= _lunes_date: _hunter_semana[h] += 1
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30:
         _hunter_30[h] += 1
@@ -3425,7 +3440,7 @@ function buildBizTT(p) {{
     "<b style='color:"+nivelColor+"'>⭐ Score calidad: "+p.quality_score+"</b> "+
     "<span style='font-size:9px;color:"+nivelColor+"'>("+nivel+")</span><br>"+
     "<div style='display:flex;gap:10px;font-size:9px;color:#94a3b8;margin:2px 0'>"+
-      "<span>📅 <b style='color:#ffffff'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
+      "<span>📅 <b style='color:#1e40af'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
       (p.dias_sin_trx != null
         ? "<span>🔴 <b style='color:#fca5a5'>"+(p.dias_sin_trx===9999?'∞':p.dias_sin_trx)+"d</b> sin venta</span>"
         : "<span style='color:#475569'>Sin ventas</span>")+
