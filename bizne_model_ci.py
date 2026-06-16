@@ -688,6 +688,17 @@ SELECT
     tt.service_id,
     SUM(CASE WHEN o.name ILIKE '%Policia Auxiliar%' OR o.name ILIKE '%Policía Auxiliar%' THEN 1 ELSE 0 END) AS tx_pa_30d,
     SUM(CASE WHEN o.name ILIKE '%Conéctate%' OR o.name ILIKE '%Conectate%' THEN 1 ELSE 0 END) AS tx_conectate_30d,
+    SUM(CASE WHEN o.name ILIKE '%SOLARIG%' THEN 1 ELSE 0 END) AS tx_solarig_30d,
+    SUM(CASE WHEN o.name ILIKE '%Holcim%' THEN 1 ELSE 0 END) AS tx_holcim_30d,
+    SUM(CASE WHEN o.name ILIKE '%Protec%privada%' OR o.name ILIKE '%Proteccion privada%' THEN 1 ELSE 0 END) AS tx_pp_30d,
+    SUM(CASE WHEN o.name ILIKE '%Grupo SID%' THEN 1 ELSE 0 END) AS tx_sid_30d,
+    SUM(CASE WHEN o.name ILIKE '%Grupo Escala%' THEN 1 ELSE 0 END) AS tx_escala_30d,
+    SUM(CASE WHEN o.name ILIKE '%JEALT%' THEN 1 ELSE 0 END) AS tx_jealt_30d,
+    SUM(CASE WHEN o.name ILIKE '%LIPU%' THEN 1 ELSE 0 END) AS tx_lipu_30d,
+    SUM(CASE WHEN o.name ILIKE '%Team Bizne%' THEN 1 ELSE 0 END) AS tx_tbizne_30d,
+    SUM(CASE WHEN o.name ILIKE '%MOBO%' THEN 1 ELSE 0 END) AS tx_mobo_30d,
+    SUM(CASE WHEN o.name ILIKE '%CYGNUS%' THEN 1 ELSE 0 END) AS tx_cygnus_30d,
+    SUM(CASE WHEN o.name ILIKE '%DAYA%' THEN 1 ELSE 0 END) AS tx_daya_30d,
     COUNT(t.id) AS tx_total_30d
 FROM transaction_transaction t
 JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
@@ -698,6 +709,12 @@ WHERE t.created_date >= NOW() - INTERVAL '30 days'
   AND tt.service_id IS NOT NULL
 GROUP BY tt.service_id
 """
+
+_ORG_TX_COLS = [
+    "tx_pa_30d", "tx_conectate_30d", "tx_solarig_30d", "tx_holcim_30d",
+    "tx_pp_30d", "tx_sid_30d", "tx_escala_30d", "tx_jealt_30d", "tx_lipu_30d",
+    "tx_tbizne_30d", "tx_mobo_30d", "tx_cygnus_30d", "tx_daya_30d",
+]
 
 SQL_PRIMERA_VENTA = """
 SELECT
@@ -778,21 +795,21 @@ if _df_1venta is not None and len(_df_1venta) > 0:
 else:
     df_biz_raw["dias_a_primera_venta"] = float("nan")
 
-# Breakdown de transacciones por organización (PA, Conéctate) por negocio — últimos 30d
+# Breakdown de transacciones por organización por negocio — últimos 30d
 _df_trx_org = _query_mcp(SQL_TRX_ORG_PER_BIZ, "TrxPorOrg", "pg_trx_org_cache.csv")
 if _df_trx_org is not None and len(_df_trx_org) > 0:
-    for _c in ["tx_pa_30d", "tx_conectate_30d", "tx_total_30d"]:
+    for _c in _ORG_TX_COLS + ["tx_total_30d"]:
         if _c in _df_trx_org.columns:
             _df_trx_org[_c] = pd.to_numeric(_df_trx_org[_c], errors="coerce").fillna(0).astype(int)
     _df_trx_org["service_id"] = pd.to_numeric(_df_trx_org["service_id"], errors="coerce").fillna(0).astype(int)
     df_biz_raw["service_id"] = pd.to_numeric(df_biz_raw["service_id"], errors="coerce").fillna(0).astype(int)
-    df_biz_raw = df_biz_raw.merge(
-        _df_trx_org[["service_id", "tx_conectate_30d"]],
-        on="service_id", how="left"
-    )
-    df_biz_raw["tx_conectate_30d"] = df_biz_raw["tx_conectate_30d"].fillna(0).astype(int)
+    _merge_cols = ["service_id"] + [c for c in _ORG_TX_COLS if c in _df_trx_org.columns]
+    df_biz_raw = df_biz_raw.merge(_df_trx_org[_merge_cols], on="service_id", how="left")
+    for _c in _ORG_TX_COLS:
+        df_biz_raw[_c] = df_biz_raw[_c].fillna(0).astype(int) if _c in df_biz_raw.columns else 0
 else:
-    df_biz_raw["tx_conectate_30d"] = 0
+    for _c in _ORG_TX_COLS:
+        df_biz_raw[_c] = 0
 
 # Solo negocios en CDMX
 in_cdmx = (
@@ -2469,9 +2486,9 @@ _biz_quality_cols = [
     "service_id", "phone_number", "owner_name", "hunter",
     "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
     "schedule",
-    "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias", "tx_conectate_30d",
+    "transacciones_ultimos_7_dias", "ventas_ultimos_7_dias",
     "categoria_negocio", "dias_a_primera_venta", "dias_desde_ultima_transaccion",
-]
+] + _ORG_TX_COLS
 _biz_cols = _biz_base_cols + [c for c in _biz_quality_cols if c in df_biz.columns]
 kepler_biz = df_biz[_biz_cols].rename(columns={
     "latitude":                                  "lat",
@@ -2509,8 +2526,8 @@ _dorm_extra_cols = [
     "menu_bizne", "menu_de_dia", "menu_a_la_carta", "service_cohort",
     "hunter", "food_types", "schedule", "service_id", "phone_number",
     "owner_name", "address", "colonia", "bizne_creation_date", "dias_desde_creacion",
-    "kitchen_quality_nivel", "tx_conectate_30d", "categoria_negocio", "dias_a_primera_venta",
-]
+    "kitchen_quality_nivel", "categoria_negocio", "dias_a_primera_venta",
+] + _ORG_TX_COLS
 _dorm_cols = _dorm_base_cols + [c for c in _dorm_extra_cols if c in df_biz_dorm.columns]
 kepler_dorm = df_biz_dorm[_dorm_cols].rename(columns={
     "latitude":                                  "lat",

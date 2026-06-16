@@ -623,7 +623,18 @@ for _, row in df_neg.iterrows():
             "horario":       qs_data.get('horario', str(row.get('horario', row.get('schedule','')))),
             "tx_7d":         qs_data.get('tx_7d', 0),
             "ventas_7d":     qs_data.get('ventas_7d', 0),
-            "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
+            "tx_conectate_30d": int(float(qs_data.get('tx_conectate_30d', 0) or 0)),
+            "tx_solarig_30d":   int(float(qs_data.get('tx_solarig_30d', 0) or 0)),
+            "tx_holcim_30d":    int(float(qs_data.get('tx_holcim_30d', 0) or 0)),
+            "tx_pp_30d":        int(float(qs_data.get('tx_pp_30d', 0) or 0)),
+            "tx_sid_30d":       int(float(qs_data.get('tx_sid_30d', 0) or 0)),
+            "tx_escala_30d":    int(float(qs_data.get('tx_escala_30d', 0) or 0)),
+            "tx_jealt_30d":     int(float(qs_data.get('tx_jealt_30d', 0) or 0)),
+            "tx_lipu_30d":      int(float(qs_data.get('tx_lipu_30d', 0) or 0)),
+            "tx_tbizne_30d":    int(float(qs_data.get('tx_tbizne_30d', 0) or 0)),
+            "tx_mobo_30d":      int(float(qs_data.get('tx_mobo_30d', 0) or 0)),
+            "tx_cygnus_30d":    int(float(qs_data.get('tx_cygnus_30d', 0) or 0)),
+            "tx_daya_30d":      int(float(qs_data.get('tx_daya_30d', 0) or 0)),
             "categoria_negocio": qs_data.get('categoria_negocio', ''),
             "dias_a_primera_venta": qs_data.get('dias_a_primera_venta', None),
             "dias_sin_trx": (int(float(qs_data['dias_sin_trx']))
@@ -709,6 +720,17 @@ for _, row in df_dorm.iterrows():
             "dias_creacion": int(float(_rv('dias_creacion', 0) or 0)),
             "tx_7d":         int(float(_rv('tx_7d', 0))),
             "tx_conectate_30d": int(float(_rv('tx_conectate_30d', 0))),
+            "tx_solarig_30d":   int(float(_rv('tx_solarig_30d', 0))),
+            "tx_holcim_30d":    int(float(_rv('tx_holcim_30d', 0))),
+            "tx_pp_30d":        int(float(_rv('tx_pp_30d', 0))),
+            "tx_sid_30d":       int(float(_rv('tx_sid_30d', 0))),
+            "tx_escala_30d":    int(float(_rv('tx_escala_30d', 0))),
+            "tx_jealt_30d":     int(float(_rv('tx_jealt_30d', 0))),
+            "tx_lipu_30d":      int(float(_rv('tx_lipu_30d', 0))),
+            "tx_tbizne_30d":    int(float(_rv('tx_tbizne_30d', 0))),
+            "tx_mobo_30d":      int(float(_rv('tx_mobo_30d', 0))),
+            "tx_cygnus_30d":    int(float(_rv('tx_cygnus_30d', 0))),
+            "tx_daya_30d":      int(float(_rv('tx_daya_30d', 0))),
             "categoria_negocio": str(_rv('categoria_negocio', '')),
             "dias_a_primera_venta": None if pd.isna(_rv('dias_a_primera_venta', float('nan'))) else round(float(_rv('dias_a_primera_venta')), 1),
             "fill_color":    '#9ca3af',
@@ -3410,17 +3432,32 @@ function buildBizTT(p) {{
   }});
   // % Transacciones por organización — always visible
   var txTotal = p.tx_30d || 0;
-  var txPA = p.tx_pa_30d || 0;
-  var txConectate = p.tx_conectate_30d || 0;
-  var txB2C = Math.max(0, txTotal - txPA - txConectate);
-  var pctPA = txTotal > 0 ? Math.round(txPA / txTotal * 100) : 0;
-  var pctConectate = txTotal > 0 ? Math.round(txConectate / txTotal * 100) : 0;
-  var pctB2C = txTotal > 0 ? Math.max(0, 100 - pctPA - pctConectate) : 0;
-  var orgRow = txTotal > 0
-    ? "<span style='color:#f97316;font-size:9px'>PA "+pctPA+"%</span>" +
-      (txConectate > 0 ? " · <span style='color:#0ea5e9;font-size:9px'>CP "+pctConectate+"%</span>" : "") +
-      (pctB2C > 0     ? " · <span style='color:#94a3b8;font-size:9px'>B2C "+pctB2C+"%</span>" : "")
-    : "<span style='color:#475569;font-size:9px'>Sin trx</span>";
+  var _OM = [
+    {{key:'tx_pa_30d',       abbr:'PA',    color:'#f97316'}},
+    {{key:'tx_conectate_30d',abbr:'CP',    color:'#0ea5e9'}},
+    {{key:'tx_solarig_30d',  abbr:'SOL',   color:'#a855f7'}},
+    {{key:'tx_holcim_30d',   abbr:'HLC',   color:'#84cc16'}},
+    {{key:'tx_pp_30d',       abbr:'PP',    color:'#f43f5e'}},
+    {{key:'tx_sid_30d',      abbr:'SID',   color:'#06b6d4'}},
+    {{key:'tx_escala_30d',   abbr:'ESC',   color:'#f59e0b'}},
+    {{key:'tx_jealt_30d',    abbr:'JEALT', color:'#8b5cf6'}},
+    {{key:'tx_lipu_30d',     abbr:'LIPU',  color:'#10b981'}},
+    {{key:'tx_tbizne_30d',   abbr:'TBZ',  color:'#ec4899'}},
+    {{key:'tx_mobo_30d',     abbr:'MOBO',  color:'#6366f1'}},
+    {{key:'tx_cygnus_30d',   abbr:'CGN',   color:'#14b8a6'}},
+    {{key:'tx_daya_30d',     abbr:'DAYA',  color:'#fb923c'}},
+  ];
+  var orgRow;
+  if (txTotal > 0) {{
+    var _parts = []; var _tracked = 0;
+    _OM.forEach(function(o) {{
+      var n = parseInt(p[o.key]) || 0;
+      if (n > 0) {{ _tracked += n; _parts.push("<span style='color:"+o.color+";font-size:9px'>"+o.abbr+" "+Math.round(n/txTotal*100)+"%</span>"); }}
+    }});
+    var _b2c = Math.max(0, txTotal - _tracked);
+    if (_b2c > 0) _parts.push("<span style='color:#94a3b8;font-size:9px'>B2C "+Math.round(_b2c/txTotal*100)+"%</span>");
+    orgRow = _parts.join(" · ");
+  }} else {{ orgRow = "<span style='color:#475569;font-size:9px'>Sin trx</span>"; }}
   s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
     "<span style='font-size:9px;color:#94a3b8'>% ORG (30d)</span> "+orgRow+"<br>";
   // Menús — always visible
