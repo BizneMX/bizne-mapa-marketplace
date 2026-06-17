@@ -30,6 +30,45 @@
   var hoverLayer = null;
   var chatHistory = [];      // [{role, content}]
   var curFilter = 'all', curQuery = '';
+  var _currentWeek = '';     // semana ISO activa en el Route Builder (ej. "2026-W25")
+
+  // ISO week string para cualquier fecha
+  function isoWeekOf(d) {
+    var tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dow = tmp.getUTCDay() || 7;
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - dow);
+    var yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    var w = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+    return tmp.getUTCFullYear() + '-W' + String(w).padStart(2, '0');
+  }
+
+  // Lunes de la semana ISO dada (ej. "2026-W25" → Date)
+  function mondayOf(isoWeek) {
+    var m = isoWeek.match(/^(\d{4})-W(\d{2})$/);
+    if (!m) return new Date();
+    var year = parseInt(m[1]), week = parseInt(m[2]);
+    var jan4 = new Date(year, 0, 4);
+    var monday = new Date(jan4);
+    monday.setDate(jan4.getDate() - (jan4.getDay() || 7) + 1 + (week - 1) * 7);
+    return monday;
+  }
+
+  function changeWeek(delta) {
+    var mon = mondayOf(_currentWeek);
+    mon.setDate(mon.getDate() + delta * 7);
+    _currentWeek = isoWeekOf(mon);
+    var wk = document.getElementById('rb-week');
+    if (wk) wk.textContent = _currentWeek;
+    // Limpiar estado y recargar para la nueva semana
+    window._assignments = {};
+    dbAssigned = {};
+    try {
+      var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
+      if (saved) window._assignments = JSON.parse(saved);
+    } catch (e) {}
+    renderAll();
+    loadFromDB();
+  }
 
   // ── Modelo de zonas desde HUNTER_DATA ─────────────────────────────
   function buildZones() {
@@ -160,7 +199,7 @@
       hex_id: z.hex_id, hex_code: z.hex_code, rank: z.rank, zona: z.zona, gap: z.gap,
       lat: z.lat, lng: z.lng, demanda_dia: z.demanda_dia, usuarios: z.usuarios,
       combined_score: z.combined_score,
-      week: (typeof getISOWeek === 'function' ? getISOWeek() : ''),
+      week: _currentWeek,
       day_of_week: 0,
     };
     if (index === undefined || index < 0 || index > _assignments[hunter].length) {
@@ -260,6 +299,9 @@
     '  font-size:11px;padding:6px 9px}',
     '#rb-chat-send{background:#0f4c81;color:#fff;border:none;border-radius:6px;padding:6px 14px;',
     '  cursor:pointer;font-size:11px;font-weight:600}',
+    '.rb-week-nav{background:none;border:1px solid #334155;color:#94a3b8;border-radius:4px;',
+    '  padding:1px 6px;cursor:pointer;font-size:12px;line-height:1}',
+    '.rb-week-nav:hover{background:#1e3a52;color:#e2e8f0}',
   ].join('\n');
 
   var TIER_BADGE = {
@@ -290,7 +332,10 @@
     var right = document.createElement('div');
     right.id = 'rb-right';
     right.innerHTML =
-      '<div class="rb-head"><span>🏃 HUNTER LANES · <span id="rb-week"></span></span>' +
+      '<div class="rb-head"><span style="display:flex;align-items:center;gap:5px">🏃 HUNTER LANES' +
+      ' <button class="rb-week-nav" id="rb-prev-week" title="Semana anterior">‹</button>' +
+      ' <span id="rb-week" style="font-family:monospace;color:#7dd3fc"></span>' +
+      ' <button class="rb-week-nav" id="rb-next-week" title="Semana siguiente">›</button></span>' +
       '<button id="rb-cfg" title="Configurar API" style="background:none;border:none;color:#64748b;cursor:pointer">⚙</button></div>' +
       '<div id="rb-hunter-picker" style="padding:8px;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0;border-bottom:1px solid #1e293b"></div>' +
       '<div class="rb-body"><div id="rb-lanes"></div></div>' +
@@ -330,6 +375,8 @@
       var v = prompt('URL del API server (vacío = solo localStorage):', cur);
       if (v !== null) { localStorage.setItem('rb_api_url', v.trim()); chatSys('API configurado: ' + (v.trim() || '(ninguno)')); }
     };
+    document.getElementById('rb-prev-week').onclick = function () { changeWeek(-1); };
+    document.getElementById('rb-next-week').onclick = function () { changeWeek(1); };
     document.getElementById('rb-chat-send').onclick = sendChat;
     document.getElementById('rb-chat-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') sendChat();
@@ -534,7 +581,7 @@
   function loadFromDB() {
     var api = apiUrl();
     if (!api) return;
-    fetch(api + '/api/assignments')
+    fetch(api + '/api/assignments?week=' + encodeURIComponent(_currentWeek))
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (data) {
         var rows = data.assignments || [];
@@ -558,13 +605,13 @@
       chatSys('⚠ No hay API configurado (⚙). Guardado en localStorage; usa ⬇ CSV para exportar.');
       return;
     }
-    var payload = { assigned_by: 'mapa-staging', week: (typeof getISOWeek === 'function' ? getISOWeek() : ''), assignments: [] };
+    var payload = { assigned_by: 'mapa-staging', week: _currentWeek, assignments: [] };
     Object.keys(_assignments).forEach(function (h) {
       _assignments[h].forEach(function (z, i) {
         payload.assignments.push({
           hex_id: z.hex_id, hex_code: z.hex_code || (ZONE_BY_ID[z.hex_id] || {}).hex_code || '',
           hunter_name: h, route_order: i + 1, notes: z.zona || '',
-          week: z.week || payload.week,
+          week: _currentWeek,
           day_of_week: z.day_of_week || 0,
         });
       });
@@ -630,7 +677,7 @@
       });
     });
     return {
-      semana: typeof getISOWeek === 'function' ? getISOWeek() : '',
+      semana: _currentWeek,
       hunters: window.HUNTERS_LIST || [],
       asignaciones: asg,
       zonas: ZONES.slice(0, 150).map(function (z) {
@@ -686,17 +733,20 @@
         if (lyCb && !lyCb.checked) { lyCb.checked = true; }
         window.toggleLayer('hunter', true);
       }
+      // Inicializar semana activa (solo la primera vez que se abre)
+      if (!_currentWeek) {
+        _currentWeek = typeof getISOWeek === 'function' ? getISOWeek() : isoWeekOf(new Date());
+      }
       var wk = document.getElementById('rb-week');
-      if (wk && typeof getISOWeek === 'function') wk.textContent = getISOWeek();
-      // Cargar asignaciones locales de la semana (mismo storage que v5)
+      if (wk) wk.textContent = _currentWeek;
+      // Cargar asignaciones locales de la semana activa
       try {
-        var saved = localStorage.getItem('bizne_assign_' + getISOWeek());
+        var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
         if (saved && !Object.keys(_assignments).length) {
           _assignments = JSON.parse(saved);
-          var _wk = getISOWeek();
           Object.keys(_assignments).forEach(function (h) {
             _assignments[h].forEach(function (z) {
-              if (!z.week) z.week = _wk;
+              if (!z.week) z.week = _currentWeek;
               if (z.day_of_week === undefined) z.day_of_week = 0;
             });
           });
