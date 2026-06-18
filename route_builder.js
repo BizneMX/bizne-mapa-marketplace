@@ -30,6 +30,55 @@
   var hoverLayer = null;
   var chatHistory = [];      // [{role, content}]
   var curFilter = 'all', curQuery = '';
+  var _currentWeek = '';     // semana ISO activa en el Route Builder (ej. "2026-W25")
+
+  // ISO week string para cualquier fecha
+  function isoWeekOf(d) {
+    var tmp = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+    var dow = tmp.getUTCDay() || 7;
+    tmp.setUTCDate(tmp.getUTCDate() + 4 - dow);
+    var yearStart = new Date(Date.UTC(tmp.getUTCFullYear(), 0, 1));
+    var w = Math.ceil((((tmp - yearStart) / 86400000) + 1) / 7);
+    return tmp.getUTCFullYear() + '-W' + String(w).padStart(2, '0');
+  }
+
+  // Lunes de la semana ISO dada (ej. "2026-W25" → Date)
+  function mondayOf(isoWeek) {
+    var m = isoWeek.match(/^(\d{4})-W(\d{2})$/);
+    if (!m) return new Date();
+    var year = parseInt(m[1]), week = parseInt(m[2]);
+    var jan4 = new Date(year, 0, 4);
+    var monday = new Date(jan4);
+    monday.setDate(jan4.getDate() - (jan4.getDay() || 7) + 1 + (week - 1) * 7);
+    return monday;
+  }
+
+  // "2026-W24" → "16-20 Jun 2026"
+  var MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  function weekLabel(isoWeek) {
+    var mon = mondayOf(isoWeek);
+    var fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+    var label = mon.getDate();
+    if (mon.getMonth() !== fri.getMonth()) label += ' ' + MESES[mon.getMonth()];
+    return label + '-' + fri.getDate() + ' ' + MESES[fri.getMonth()] + ' ' + fri.getFullYear();
+  }
+
+  function changeWeek(delta) {
+    var mon = mondayOf(_currentWeek);
+    mon.setDate(mon.getDate() + delta * 7);
+    _currentWeek = isoWeekOf(mon);
+    var wk = document.getElementById('rb-week');
+    if (wk) wk.textContent = weekLabel(_currentWeek);
+    // Limpiar estado y recargar para la nueva semana
+    window._assignments = {};
+    dbAssigned = {};
+    try {
+      var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
+      if (saved) window._assignments = JSON.parse(saved);
+    } catch (e) {}
+    renderAll();
+    loadFromDB();
+  }
 
   // ── Modelo de zonas desde HUNTER_DATA ─────────────────────────────
   function buildZones() {
@@ -160,6 +209,8 @@
       hex_id: z.hex_id, hex_code: z.hex_code, rank: z.rank, zona: z.zona, gap: z.gap,
       lat: z.lat, lng: z.lng, demanda_dia: z.demanda_dia, usuarios: z.usuarios,
       combined_score: z.combined_score,
+      week: _currentWeek,
+      day_of_week: 0,
     };
     if (index === undefined || index < 0 || index > _assignments[hunter].length) {
       _assignments[hunter].push(entry);
@@ -186,11 +237,51 @@
     renderAll();
   }
 
+  function setZoneDay(hexId, hunter, day) {
+    if (!_assignments[hunter]) return;
+    var z = _assignments[hunter].find(function (z) { return z.hex_id === hexId; });
+    if (!z) return;
+    z.day_of_week = parseInt(day, 10);
+    if (typeof saveAssignmentsToStorage === 'function') saveAssignmentsToStorage();
+    // Re-render solo las lanes para actualizar botones de Maps por día
+    renderLanes();
+  }
+
   function renderAll() {
     renderPriorityList();
     renderLanes();
     syncMap();
     if (typeof updateAssignedSummary === 'function') { try { updateAssignedSummary(); } catch (e) {} }
+  }
+
+  // ── Drag & drop de paneles ────────────────────────────────────────
+  function makeDraggable(panel, handle) {
+    handle.style.cursor = 'grab';
+    var startX, startY, startL, startT;
+    handle.addEventListener('mousedown', function (e) {
+      if (e.target.tagName === 'BUTTON') return; // no interferir con botones
+      e.preventDefault();
+      var rect = panel.getBoundingClientRect();
+      // Convertir posición actual a left/top fijos (puede estar anclado a right)
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = rect.left + 'px';
+      panel.style.top  = rect.top  + 'px';
+      startX = e.clientX; startY = e.clientY;
+      startL = rect.left; startT = rect.top;
+      handle.style.cursor = 'grabbing';
+      function onMove(e) {
+        panel.style.left = Math.max(0, startL + e.clientX - startX) + 'px';
+        panel.style.top  = Math.max(0, startT + e.clientY - startY) + 'px';
+      }
+      function onUp() {
+        handle.style.cursor = 'grab';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
   }
 
   // ── UI: contenedor + estilos ──────────────────────────────────────
@@ -248,6 +339,9 @@
     '  font-size:11px;padding:6px 9px}',
     '#rb-chat-send{background:#0f4c81;color:#fff;border:none;border-radius:6px;padding:6px 14px;',
     '  cursor:pointer;font-size:11px;font-weight:600}',
+    '.rb-week-nav{background:none;border:1px solid #334155;color:#94a3b8;border-radius:4px;',
+    '  padding:1px 6px;cursor:pointer;font-size:12px;line-height:1}',
+    '.rb-week-nav:hover{background:#1e3a52;color:#e2e8f0}',
   ].join('\n');
 
   var TIER_BADGE = {
@@ -278,7 +372,10 @@
     var right = document.createElement('div');
     right.id = 'rb-right';
     right.innerHTML =
-      '<div class="rb-head"><span>🏃 HUNTER LANES · <span id="rb-week"></span></span>' +
+      '<div class="rb-head"><span style="display:flex;align-items:center;gap:5px">🏃 HUNTER LANES' +
+      ' <button class="rb-week-nav" id="rb-prev-week" title="Semana anterior">‹</button>' +
+      ' <span id="rb-week" style="font-family:monospace;color:#7dd3fc"></span>' +
+      ' <button class="rb-week-nav" id="rb-next-week" title="Semana siguiente">›</button></span>' +
       '<button id="rb-cfg" title="Configurar API" style="background:none;border:none;color:#64748b;cursor:pointer">⚙</button></div>' +
       '<div id="rb-hunter-picker" style="padding:8px;display:flex;flex-wrap:wrap;gap:4px;flex-shrink:0;border-bottom:1px solid #1e293b"></div>' +
       '<div class="rb-body"><div id="rb-lanes"></div></div>' +
@@ -318,6 +415,9 @@
       var v = prompt('URL del API server (vacío = solo localStorage):', cur);
       if (v !== null) { localStorage.setItem('rb_api_url', v.trim()); chatSys('API configurado: ' + (v.trim() || '(ninguno)')); }
     };
+    document.getElementById('rb-prev-week').onclick = function () { changeWeek(-1); };
+    document.getElementById('rb-next-week').onclick = function () { changeWeek(1); };
+    makeDraggable(right, right.querySelector('.rb-head'));
     document.getElementById('rb-chat-send').onclick = sendChat;
     document.getElementById('rb-chat-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') sendChat();
@@ -366,8 +466,10 @@
       d.className = 'rb-card' + (assignedHunterOf(z.hex_id) ? ' assigned' : '');
       d.setAttribute('data-hex', z.hex_id);
       d.innerHTML = cardHTML(z);
+      d.style.cursor = 'pointer';
       d.onmouseenter = function () { highlightHex(z); };
       d.onmouseleave = clearHighlight;
+      d.onclick = function () { zoomToHex(z); };
       el.appendChild(d);
     });
     if (window.Sortable) {
@@ -394,6 +496,11 @@
   }
   function clearHighlight() {
     if (hoverLayer && window.THE_MAP) { THE_MAP.removeLayer(hoverLayer); hoverLayer = null; }
+  }
+  function zoomToHex(z) {
+    if (!window.THE_MAP || !z.lat || !z.lng) return;
+    THE_MAP.setView([z.lat, z.lng], 15, { animate: true, duration: 0.4 });
+    highlightHex(z);
   }
 
   // ── Columna derecha: picker + lanes ───────────────────────────────
@@ -431,15 +538,29 @@
       var lane = document.createElement('div');
       lane.className = 'rb-lane';
       lane.style.borderColor = color;
-      var mapsUrl = zones.length ? 'https://www.google.com/maps/dir/' +
-        zones.map(function (z) { return z.lat + ',' + z.lng; }).join('/') : '';
+      var DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+      var dayGroups = [[], [], [], [], [], []];
+      zones.forEach(function (z) { dayGroups[z.day_of_week || 0].push(z); });
+      var mapsBtns = '';
+      for (var d = 1; d <= 5; d++) {
+        if (dayGroups[d].length) {
+          var dUrl = 'https://www.google.com/maps/dir/' +
+            dayGroups[d].map(function (z) { return z.lat + ',' + z.lng; }).join('/');
+          mapsBtns += '<button onclick="window.open(\'' + dUrl + '\',\'_blank\')">🗺 ' +
+            DAY_LABELS_SHORT[d - 1] + '</button>';
+        }
+      }
+      if (!mapsBtns && zones.length) {
+        var allUrl = 'https://www.google.com/maps/dir/' +
+          zones.map(function (z) { return z.lat + ',' + z.lng; }).join('/');
+        mapsBtns = '<button onclick="window.open(\'' + allUrl + '\',\'_blank\')">🗺 Google Maps</button>';
+      }
       lane.innerHTML =
         '<div class="rb-lane-head" style="color:' + color + '">' +
         '<span style="width:9px;height:9px;border-radius:50%;background:' + color + '"></span>' +
         h + ' <span style="color:#64748b;font-weight:400">· ' + zones.length + ' zonas</span></div>' +
         '<div class="rb-lane-zones" data-hunter="' + h + '"></div>' +
-        '<div class="rb-lane-btns">' +
-        (mapsUrl ? '<button onclick="window.open(\'' + mapsUrl + '\',\'_blank\')">🗺 Google Maps</button>' : '') +
+        '<div class="rb-lane-btns">' + mapsBtns +
         '<button class="rb-lane-share" data-h="' + h + '">🔗 Link hunter</button></div>';
       el.appendChild(lane);
       var zEl = lane.querySelector('.rb-lane-zones');
@@ -449,13 +570,23 @@
         if (dbAssigned[z.hex_id]) d.style.borderColor = color;
         d.setAttribute('data-hex', z.hex_id);
         var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
+        var DAY_OPTS = ['— Día —', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+        var daySelHtml = '<select data-dayhex="' + z.hex_id + '" data-hunter="' + h + '" ' +
+          'style="font-size:9px;border:none;background:transparent;color:#94a3b8;cursor:pointer;' +
+          'margin-left:4px;flex-shrink:0" title="Asignar día">' +
+          DAY_OPTS.map(function (dl, di) {
+            return '<option value="' + di + '"' + ((z.day_of_week || 0) === di ? ' selected' : '') + '>' + dl + '</option>';
+          }).join('') + '</select>';
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
-          cardHTML(zz, { order: true }) +
+          cardHTML(zz, { order: true }) + daySelHtml +
           '<button data-rmhex="' + z.hex_id + '" style="margin-left:auto;flex-shrink:0;background:none;border:none;' +
           'color:#64748b;cursor:pointer;font-size:13px;padding:0 2px;line-height:1" title="Quitar zona">✕</button>';
         d.querySelector('[data-rmhex]').onclick = function (e) {
           e.stopPropagation();
           unassignZone(this.getAttribute('data-rmhex'));
+        };
+        d.querySelector('[data-dayhex]').onchange = function () {
+          setZoneDay(this.getAttribute('data-dayhex'), this.getAttribute('data-hunter'), this.value);
         };
         zEl.appendChild(d);
       });
@@ -491,7 +622,7 @@
   function loadFromDB() {
     var api = apiUrl();
     if (!api) return;
-    fetch(api + '/api/assignments')
+    fetch(api + '/api/assignments?week=' + encodeURIComponent(_currentWeek))
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (data) {
         var rows = data.assignments || [];
@@ -515,12 +646,14 @@
       chatSys('⚠ No hay API configurado (⚙). Guardado en localStorage; usa ⬇ CSV para exportar.');
       return;
     }
-    var payload = { assigned_by: 'mapa-staging', week: (typeof getISOWeek === 'function' ? getISOWeek() : ''), assignments: [] };
+    var payload = { assigned_by: 'mapa-staging', week: _currentWeek, assignments: [] };
     Object.keys(_assignments).forEach(function (h) {
       _assignments[h].forEach(function (z, i) {
         payload.assignments.push({
           hex_id: z.hex_id, hex_code: z.hex_code || (ZONE_BY_ID[z.hex_id] || {}).hex_code || '',
           hunter_name: h, route_order: i + 1, notes: z.zona || '',
+          week: _currentWeek,
+          day_of_week: z.day_of_week || 0,
         });
       });
     });
@@ -585,7 +718,7 @@
       });
     });
     return {
-      semana: typeof getISOWeek === 'function' ? getISOWeek() : '',
+      semana: _currentWeek,
       hunters: window.HUNTERS_LIST || [],
       asignaciones: asg,
       zonas: ZONES.slice(0, 150).map(function (z) {
@@ -641,12 +774,24 @@
         if (lyCb && !lyCb.checked) { lyCb.checked = true; }
         window.toggleLayer('hunter', true);
       }
+      // Inicializar semana activa (solo la primera vez que se abre)
+      if (!_currentWeek) {
+        _currentWeek = typeof getISOWeek === 'function' ? getISOWeek() : isoWeekOf(new Date());
+      }
       var wk = document.getElementById('rb-week');
-      if (wk && typeof getISOWeek === 'function') wk.textContent = getISOWeek();
-      // Cargar asignaciones locales de la semana (mismo storage que v5)
+      if (wk) wk.textContent = weekLabel(_currentWeek);
+      // Cargar asignaciones locales de la semana activa
       try {
-        var saved = localStorage.getItem('bizne_assign_' + getISOWeek());
-        if (saved && !Object.keys(_assignments).length) _assignments = JSON.parse(saved);
+        var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
+        if (saved && !Object.keys(_assignments).length) {
+          _assignments = JSON.parse(saved);
+          Object.keys(_assignments).forEach(function (h) {
+            _assignments[h].forEach(function (z) {
+              if (!z.week) z.week = _currentWeek;
+              if (z.day_of_week === undefined) z.day_of_week = 0;
+            });
+          });
+        }
       } catch (e) {}
       renderAll();
       loadFromDB();

@@ -17,9 +17,10 @@ Variables de entorno:
 """
 import json
 import os
+from datetime import date
 
 import anthropic
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
@@ -32,13 +33,25 @@ CREATE TABLE IF NOT EXISTS hunter_zone_assignments (
     hex_id VARCHAR(20) NOT NULL,
     hex_code VARCHAR(10),
     hunter_name VARCHAR(100),
+    week VARCHAR(10) NOT NULL DEFAULT '',
     route_order INTEGER,
     assigned_at TIMESTAMP DEFAULT NOW(),
     assigned_by VARCHAR(100),
     notes TEXT,
-    UNIQUE(hex_id, hunter_name)
+    UNIQUE(hex_id, hunter_name, week)
 );
 """
+
+# Migración para tablas existentes sin columna week
+MIGRATION = """
+ALTER TABLE hunter_zone_assignments ADD COLUMN IF NOT EXISTS week VARCHAR(10) NOT NULL DEFAULT '';
+"""
+
+
+def current_iso_week() -> str:
+    d = date.today()
+    y, w, _ = d.isocalendar()
+    return f"{y}-W{w:02d}"
 
 _engine = None
 
@@ -67,6 +80,7 @@ def get_engine():
         ), pool_pre_ping=True)
     with _engine.begin() as conn:
         conn.execute(text(DDL))
+        conn.execute(text(MIGRATION))
     return _engine
 
 
@@ -108,35 +122,35 @@ def health():
 
 
 @app.get('/api/assignments')
-def get_assignments():
+def get_assignments(week: str = Query(default='')):
+    wk = week or current_iso_week()
     engine = get_engine()
     with engine.connect() as conn:
         rows = conn.execute(text(
-            'SELECT hex_id, hex_code, hunter_name, route_order, assigned_at, assigned_by, notes '
-            'FROM hunter_zone_assignments ORDER BY hunter_name, route_order'
-        )).mappings().all()
-    return {'assignments': [dict(r) for r in rows]}
+            'SELECT hex_id, hex_code, hunter_name, week, route_order, assigned_at, assigned_by, notes '
+            'FROM hunter_zone_assignments WHERE week = :week ORDER BY hunter_name, route_order'
+        ), {'week': wk}).mappings().all()
+    return {'assignments': [dict(r) for r in rows], 'week': wk}
 
 
 @app.post('/api/assignments')
 def save_assignments(payload: SavePayload):
-    """Guarda el snapshot completo: reemplaza la asignación vigente."""
+    """Guarda el snapshot de la semana: reemplaza solo las asignaciones de esa semana."""
+    wk = payload.week or current_iso_week()
     engine = get_engine()
     with engine.begin() as conn:
-        conn.execute(text('DELETE FROM hunter_zone_assignments'))
+        conn.execute(text('DELETE FROM hunter_zone_assignments WHERE week = :week'), {'week': wk})
         for a in payload.assignments:
             conn.execute(text(
                 'INSERT INTO hunter_zone_assignments '
-                '(hex_id, hex_code, hunter_name, route_order, assigned_by, notes) '
-                'VALUES (:hex_id, :hex_code, :hunter_name, :route_order, :assigned_by, :notes) '
-                'ON CONFLICT (hex_id, hunter_name) DO UPDATE SET '
-                'route_order = EXCLUDED.route_order, assigned_at = NOW(), '
-                'assigned_by = EXCLUDED.assigned_by, notes = EXCLUDED.notes'
+                '(hex_id, hex_code, hunter_name, week, route_order, assigned_by, notes) '
+                'VALUES (:hex_id, :hex_code, :hunter_name, :week, :route_order, :assigned_by, :notes)'
             ), {
                 'hex_id': a.hex_id, 'hex_code': a.hex_code, 'hunter_name': a.hunter_name,
-                'route_order': a.route_order, 'assigned_by': payload.assigned_by, 'notes': a.notes,
+                'week': wk, 'route_order': a.route_order, 'assigned_by': payload.assigned_by,
+                'notes': a.notes,
             })
-    return {'saved': len(payload.assignments)}
+    return {'saved': len(payload.assignments), 'week': wk}
 
 
 # ── Chat con Claude ────────────────────────────────────────────────────

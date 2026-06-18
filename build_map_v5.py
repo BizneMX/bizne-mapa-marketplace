@@ -29,6 +29,7 @@ if _CI:
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
     OTROS_CSV= _os.path.join(_DIR, 'pg_usuarios_otros_cache.csv')
+    KYC_CSV  = _os.path.join(_DIR, 'kepler_kyc_sin_consumo.csv')
     UPC_SWAPPED = False   # data/upcs.csv tiene coords correctas (lat=Y, lng=X)
 else:
     # Local dev paths
@@ -54,6 +55,7 @@ else:
     ]
     ACTIV_CSV= '/sessions/confident-jolly-pasteur/mnt/uploads/PA_Proyeccion_13sem - Puntos de Activación (3).csv'
     OTROS_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/pg_usuarios_otros_cache.csv'
+    KYC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_kyc_sin_consumo.csv'
     UPC_SWAPPED = True   # CSV original tiene lat/lng intercambiados
 H3_RES   = 8
 
@@ -454,6 +456,23 @@ ACTIV_DATA = json.dumps({"type":"FeatureCollection","features":activ_features}, 
 # Rebuild HEX_DATA con boost incorporado
 HEX_DATA = json.dumps({"type":"FeatureCollection","features":hex_features}, ensure_ascii=False)
 
+# ── KYC sin consumo ───────────────────────────────────────────────────────────
+_kyc_feats = []
+try:
+    with open(KYC_CSV, newline='', encoding='utf-8') as _kf:
+        for _kr in _csv.DictReader(_kf):
+            try:
+                _klat, _klng = float(_kr['lat']), float(_kr['lng'])
+                _kyc_feats.append({'type':'Feature',
+                    'geometry':{'type':'Point','coordinates':[_klng, _klat]},
+                    'properties':{'dias_kyc': int(float(_kr.get('dias_kyc', 999))),
+                                  'org': str(_kr.get('organization_name',''))}})
+            except: pass
+    print(f"  KYC sin consumo: {len(_kyc_feats)} features")
+except Exception as e:
+    print(f"  ⚠ KYC_CSV no cargado: {e}")
+KYC_DATA = json.dumps({"type":"FeatureCollection","features":_kyc_feats}, ensure_ascii=False)
+
 # ══════════════════════════════════════════════════════════════════════
 # 3. BIZ DATA — active businesses (colored by kitchen_quality_score)
 # ══════════════════════════════════════════════════════════════════════
@@ -604,9 +623,23 @@ for _, row in df_neg.iterrows():
             "horario":       qs_data.get('horario', str(row.get('horario', row.get('schedule','')))),
             "tx_7d":         qs_data.get('tx_7d', 0),
             "ventas_7d":     qs_data.get('ventas_7d', 0),
-            "tx_conectate_30d": qs_data.get('tx_conectate_30d', 0),
+            "tx_conectate_30d": int(float(qs_data.get('tx_conectate_30d', 0) or 0)),
+            "tx_solarig_30d":   int(float(qs_data.get('tx_solarig_30d', 0) or 0)),
+            "tx_holcim_30d":    int(float(qs_data.get('tx_holcim_30d', 0) or 0)),
+            "tx_pp_30d":        int(float(qs_data.get('tx_pp_30d', 0) or 0)),
+            "tx_sid_30d":       int(float(qs_data.get('tx_sid_30d', 0) or 0)),
+            "tx_escala_30d":    int(float(qs_data.get('tx_escala_30d', 0) or 0)),
+            "tx_jealt_30d":     int(float(qs_data.get('tx_jealt_30d', 0) or 0)),
+            "tx_lipu_30d":      int(float(qs_data.get('tx_lipu_30d', 0) or 0)),
+            "tx_tbizne_30d":    int(float(qs_data.get('tx_tbizne_30d', 0) or 0)),
+            "tx_mobo_30d":      int(float(qs_data.get('tx_mobo_30d', 0) or 0)),
+            "tx_cygnus_30d":    int(float(qs_data.get('tx_cygnus_30d', 0) or 0)),
+            "tx_daya_30d":      int(float(qs_data.get('tx_daya_30d', 0) or 0)),
             "categoria_negocio": qs_data.get('categoria_negocio', ''),
             "dias_a_primera_venta": qs_data.get('dias_a_primera_venta', None),
+            "dias_sin_trx": (int(float(qs_data['dias_sin_trx']))
+                             if str(qs_data.get('dias_sin_trx','')).strip() not in ('','nan','None','')
+                             else None),
             "lat":           round(float(row['lat']), 5),
             "lng":           round(float(row['lng']), 5),
         }
@@ -687,6 +720,17 @@ for _, row in df_dorm.iterrows():
             "dias_creacion": int(float(_rv('dias_creacion', 0) or 0)),
             "tx_7d":         int(float(_rv('tx_7d', 0))),
             "tx_conectate_30d": int(float(_rv('tx_conectate_30d', 0))),
+            "tx_solarig_30d":   int(float(_rv('tx_solarig_30d', 0))),
+            "tx_holcim_30d":    int(float(_rv('tx_holcim_30d', 0))),
+            "tx_pp_30d":        int(float(_rv('tx_pp_30d', 0))),
+            "tx_sid_30d":       int(float(_rv('tx_sid_30d', 0))),
+            "tx_escala_30d":    int(float(_rv('tx_escala_30d', 0))),
+            "tx_jealt_30d":     int(float(_rv('tx_jealt_30d', 0))),
+            "tx_lipu_30d":      int(float(_rv('tx_lipu_30d', 0))),
+            "tx_tbizne_30d":    int(float(_rv('tx_tbizne_30d', 0))),
+            "tx_mobo_30d":      int(float(_rv('tx_mobo_30d', 0))),
+            "tx_cygnus_30d":    int(float(_rv('tx_cygnus_30d', 0))),
+            "tx_daya_30d":      int(float(_rv('tx_daya_30d', 0))),
             "categoria_negocio": str(_rv('categoria_negocio', '')),
             "dias_a_primera_venta": None if pd.isna(_rv('dias_a_primera_venta', float('nan'))) else round(float(_rv('dias_a_primera_venta')), 1),
             "fill_color":    '#9ca3af',
@@ -1013,10 +1057,22 @@ neg_nuevos_30 = len(_nuevos_30)
 # Negocios nuevos en el mes calendario en curso (desde el día 1 del mes actual)
 from datetime import datetime as _dt
 _hoy = _dt.now()
-_dias_del_mes = (_hoy - _hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0)).days
-_nuevos_mes = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_del_mes]
-neg_nuevos_mes = len(_nuevos_mes)
+_primer_dia_mes = _hoy.replace(day=1, hour=0, minute=0, second=0, microsecond=0).date()
 _mes_nombre = _hoy.strftime('%B %Y').capitalize()
+
+def _creation_date_obj(p):
+    """Retorna la fecha de creación como date, o None si no está disponible."""
+    s = str(p.get('creation_date', '') or '').strip()
+    if not s or s in ('nan', 'None', ''): return None
+    try:
+        return _dt.fromisoformat(s[:10]).date()
+    except Exception:
+        return None
+
+_nuevos_mes = [f for f in biz_features
+               if (_cdo := _creation_date_obj(f['properties'])) is not None
+               and _cdo >= _primer_dia_mes]
+neg_nuevos_mes = len(_nuevos_mes)
 
 # Negocios con transacción: si dias_creacion<=7 y tx_historicas>0 → tuvieron tx en sus primeros 7 días
 def _has_tx(p):
@@ -1052,11 +1108,13 @@ def _norm_h(s):
     return _ud.normalize('NFC', str(s).strip()).lower()
 HUNTERS_EXCLUIR_NORM = {_norm_h(h) for h in HUNTERS_EXCLUIR_RAW}
 
-# Días desde el lunes de la semana ISO en curso (0=lunes, 6=domingo)
+# Semana ISO en curso: desde el lunes de esta semana
 from datetime import timedelta as _td
-_dias_inicio_semana = _hoy.weekday()  # 0=Mon … 6=Sun
-_lunes_semana = _hoy - _td(days=_dias_inicio_semana)
-_nuevos_semana = [f for f in biz_features if _safe_dias(f['properties']) <= _dias_inicio_semana]
+_lunes_semana = (_hoy - _td(days=_hoy.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+_lunes_date   = _lunes_semana.date()
+_nuevos_semana = [f for f in biz_features
+                  if (_cds := _creation_date_obj(f['properties'])) is not None
+                  and _cds >= _lunes_date]
 neg_nuevos_semana = len(_nuevos_semana)
 _lunes_nombre = _lunes_semana.strftime('%d %b').lstrip('0')
 
@@ -1074,8 +1132,9 @@ for f in biz_features:
     h_norm = _norm_h(h)
     if h_norm in HUNTERS_EXCLUIR_NORM: continue
     _hunter_all.add(h)
-    d  = _safe_dias(p)
-    if d <= _dias_inicio_semana: _hunter_semana[h] += 1
+    d   = _safe_dias(p)
+    _cd = _creation_date_obj(p)
+    if _cd is not None and _cd >= _lunes_date: _hunter_semana[h] += 1
     if d <= 7:  _hunter_7[h]  += 1
     if d <= 30:
         _hunter_30[h] += 1
@@ -1389,10 +1448,7 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   background:#dc2626;color:#fff;border:none;border-radius:8px;
   padding:7px 12px;font-size:11px;cursor:pointer;}
 /* ── Guide ─────────────────────────────────────────────────── */
-#guide-btn-wrap{position:fixed;bottom:24px;right:24px;z-index:1010;}
-#guide-btn-wrap button{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
-  border-radius:50%;width:44px;height:44px;font-size:20px;cursor:pointer;
-  box-shadow:0 3px 10px rgba(0,0,0,.4);}
+#guide-btn-wrap{display:none;}
 #guide-overlay{display:none;position:fixed;inset:0;z-index:2000;
   background:rgba(0,0,0,.7);align-items:flex-start;justify-content:center;padding-top:40px;}
 #guide-overlay.open{display:flex;}
@@ -1460,11 +1516,8 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   padding:6px 10px;border-radius:6px;cursor:pointer;font-size:11px;}
 #marquee-panel .mp-clear:hover{color:#ef4444;border-color:#ef4444;}
 /* ── Panel de asignación de zonas hunter ────────────────────── */
-#assign-tool-btn{position:fixed;bottom:162px;right:24px;z-index:2002;
-  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
-  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
-#assign-tool-btn:hover,#assign-tool-btn.active{border-color:#f97316;color:#f97316;background:#1a0d00;}
+#assign-tool-btn.active{background:#1a0d00;}
+#assign-tool-btn.active .ftb-icon{color:#f97316;}
 #assign-panel{display:none;position:fixed;top:60px;right:70px;
   z-index:3000;width:400px;max-height:80vh;background:#0f172a;border-radius:14px;
   box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
@@ -1486,17 +1539,34 @@ hr.bhr{border:none;border-top:1px solid #f1f5f9;margin:8px 0;}
   z-index:2999;background:#7c2d12;color:#fff;padding:8px 20px;border-radius:20px;
   font-size:12px;font-weight:600;box-shadow:0 4px 20px rgba(0,0,0,.5);
   pointer-events:none;white-space:nowrap;}
-#marquee-tool-btn{position:fixed;bottom:118px;right:24px;z-index:2002;
-  background:#151A4F;border:2px solid #334155;color:#94a3b8;width:36px;height:36px;
-  border-radius:8px;cursor:pointer;font-size:15px;display:flex;align-items:center;
-  justify-content:center;transition:all .2s;box-shadow:0 2px 8px rgba(0,0,0,.5);}
-#marquee-tool-btn:hover,#marquee-tool-btn.active{border-color:#60a5fa;color:#60a5fa;background:#0f1e38;}
+#marquee-tool-btn.active{background:#0f1e38;}
+#marquee-tool-btn.active .ftb-icon{color:#60a5fa;}
+/* ── Figma toolbar ───────────────────────────────────────────── */
+#figma-toolbar{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);
+  z-index:1200;display:flex;gap:4px;background:#0f172a;border:1px solid #334155;
+  border-radius:14px;padding:6px 10px;box-shadow:0 4px 24px rgba(0,0,0,.5);}
+.ftb{display:flex;flex-direction:column;align-items:center;gap:2px;padding:6px 14px;
+  border-radius:10px;border:none;background:none;cursor:pointer;color:#cbd5e1;transition:background .15s;}
+.ftb:hover{background:#1e293b;color:#f8fafc;}
+.ftb.active{background:#1e3a5f;color:#7dd3fc;}
+.ftb-icon{font-size:18px;line-height:1;}
+.ftb-label{font-size:9px;font-weight:600;letter-spacing:.3px;}
+/* ── Session filter ──────────────────────────────────────────── */
+.sf-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
+  background:none;color:#94a3b8;cursor:pointer;}
+.sf-btn.active{background:#1e3a5f;color:#7dd3fc;border-color:#3b82f6;}
+/* ── Sin ventas filter ───────────────────────────────────────── */
+.sv-btn{font-size:9px;padding:2px 7px;border-radius:4px;border:1px solid #334155;
+  background:none;color:#94a3b8;cursor:pointer;}
+.sv-btn.active{background:#1e1a00;color:#fbbf24;border-color:#d97706;}
+/* ── Dark tooltip (KYC y otros) ─────────────────────────────── */
+.biz-tt{background:#0f172a!important;border:1px solid #334155!important;
+  color:#e2e8f0!important;border-radius:8px!important;padding:6px 10px!important;
+  font-size:11px!important;box-shadow:0 4px 16px rgba(0,0,0,.6)!important;}
+.biz-tt::before{border-top-color:#334155!important;}
 /* ── Chat panel ─────────────────────────────────────────────── */
-#chat-wrap{position:fixed;bottom:76px;right:24px;z-index:1010;}
-#chat-toggle-btn{background:#151A4F;color:#6EE9B3;border:2px solid #6EE9B3;
-  border-radius:50%;width:44px;height:44px;font-size:18px;cursor:pointer;
-  box-shadow:0 3px 10px rgba(0,0,0,.4);}
-#chat-panel{display:none;position:fixed;bottom:134px;right:20px;z-index:2001;
+#chat-wrap{display:none;}
+#chat-panel{display:none;position:fixed;bottom:80px;left:50%;transform:translateX(-50%);z-index:2001;
   width:370px;height:500px;background:#0f172a;border-radius:14px;
   box-shadow:0 8px 32px rgba(0,0,0,.7);font-family:system-ui,sans-serif;
   flex-direction:column;overflow:hidden;border:1px solid #1e3a52;}
@@ -1745,6 +1815,19 @@ PANEL_HTML = """
         <span class="bdot" style="background:#06b6d4"></span> Sectores PA</label>
       <label class="bchk"><input type="checkbox" id="ly_activ"    onchange="toggleLayer('activ',this.checked)">
         <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
+      <label class="bchk"><input type="checkbox" id="ly_kyc"     onchange="toggleLayer('kyc',this.checked)">
+        <span class="bdot" style="background:#a855f7;box-shadow:0 0 5px #a855f7"></span> KYC sin consumo</label>
+      <div style="margin:6px 0 2px">
+        <div style="font-size:9px;color:#64748b;margin-bottom:3px">Filtro KYC sin consumo:</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
+          <button class="sf-btn active" data-d="7" onclick="applySessionFilter(7)">7D</button>
+          <button class="sf-btn" data-d="14" onclick="applySessionFilter(14)">14D</button>
+          <button class="sf-btn" data-d="30" onclick="applySessionFilter(30)">30D</button>
+          <button class="sf-btn" data-d="0" onclick="applySessionFilter(0)">Todo</button>
+          <input type="date" id="sf-date" title="Filtrar desde fecha"
+            style="font-size:9px;padding:2px 4px;border-radius:4px;border:1px solid #334155;background:#1e293b;color:#cbd5e1">
+        </div>
+      </div>
     </div>
 
     <hr class="bhr">
@@ -1818,7 +1901,16 @@ PANEL_HTML = """
           <span style="font-size:10px;color:#0f172a">🆕 ≤ 30 días</span>
         </label>
       </div>
-      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setHunterFilterAll(true)"
+      <div style="margin:6px 0 2px">
+        <div style="font-size:9px;color:#64748b;margin-bottom:3px">Sin ventas en:</div>
+        <div style="display:flex;gap:4px;flex-wrap:wrap">
+          <button class="sv-btn active" data-sv="0" onclick="setSinVentas(0)">Todo</button>
+          <button class="sv-btn" data-sv="7" onclick="setSinVentas(7)">7D</button>
+          <button class="sv-btn" data-sv="30" onclick="setSinVentas(30)">30D</button>
+          <button class="sv-btn" data-sv="-1" onclick="setSinVentas(-1)">Histórico</button>
+        </div>
+      </div>
+      <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setSinVentas(0);setHunterFilterAll(true)"
         style="margin-top:4px;width:100%;font-size:10px;padding:3px;cursor:pointer;
                border:1px solid #e2e8f0;border-radius:4px;background:#f8fafc;color:#64748b">Mostrar todos</button>
     </div>
@@ -2074,9 +2166,7 @@ GUIDE_HTML = f"""
 """
 
 CHAT_HTML = """
-<div id="chat-wrap">
-  <button id="chat-toggle-btn" onclick="toggleChat()" title="Consultar negocios">💬</button>
-</div>
+<div id="chat-wrap" style="display:none"></div>
 <div id="chat-panel">
   <div id="chat-head">
     <div id="chat-head-title">🤖 <span>Consultor Bizne</span></div>
@@ -2117,8 +2207,12 @@ function removeAccents(s) {
 window.toggleChat = function() {
   var panel = document.getElementById('chat-panel');
   panel.classList.toggle('open');
-  if (panel.classList.contains('open'))
+  if (panel.classList.contains('open')) {
+    _ftbActive(0);
     setTimeout(function(){document.getElementById('chat-input').focus();},50);
+  } else {
+    _ftbActive(-1);
+  }
 };
 
 window.chatSendText = function(txt) {
@@ -2386,6 +2480,7 @@ var SEC_DATA            = {SEC_DATA};
 var HUNTER_DATA         = {HUNTER_DATA};
 var SESSION_DEMAND_DATA = {SESSION_DEMAND_DATA};
 var ACTIV_DATA          = {ACTIV_DATA};
+var KYC_DATA            = {KYC_DATA};
 var HEAT_TRX_OK         = {HEAT_TRX_OK};
 var HEAT_TRX_FAIL       = {HEAT_TRX_FAIL};
 var HEAT_USERS          = {HEAT_USERS};
@@ -2733,7 +2828,7 @@ function switchOrg(org) {{
     var pts = (HEAT_USERS_BY_ORG && HEAT_USERS_BY_ORG[org]) || HEAT_USERS_BY_ORG['Todas'] || [];
     if (window.THE_MAP) {{
       if (window.LYR_HEAT_USERS) window.THE_MAP.removeLayer(window.LYR_HEAT_USERS);
-      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:8,blur:5,maxZoom:17,
+      window.LYR_HEAT_USERS = L.heatLayer(pts, {{radius:_heatRadius||8,blur:_heatBlur||5,maxZoom:17,
         gradient:{{0.2:'#5b21b6',0.5:'#7c3aed',0.8:'#a78bfa',1:'#c4b5fd'}}}});
       var htCb = document.getElementById('ht_users');
       if (htCb && htCb.checked) window.LYR_HEAT_USERS.addTo(window.THE_MAP);
@@ -2821,6 +2916,7 @@ function _initAssignPanel() {{
 function toggleAssignPanel() {{
   var p = document.getElementById('assign-panel');
   if (p.classList.toggle('open')) {{
+    if (typeof _ftbActive === 'function') _ftbActive(1);
     _initAssignPanel();
     // Mostrar semana actual
     var wLabel = document.getElementById('az-current-week');
@@ -2838,6 +2934,7 @@ function toggleAssignPanel() {{
     }} catch(e) {{}}
   }} else {{
     if (_assignMode) toggleAssignMode(); // apagar modo selección al cerrar
+    if (typeof _ftbActive === 'function') _ftbActive(-1);
   }}
 }}
 
@@ -3190,13 +3287,15 @@ function clearAllAssignments() {{
 
 // ── Exportar asignaciones a CSV ───────────────────────────────────
 function exportAssignments() {{
-  var rows = ['hunter,orden_ruta,hex_id,rank,zona,gap,demanda_dia,usuarios,lat,lng,score'];
+  var DAY_NAMES = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
+  var rows = ['hunter,orden_ruta,hex_id,rank,zona,gap,demanda_dia,usuarios,lat,lng,score,dia,semana'];
   Object.keys(_assignments).forEach(function(h) {{
     var sorted = _assignments[h].slice().sort(function(a,b){{ return a.rank-b.rank; }});
     sorted.forEach(function(z, i) {{
       rows.push([h, i+1, z.hex_id, z.rank, '"'+z.zona+'"', z.gap,
                  z.demanda_dia||'', z.usuarios||'',
-                 z.lat, z.lng, z.combined_score||''].join(','));
+                 z.lat, z.lng, z.combined_score||'',
+                 DAY_NAMES[z.day_of_week||0]||'', z.week||''].join(','));
     }});
   }});
   if (rows.length === 1) {{ alert('No hay asignaciones para exportar.'); return; }}
@@ -3225,6 +3324,49 @@ function toggleMode() {{
       {{attribution:'&copy; CartoDB',maxZoom:20}}).addTo(window.THE_MAP);
   }}
 }}
+
+// ── Figma toolbar active state ───────────────────────────────────────────────
+function _ftbActive(idx) {{
+  document.querySelectorAll('.ftb').forEach(function(b, i) {{
+    b.classList.toggle('active', i === idx);
+  }});
+}}
+
+// ── Filtro sin ventas (negocios activos + dormidos) ──────────────────────────
+var _svFilter = 0;
+function setSinVentas(days) {{
+  _svFilter = days;
+  document.querySelectorAll('.sv-btn').forEach(function(b) {{
+    b.classList.toggle('active', parseInt(b.getAttribute('data-sv')) === days);
+  }});
+  if (typeof searchNegocios === 'function') searchNegocios(
+    (document.getElementById('biz-search') || {{}}).value || '');
+}}
+
+// ── Filtro temporal KYC sin consumo ─────────────────────────────────────────
+var _sfDays = 7;
+function applySessionFilter(days) {{
+  _sfDays = days;
+  document.querySelectorAll('.sf-btn').forEach(function(b) {{
+    b.classList.toggle('active', parseInt(b.getAttribute('data-d')) === days);
+  }});
+  if (window.LYR_KYC) {{
+    window.LYR_KYC.eachLayer(function(l) {{
+      var d = l.feature && l.feature.properties && l.feature.properties.dias_kyc;
+      var show = (days === 0) || (d !== undefined && d <= days);
+      l.setStyle({{opacity: show ? .8 : 0, fillOpacity: show ? .7 : 0}});
+    }});
+  }}
+}}
+// Date picker
+document.addEventListener('DOMContentLoaded', function() {{
+  var sfDate = document.getElementById('sf-date');
+  if (sfDate) sfDate.addEventListener('change', function() {{
+    if (!this.value) return;
+    var msAgo = (Date.now() - new Date(this.value).getTime()) / 86400000;
+    applySessionFilter(Math.round(msAgo));
+  }});
+}});
 
 var HEX_FIELDS = [
   {{key:"DI",id:"hf_DI",label:"DI"}},
@@ -3292,10 +3434,17 @@ function buildBizTT(p) {{
   var nivelColor = {{'Excelente':'#22c55e','Alta':'#00BFA5','Media':'#f59e0b','Baja':'#f97316','Crítica':'#ef4444'}}[nivel] || p.fill_color;
   var cohort = p.service_cohort ? "<span style='background:#1e3a52;padding:1px 5px;border-radius:3px;font-size:9px;color:#a78bfa'>"+p.service_cohort+"</span>" : "";
   var s = "<b>"+p.nombre+"</b><br>"+
+    (p.colonia ? "<span style='color:#94a3b8;font-size:9px'>📍 "+p.colonia+"</span><br>" : "")+
     "<i style='color:#64748b'>"+p.delegacion+"</i><br>"+
     "<b style='color:#94a3b8;font-size:9px'>Etapa:</b> <span style='font-size:10px'>"+p.etapa+"</span>  "+cohort+"<br>"+
     "<b style='color:"+nivelColor+"'>⭐ Score calidad: "+p.quality_score+"</b> "+
     "<span style='font-size:9px;color:"+nivelColor+"'>("+nivel+")</span><br>"+
+    "<div style='display:flex;gap:10px;font-size:9px;color:#94a3b8;margin:2px 0'>"+
+      "<span>📅 <b style='color:#1e40af'>"+(p.dias_creacion||'?')+"d</b> vida</span>"+
+      (p.dias_sin_trx != null
+        ? "<span>🔴 <b style='color:#fca5a5'>"+(p.dias_sin_trx===9999?'∞':p.dias_sin_trx)+"d</b> sin venta</span>"
+        : "<span style='color:#475569'>Sin ventas</span>")+
+    "</div>"+
     "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>";
   BIZ_FIELDS.forEach(function(f) {{
     var cb = document.getElementById(f.id);
@@ -3303,17 +3452,32 @@ function buildBizTT(p) {{
   }});
   // % Transacciones por organización — always visible
   var txTotal = p.tx_30d || 0;
-  var txPA = p.tx_pa_30d || 0;
-  var txConectate = p.tx_conectate_30d || 0;
-  var txB2C = Math.max(0, txTotal - txPA - txConectate);
-  var pctPA = txTotal > 0 ? Math.round(txPA / txTotal * 100) : 0;
-  var pctConectate = txTotal > 0 ? Math.round(txConectate / txTotal * 100) : 0;
-  var pctB2C = txTotal > 0 ? Math.max(0, 100 - pctPA - pctConectate) : 0;
-  var orgRow = txTotal > 0
-    ? "<span style='color:#f97316;font-size:9px'>PA "+pctPA+"%</span>" +
-      (txConectate > 0 ? " · <span style='color:#0ea5e9;font-size:9px'>CP "+pctConectate+"%</span>" : "") +
-      (pctB2C > 0     ? " · <span style='color:#94a3b8;font-size:9px'>B2C "+pctB2C+"%</span>" : "")
-    : "<span style='color:#475569;font-size:9px'>Sin trx</span>";
+  var _OM = [
+    {{key:'tx_pa_30d',       abbr:'PA',    color:'#f97316'}},
+    {{key:'tx_conectate_30d',abbr:'CP',    color:'#0ea5e9'}},
+    {{key:'tx_solarig_30d',  abbr:'SOL',   color:'#a855f7'}},
+    {{key:'tx_holcim_30d',   abbr:'HLC',   color:'#84cc16'}},
+    {{key:'tx_pp_30d',       abbr:'PP',    color:'#f43f5e'}},
+    {{key:'tx_sid_30d',      abbr:'SID',   color:'#06b6d4'}},
+    {{key:'tx_escala_30d',   abbr:'ESC',   color:'#f59e0b'}},
+    {{key:'tx_jealt_30d',    abbr:'JEALT', color:'#8b5cf6'}},
+    {{key:'tx_lipu_30d',     abbr:'LIPU',  color:'#10b981'}},
+    {{key:'tx_tbizne_30d',   abbr:'TBZ',  color:'#ec4899'}},
+    {{key:'tx_mobo_30d',     abbr:'MOBO',  color:'#6366f1'}},
+    {{key:'tx_cygnus_30d',   abbr:'CGN',   color:'#14b8a6'}},
+    {{key:'tx_daya_30d',     abbr:'DAYA',  color:'#fb923c'}},
+  ];
+  var orgRow;
+  if (txTotal > 0) {{
+    var _parts = []; var _tracked = 0;
+    _OM.forEach(function(o) {{
+      var n = parseInt(p[o.key]) || 0;
+      if (n > 0) {{ _tracked += n; _parts.push("<span style='color:"+o.color+";font-size:9px'>"+o.abbr+" "+Math.round(n/txTotal*100)+"%</span>"); }}
+    }});
+    var _b2c = Math.max(0, txTotal - _tracked);
+    if (_b2c > 0) _parts.push("<span style='color:#94a3b8;font-size:9px'>B2C "+Math.round(_b2c/txTotal*100)+"%</span>");
+    orgRow = _parts.join(" · ");
+  }} else {{ orgRow = "<span style='color:#475569;font-size:9px'>Sin trx</span>"; }}
   s += "<hr style='border:none;border-top:1px solid #1e3a52;margin:3px 0'>"+
     "<span style='font-size:9px;color:#94a3b8'>% ORG (30d)</span> "+orgRow+"<br>";
   // Menús — always visible
@@ -3406,6 +3570,21 @@ document.addEventListener("DOMContentLoaded", function() {{
         theMap.createPane(name);
         theMap.getPane(name).style.zIndex = zIdx;
         if (name !== 'hexPane') theMap.getPane(name).style.pointerEvents = 'auto';
+      }}
+    }});
+
+    // KYC sin consumo (off by default)
+    window.LYR_KYC = L.geoJSON(KYC_DATA, {{
+      pointToLayer: function(f, ll) {{
+        return L.circleMarker(ll, {{radius:5,fillColor:'#a855f7',color:'#7c3aed',
+          weight:1,opacity:.8,fillOpacity:.7}});
+      }},
+      onEachFeature: function(f, l) {{
+        var p = f.properties;
+        l.bindTooltip('<b style="color:#d8b4fe">KYC sin consumo</b><br>'+
+          '<span style="color:#e2e8f0">'+p.dias_kyc+' días sin compra</span><br>'+
+          '<span style="color:#94a3b8;font-size:9px">'+(p.org||'')+'</span>',
+          {{sticky:true,className:'biz-tt'}});
       }}
     }});
 
@@ -3672,7 +3851,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV}};
+                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
       // Sync hunter hex code labels + malla completa (parte de la capa hunter)
@@ -3711,7 +3890,14 @@ document.addEventListener("DOMContentLoaded", function() {{
       var m = window.THE_MAP; if (!m) return;
       var map = {{ok:window.LYR_HEAT_OK,fail:window.LYR_HEAT_FAIL,users:window.LYR_HEAT_USERS,conectate:window.LYR_HEAT_CONECTATE}};
       var lyr = map[name]; if (!lyr) return;
-      show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
+      if (show) {{
+        if (!m.hasLayer(lyr)) {{
+          try {{ lyr.setOptions({{radius:_heatRadius||8,blur:_heatBlur||5}}); }} catch(e) {{}}
+          m.addLayer(lyr);
+        }}
+      }} else {{
+        m.hasLayer(lyr) && m.removeLayer(lyr);
+      }}
     }};
     window.toggleHexHeat = function(name, show) {{
       var m = window.THE_MAP; if (!m) return;
@@ -3719,9 +3905,13 @@ document.addEventListener("DOMContentLoaded", function() {{
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
     }};
+    var _heatRadius = 8, _heatBlur = 5;
     window.setHeatSize = function(radius, blur) {{
+      _heatRadius = radius; _heatBlur = blur;
       [window.LYR_HEAT_OK, window.LYR_HEAT_FAIL, window.LYR_HEAT_USERS, window.LYR_HEAT_CONECTATE].forEach(function(lyr) {{
-        if (lyr) {{ lyr.setOptions({{radius:radius,blur:blur}}); lyr.redraw(); }}
+        if (!lyr) return;
+        try {{ lyr.setOptions({{radius:radius,blur:blur}}); }} catch(e) {{}}
+        try {{ if (lyr._map) lyr.redraw(); }} catch(e) {{}}
       }});
       document.querySelectorAll('[id^=hs_]').forEach(function(b) {{ b.style.fontWeight=''; b.style.borderColor=''; b.style.color=''; }});
     }};
@@ -3931,13 +4121,21 @@ document.addEventListener("DOMContentLoaded", function() {{
       var vis=0, tot=0;
       var daysFilter = window._bizNuevosDays || 0;
       var hunterSet  = window._bizHunterSet || null;
+      var svFilter = window._svFilter || 0;
+      function matchSinVentas(p) {{
+        if (svFilter === 0) return true;
+        if (svFilter === 7)  return (parseInt(p.tx_7d)  || 0) === 0;
+        if (svFilter === 30) return (parseInt(p.tx_30d) || 0) === 0;
+        if (svFilter === -1) return (parseInt(p.tx_historicas) || 0) === 0;
+        return true;
+      }}
       function matchLayer(layer) {{
         var p = layer._p || {{}};
         var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
         var matchNew = daysFilter === 0 || (parseInt(p.dias_creacion||9999) <= daysFilter);
         var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
                      (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
-        return matchQ && matchNew && matchH;
+        return matchQ && matchNew && matchH && matchSinVentas(p);
       }}
       window.LYR_BIZ.eachLayer(function(layer) {{
         tot++;
@@ -3951,7 +4149,7 @@ document.addEventListener("DOMContentLoaded", function() {{
           var matchQ = q==='' || (p.nombre && p.nombre.toLowerCase().indexOf(q)>=0);
           var matchH = !hunterSet || hunterSet[p.hunter || ''] ||
                        (hunterSet['Sin asignar'] && (!p.hunter || p.hunter==='nan' || p.hunter==='None' || p.hunter===''));
-          var show = matchQ && matchH;
+          var show = matchQ && matchH && matchSinVentas(p);
           layer.setStyle({{fillOpacity:show?0.55:0,opacity:show?1:0,interactive:show}});
         }});
       }}
@@ -4000,7 +4198,7 @@ document.addEventListener("DOMContentLoaded", function() {{
 
       // Ocultar todos los paneles del dashboard y controles
       ['kpi-dash','bmap-panel','hunter-panel','hunter-toggle',
-       'assign-tool-btn','marquee-tool-btn','dr-panel',
+       'figma-toolbar','dr-panel',
        'guide-btn','mode-btn'].forEach(function(id) {{
         var el = document.getElementById(id);
         if (el) el.style.display = 'none';
@@ -4089,6 +4287,7 @@ function toggleMarqueeTool() {
   _mqActive = !_mqActive;
   var btn = document.getElementById('marquee-tool-btn');
   if (btn) btn.classList.toggle('active', _mqActive);
+  if (typeof _ftbActive === 'function') _ftbActive(_mqActive ? 2 : -1);
   if (_mqActive) {
     if (m) m.dragging.disable();
     document.getElementById('map').style.cursor = 'crosshair';
@@ -4314,7 +4513,20 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 {CHAT_HTML}
 <!-- Assign zones tool -->
 <div id="assign-mode-bar">🎯 Modo asignación activo — haz clic en zonas Hunter para seleccionarlas</div>
-<button id="assign-tool-btn" title="Planear rutas de hunting" onclick="toggleAssignPanel()">🗺</button>
+<div id="figma-toolbar">
+  <button id="chat-toggle-btn" class="ftb" onclick="toggleChat()" title="Chat AI">
+    <span class="ftb-icon">💬</span><span class="ftb-label">Chat AI</span>
+  </button>
+  <button id="assign-tool-btn" class="ftb" onclick="toggleAssignPanel()" title="Rutas">
+    <span class="ftb-icon">🗺</span><span class="ftb-label">Rutas</span>
+  </button>
+  <button id="marquee-tool-btn" class="ftb" onclick="toggleMarqueeTool()" title="Selector">
+    <span class="ftb-icon">▭</span><span class="ftb-label">Selector</span>
+  </button>
+  <button class="ftb" onclick="document.getElementById('guide-overlay').classList.add('open')" title="Ayuda">
+    <span class="ftb-icon">❓</span><span class="ftb-label">Ayuda</span>
+  </button>
+</div>
 <div id="assign-panel">
   <div id="assign-head">
     <span>🗺 Planear Rutas de Hunting</span>
@@ -4381,7 +4593,6 @@ html,body{{margin:0;padding:0;width:100%;height:100%;overflow:hidden;}}
 </div>
 <!-- Marquee selector -->
 <div id="marquee-rect"></div>
-<button id="marquee-tool-btn" title="Selector de área — arrastra para seleccionar negocios y exportar CSV" onclick="toggleMarqueeTool()">▭</button>
 <div id="marquee-panel">
   <span class="mp-count" id="mp-count-lbl">0 negocios</span>
   <button class="mp-btn" id="mp-dl-btn" onclick="downloadSelectionCSV()">⬇ Descargar CSV</button>
