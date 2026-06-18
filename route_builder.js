@@ -53,12 +53,22 @@
     return monday;
   }
 
+  // "2026-W24" → "16-20 Jun 2026"
+  var MESES = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+  function weekLabel(isoWeek) {
+    var mon = mondayOf(isoWeek);
+    var fri = new Date(mon); fri.setDate(mon.getDate() + 4);
+    var label = mon.getDate();
+    if (mon.getMonth() !== fri.getMonth()) label += ' ' + MESES[mon.getMonth()];
+    return label + '-' + fri.getDate() + ' ' + MESES[fri.getMonth()] + ' ' + fri.getFullYear();
+  }
+
   function changeWeek(delta) {
     var mon = mondayOf(_currentWeek);
     mon.setDate(mon.getDate() + delta * 7);
     _currentWeek = isoWeekOf(mon);
     var wk = document.getElementById('rb-week');
-    if (wk) wk.textContent = _currentWeek;
+    if (wk) wk.textContent = weekLabel(_currentWeek);
     // Limpiar estado y recargar para la nueva semana
     window._assignments = {};
     dbAssigned = {};
@@ -244,6 +254,36 @@
     if (typeof updateAssignedSummary === 'function') { try { updateAssignedSummary(); } catch (e) {} }
   }
 
+  // ── Drag & drop de paneles ────────────────────────────────────────
+  function makeDraggable(panel, handle) {
+    handle.style.cursor = 'grab';
+    var startX, startY, startL, startT;
+    handle.addEventListener('mousedown', function (e) {
+      if (e.target.tagName === 'BUTTON') return; // no interferir con botones
+      e.preventDefault();
+      var rect = panel.getBoundingClientRect();
+      // Convertir posición actual a left/top fijos (puede estar anclado a right)
+      panel.style.right = 'auto';
+      panel.style.bottom = 'auto';
+      panel.style.left = rect.left + 'px';
+      panel.style.top  = rect.top  + 'px';
+      startX = e.clientX; startY = e.clientY;
+      startL = rect.left; startT = rect.top;
+      handle.style.cursor = 'grabbing';
+      function onMove(e) {
+        panel.style.left = Math.max(0, startL + e.clientX - startX) + 'px';
+        panel.style.top  = Math.max(0, startT + e.clientY - startY) + 'px';
+      }
+      function onUp() {
+        handle.style.cursor = 'grab';
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
   // ── UI: contenedor + estilos ──────────────────────────────────────
   var CSS = [
     '#rb-left,#rb-right{position:fixed;top:64px;bottom:190px;z-index:1500;background:#0f172a;',
@@ -377,6 +417,7 @@
     };
     document.getElementById('rb-prev-week').onclick = function () { changeWeek(-1); };
     document.getElementById('rb-next-week').onclick = function () { changeWeek(1); };
+    makeDraggable(right, right.querySelector('.rb-head'));
     document.getElementById('rb-chat-send').onclick = sendChat;
     document.getElementById('rb-chat-input').addEventListener('keydown', function (e) {
       if (e.key === 'Enter') sendChat();
@@ -738,7 +779,7 @@
         _currentWeek = typeof getISOWeek === 'function' ? getISOWeek() : isoWeekOf(new Date());
       }
       var wk = document.getElementById('rb-week');
-      if (wk) wk.textContent = _currentWeek;
+      if (wk) wk.textContent = weekLabel(_currentWeek);
       // Cargar asignaciones locales de la semana activa
       try {
         var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
