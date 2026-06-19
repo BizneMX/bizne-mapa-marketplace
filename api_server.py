@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS hunter_zone_assignments (
     assigned_at TIMESTAMP DEFAULT NOW(),
     assigned_by VARCHAR(100),
     notes TEXT,
+    days TEXT DEFAULT '',
     UNIQUE(hex_id, hunter_name, week)
 );
 """
@@ -45,6 +46,7 @@ CREATE TABLE IF NOT EXISTS hunter_zone_assignments (
 # Migración para tablas existentes sin columna week
 MIGRATION = """
 ALTER TABLE hunter_zone_assignments ADD COLUMN IF NOT EXISTS week VARCHAR(10) NOT NULL DEFAULT '';
+ALTER TABLE hunter_zone_assignments ADD COLUMN IF NOT EXISTS days TEXT DEFAULT '';
 """
 
 
@@ -102,6 +104,7 @@ class Assignment(BaseModel):
     hunter_name: str
     route_order: int = 1
     notes: str = ''
+    days: list[int] = []
 
 
 class SavePayload(BaseModel):
@@ -127,10 +130,22 @@ def get_assignments(week: str = Query(default='')):
     engine = get_engine()
     with engine.connect() as conn:
         rows = conn.execute(text(
-            'SELECT hex_id, hex_code, hunter_name, week, route_order, assigned_at, assigned_by, notes '
+            'SELECT hex_id, hex_code, hunter_name, week, route_order, assigned_at, assigned_by, notes, days '
             'FROM hunter_zone_assignments WHERE week = :week ORDER BY hunter_name, route_order'
         ), {'week': wk}).mappings().all()
-    return {'assignments': [dict(r) for r in rows], 'week': wk}
+    def _parse_days(raw):
+        if not raw:
+            return []
+        try:
+            return [int(x) for x in str(raw).split(',') if x.strip()]
+        except Exception:
+            return []
+    result = []
+    for r in rows:
+        row = dict(r)
+        row['days'] = _parse_days(row.get('days', ''))
+        result.append(row)
+    return {'assignments': result, 'week': wk}
 
 
 @app.post('/api/assignments')
@@ -143,12 +158,13 @@ def save_assignments(payload: SavePayload):
         for a in payload.assignments:
             conn.execute(text(
                 'INSERT INTO hunter_zone_assignments '
-                '(hex_id, hex_code, hunter_name, week, route_order, assigned_by, notes) '
-                'VALUES (:hex_id, :hex_code, :hunter_name, :week, :route_order, :assigned_by, :notes)'
+                '(hex_id, hex_code, hunter_name, week, route_order, assigned_by, notes, days) '
+                'VALUES (:hex_id, :hex_code, :hunter_name, :week, :route_order, :assigned_by, :notes, :days)'
             ), {
                 'hex_id': a.hex_id, 'hex_code': a.hex_code, 'hunter_name': a.hunter_name,
                 'week': wk, 'route_order': a.route_order, 'assigned_by': payload.assigned_by,
                 'notes': a.notes,
+                'days': ','.join(str(d) for d in a.days) if a.days else '',
             })
     return {'saved': len(payload.assignments), 'week': wk}
 
