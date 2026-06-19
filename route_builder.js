@@ -265,9 +265,10 @@
       if (e.target.tagName === 'BUTTON') return; // no interferir con botones
       e.preventDefault();
       var rect = panel.getBoundingClientRect();
-      // Convertir posición actual a left/top fijos (puede estar anclado a right)
+      // Convertir posición actual a left/top+height fijos (sin bottom, el panel perdería su altura acotada)
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
+      panel.style.height = rect.height + 'px';
       panel.style.left = rect.left + 'px';
       panel.style.top  = rect.top  + 'px';
       startX = e.clientX; startY = e.clientY;
