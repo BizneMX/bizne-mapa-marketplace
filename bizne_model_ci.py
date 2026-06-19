@@ -373,7 +373,7 @@ FROM (
         ) sm7 ON sm7.id = s.id
         LEFT JOIN (
             SELECT ss2.id AS service_id,
-                COALESCE(BOOL_OR(lm.name ILIKE '%carta%' AND ss2.menu_image_status='approved'),FALSE) AS menu_a_la_carta,
+                COALESCE(BOOL_OR(lm.name ILIKE '%carta%'),FALSE) AS menu_a_la_carta,
                 COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'),FALSE) AS menu_bizne,
                 COALESCE(BOOL_OR(lm.name ILIKE '%premium%'),FALSE) AS menu_premium,
                 COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'),FALSE) AS menu_de_dia
@@ -453,7 +453,7 @@ latest_menu AS (
 ),
 menu_flags AS (
     SELECT ss.id AS service_id,
-        COALESCE(BOOL_OR(lm.name ILIKE '%carta%' AND ss.menu_image_status = 'approved'), FALSE) AS menu_a_la_carta,
+        COALESCE(BOOL_OR(lm.name ILIKE '%carta%'), FALSE) AS menu_a_la_carta,
         COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'), FALSE) AS menu_bizne,
         COALESCE(BOOL_OR(lm.name ILIKE '%premium%'), FALSE) AS menu_premium,
         COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'), FALSE) AS menu_de_dia
