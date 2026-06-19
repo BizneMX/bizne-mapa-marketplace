@@ -210,7 +210,7 @@
       lat: z.lat, lng: z.lng, demanda_dia: z.demanda_dia, usuarios: z.usuarios,
       combined_score: z.combined_score,
       week: _currentWeek,
-      day_of_week: 0,
+      days: [],
     };
     if (index === undefined || index < 0 || index > _assignments[hunter].length) {
       _assignments[hunter].push(entry);
@@ -237,13 +237,16 @@
     renderAll();
   }
 
-  function setZoneDay(hexId, hunter, day) {
+  function toggleZoneDay(hexId, hunter, day) {
     if (!_assignments[hunter]) return;
     var z = _assignments[hunter].find(function (z) { return z.hex_id === hexId; });
     if (!z) return;
-    z.day_of_week = parseInt(day, 10);
+    if (!z.days) z.days = z.day_of_week ? [z.day_of_week] : [];
+    var d = parseInt(day, 10);
+    var idx = z.days.indexOf(d);
+    if (idx >= 0) z.days.splice(idx, 1);
+    else z.days.push(d);
     if (typeof saveAssignmentsToStorage === 'function') saveAssignmentsToStorage();
-    // Re-render solo las lanes para actualizar botones de Maps por día
     renderLanes();
   }
 
@@ -262,9 +265,10 @@
       if (e.target.tagName === 'BUTTON') return; // no interferir con botones
       e.preventDefault();
       var rect = panel.getBoundingClientRect();
-      // Convertir posición actual a left/top fijos (puede estar anclado a right)
+      // Convertir posición actual a left/top+height fijos (sin bottom, el panel perdería su altura acotada)
       panel.style.right = 'auto';
       panel.style.bottom = 'auto';
+      panel.style.height = rect.height + 'px';
       panel.style.left = rect.left + 'px';
       panel.style.top  = rect.top  + 'px';
       startX = e.clientX; startY = e.clientY;
@@ -540,7 +544,11 @@
       lane.style.borderColor = color;
       var DAY_LABELS_SHORT = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
       var dayGroups = [[], [], [], [], [], []];
-      zones.forEach(function (z) { dayGroups[z.day_of_week || 0].push(z); });
+      zones.forEach(function (z) {
+        var ds = z.days && z.days.length ? z.days : (z.day_of_week ? [z.day_of_week] : []);
+        if (!ds.length) { dayGroups[0].push(z); return; }
+        ds.forEach(function (d) { if (d >= 1 && d <= 5) dayGroups[d].push(z); });
+      });
       var mapsBtns = '';
       for (var d = 1; d <= 5; d++) {
         if (dayGroups[d].length) {
@@ -570,13 +578,18 @@
         if (dbAssigned[z.hex_id]) d.style.borderColor = color;
         d.setAttribute('data-hex', z.hex_id);
         var zz = ZONE_BY_ID[z.hex_id] || ensureZone(z.hex_id) || z;
-        var DAY_OPTS = ['— Día —', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie'];
-        var daySelHtml = '<select data-dayhex="' + z.hex_id + '" data-hunter="' + h + '" ' +
-          'style="font-size:9px;border:none;background:transparent;color:#94a3b8;cursor:pointer;' +
-          'margin-left:4px;flex-shrink:0" title="Asignar día">' +
-          DAY_OPTS.map(function (dl, di) {
-            return '<option value="' + di + '"' + ((z.day_of_week || 0) === di ? ' selected' : '') + '>' + dl + '</option>';
-          }).join('') + '</select>';
+        var DAY_KEYS = ['L', 'M', 'X', 'J', 'V'];
+        var zDays = z.days && z.days.length ? z.days : (z.day_of_week ? [z.day_of_week] : []);
+        var daySelHtml = '<span style="display:flex;gap:2px;margin-left:4px;flex-shrink:0">' +
+          DAY_KEYS.map(function (dl, di) {
+            var dn = di + 1;
+            var active = zDays.indexOf(dn) >= 0;
+            return '<button data-dayhex="' + z.hex_id + '" data-hunter="' + h + '" data-day="' + dn + '" ' +
+              'style="font-size:8px;width:16px;height:16px;padding:0;border-radius:3px;cursor:pointer;border:1px solid ' +
+              (active ? '#0ea5e9' : '#334155') + ';background:' + (active ? '#0ea5e9' : 'transparent') +
+              ';color:' + (active ? '#fff' : '#64748b') + '" title="' + ['Lun','Mar','Mié','Jue','Vie'][di] + '">' +
+              dl + '</button>';
+          }).join('') + '</span>';
         d.innerHTML = '<span class="rb-ord" style="background:' + color + '">' + (i + 1) + '</span>' +
           cardHTML(zz, { order: true }) + daySelHtml +
           '<button data-rmhex="' + z.hex_id + '" style="margin-left:auto;flex-shrink:0;background:none;border:none;' +
@@ -585,9 +598,12 @@
           e.stopPropagation();
           unassignZone(this.getAttribute('data-rmhex'));
         };
-        d.querySelector('[data-dayhex]').onchange = function () {
-          setZoneDay(this.getAttribute('data-dayhex'), this.getAttribute('data-hunter'), this.value);
-        };
+        d.querySelectorAll('[data-dayhex]').forEach(function (btn) {
+          btn.onclick = function (e) {
+            e.stopPropagation();
+            toggleZoneDay(this.getAttribute('data-dayhex'), this.getAttribute('data-hunter'), this.getAttribute('data-day'));
+          };
+        });
         zEl.appendChild(d);
       });
       if (window.Sortable) {
@@ -631,6 +647,12 @@
           if (!ZONE_BY_ID[r.hex_id]) return;
           if (assignedHunterOf(r.hex_id)) return;       // lo local manda sobre lo de BD
           assignZone(r.hex_id, r.hunter_name, (r.route_order || 1) - 1);
+          // Restaurar días asignados desde BD
+          var h = r.hunter_name;
+          if (_assignments[h]) {
+            var z = _assignments[h].find(function (z) { return z.hex_id === r.hex_id; });
+            if (z && r.days) z.days = Array.isArray(r.days) ? r.days : [];
+          }
           dbAssigned[r.hex_id] = true;
         });
         chatSys('📥 ' + rows.length + ' asignaciones cargadas de la BD (borde punteado).');
@@ -653,7 +675,7 @@
           hex_id: z.hex_id, hex_code: z.hex_code || (ZONE_BY_ID[z.hex_id] || {}).hex_code || '',
           hunter_name: h, route_order: i + 1, notes: z.zona || '',
           week: _currentWeek,
-          day_of_week: z.day_of_week || 0,
+          days: z.days && z.days.length ? z.days : (z.day_of_week ? [z.day_of_week] : []),
         });
       });
     });
@@ -788,7 +810,7 @@
           Object.keys(_assignments).forEach(function (h) {
             _assignments[h].forEach(function (z) {
               if (!z.week) z.week = _currentWeek;
-              if (z.day_of_week === undefined) z.day_of_week = 0;
+              if (!z.days) z.days = z.day_of_week ? [z.day_of_week] : [];
             });
           });
         }
