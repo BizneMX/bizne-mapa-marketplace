@@ -298,7 +298,7 @@
     '#rb-left.open,#rb-right.open{display:flex}',
     '.rb-head{background:#1e293b;padding:9px 12px;font-size:11px;font-weight:700;letter-spacing:.5px;',
     '  display:flex;justify-content:space-between;align-items:center;flex-shrink:0}',
-    '.rb-body{flex:1;overflow-y:auto;padding:8px}',
+    '.rb-body{flex:1;overflow-y:auto!important;padding:8px}',
     '.rb-filters{display:flex;gap:4px;padding:8px 8px 0;flex-wrap:wrap;flex-shrink:0}',
     '.rb-fbtn{font-size:9px;padding:3px 8px;border-radius:10px;border:1px solid #334155;background:none;',
     '  color:#94a3b8;cursor:pointer}',
@@ -485,6 +485,10 @@
           var hexId = evt.item.getAttribute('data-hex');
           unassignZone(hexId);
         },
+        onEnd: function () {
+          var body = document.querySelector('.rb-body');
+          if (body) body.style.overflow = '';
+        },
       });
     }
   }
@@ -617,6 +621,10 @@
             reorderLane(h, Array.prototype.map.call(zEl.children, function (c) {
               return c.getAttribute('data-hex');
             }));
+          },
+          onEnd: function () {
+            var body = document.querySelector('.rb-body');
+            if (body) body.style.overflow = '';
           },
         });
       }
