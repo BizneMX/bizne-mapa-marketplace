@@ -2,52 +2,69 @@
 api_server.py — API mínimo para el Route Builder del mapa Bizne (staging).
 
 Endpoints:
-  GET  /api/assignments        → asignaciones actuales (tabla hunter_zone_assignments)
+  GET  /api/assignments        → asignaciones actuales (tabla DynamoDB)
   POST /api/assignments        → guarda el snapshot completo de asignaciones
   POST /api/chat               → chat con Claude (claude-haiku-4-5) con contexto de zonas
 
-Debe correr DENTRO de la VPC (la BD no es pública) — p.ej. el mismo host del MCP.
-Ver DEPLOY_API.md para systemd/nginx.
-
 Variables de entorno:
-  DATABASE_URL  (o DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD)
-      ⚠ Usuario con permisos de ESCRITURA (redash_reader es read-only).
-  ANTHROPIC_API_KEY      — para /api/chat
-  RB_CORS_ORIGINS        — orígenes permitidos, coma-separados (default: *)
+  AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION  — credenciales AWS
+      (si corre en EC2/Lambda con IAM role, no se necesitan las dos primeras)
+  DYNAMO_TABLE      — nombre de la tabla DynamoDB (default: hunter_zone_assignments)
+  ANTHROPIC_API_KEY — para /api/chat
+  RB_CORS_ORIGINS   — orígenes permitidos, coma-separados (default: *)
 """
 import json
 import os
-from datetime import date
+from datetime import date, datetime, timezone
 
 import anthropic
+import boto3
+from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from sqlalchemy import create_engine, text
-from sqlalchemy.engine import URL
 
-# ── DB ─────────────────────────────────────────────────────────────────
-DDL = """
-CREATE TABLE IF NOT EXISTS hunter_zone_assignments (
-    id SERIAL PRIMARY KEY,
-    hex_id VARCHAR(20) NOT NULL,
-    hex_code VARCHAR(10),
-    hunter_name VARCHAR(100),
-    week VARCHAR(10) NOT NULL DEFAULT '',
-    route_order INTEGER,
-    assigned_at TIMESTAMP DEFAULT NOW(),
-    assigned_by VARCHAR(100),
-    notes TEXT,
-    days TEXT DEFAULT '',
-    UNIQUE(hex_id, hunter_name, week)
-);
-"""
+# ── DynamoDB ────────────────────────────────────────────────────────────
+TABLE_NAME = os.environ.get('DYNAMO_TABLE', 'hunter_zone_assignments')
 
-# Migración para tablas existentes sin columna week
-MIGRATION = """
-ALTER TABLE hunter_zone_assignments ADD COLUMN IF NOT EXISTS week VARCHAR(10) NOT NULL DEFAULT '';
-ALTER TABLE hunter_zone_assignments ADD COLUMN IF NOT EXISTS days TEXT DEFAULT '';
-"""
+# Esquema de la tabla:
+#   PK  week      (String) — "2026-W25"
+#   SK  hex_hunter (String) — "{hex_id}#{hunter_name}"
+
+_table = None
+
+
+def get_table():
+    global _table
+    if _table is not None:
+        return _table
+
+    kwargs = {'region_name': os.environ.get('AWS_REGION', 'us-east-1')}
+    dynamodb = boto3.resource('dynamodb', **kwargs)
+
+    try:
+        table = dynamodb.create_table(
+            TableName=TABLE_NAME,
+            KeySchema=[
+                {'AttributeName': 'week',       'KeyType': 'HASH'},
+                {'AttributeName': 'hex_hunter', 'KeyType': 'RANGE'},
+            ],
+            AttributeDefinitions=[
+                {'AttributeName': 'week',       'AttributeType': 'S'},
+                {'AttributeName': 'hex_hunter', 'AttributeType': 'S'},
+            ],
+            BillingMode='PAY_PER_REQUEST',
+        )
+        table.wait_until_exists()
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceInUseException':
+            table = dynamodb.Table(TABLE_NAME)
+        else:
+            raise HTTPException(503, f'DynamoDB error: {e}')
+
+    _table = table
+    return _table
 
 
 def current_iso_week() -> str:
@@ -55,39 +72,31 @@ def current_iso_week() -> str:
     y, w, _ = d.isocalendar()
     return f"{y}-W{w:02d}"
 
-_engine = None
+
+def _parse_days(raw) -> list:
+    if not raw:
+        return []
+    try:
+        return [int(x) for x in str(raw).split(',') if x.strip()]
+    except Exception:
+        return []
 
 
-def get_engine():
-    global _engine
-    if _engine is not None:
-        return _engine
-    if os.environ.get('DATABASE_URL'):
-        raw = os.environ['DATABASE_URL']
-        for prefix in ('postgres://', 'postgresql://'):
-            if raw.startswith(prefix):
-                raw = raw.replace(prefix, 'postgresql+psycopg2://', 1)
-                break
-        _engine = create_engine(raw, pool_pre_ping=True)
-    else:
-        required = ['DB_HOST', 'DB_NAME', 'DB_USER', 'DB_PASSWORD']
-        missing = [v for v in required if not os.environ.get(v)]
-        if missing:
-            raise HTTPException(503, f"BD no configurada — faltan: {', '.join(missing)}")
-        _engine = create_engine(URL.create(
-            'postgresql+psycopg2',
-            username=os.environ['DB_USER'], password=os.environ['DB_PASSWORD'],
-            host=os.environ['DB_HOST'], port=int(os.environ.get('DB_PORT', '5432')),
-            database=os.environ['DB_NAME'],
-        ), pool_pre_ping=True)
-    with _engine.begin() as conn:
-        conn.execute(text(DDL))
-        conn.execute(text(MIGRATION))
-    return _engine
+def _query_all(table, wk: str) -> list:
+    """Query con paginación automática."""
+    items, kwargs = [], {'KeyConditionExpression': Key('week').eq(wk)}
+    while True:
+        resp = table.query(**kwargs)
+        items.extend(resp.get('Items', []))
+        last = resp.get('LastEvaluatedKey')
+        if not last:
+            break
+        kwargs['ExclusiveStartKey'] = last
+    return items
 
 
 # ── App ────────────────────────────────────────────────────────────────
-app = FastAPI(title='Bizne Route Builder API', version='1.0')
+app = FastAPI(title='Bizne Route Builder API', version='2.0')
 
 _origins = [o.strip() for o in os.environ.get('RB_CORS_ORIGINS', '*').split(',')]
 app.add_middleware(
@@ -127,45 +136,54 @@ def health():
 @app.get('/api/assignments')
 def get_assignments(week: str = Query(default='')):
     wk = week or current_iso_week()
-    engine = get_engine()
-    with engine.connect() as conn:
-        rows = conn.execute(text(
-            'SELECT hex_id, hex_code, hunter_name, week, route_order, assigned_at, assigned_by, notes, days '
-            'FROM hunter_zone_assignments WHERE week = :week ORDER BY hunter_name, route_order'
-        ), {'week': wk}).mappings().all()
-    def _parse_days(raw):
-        if not raw:
-            return []
-        try:
-            return [int(x) for x in str(raw).split(',') if x.strip()]
-        except Exception:
-            return []
+    table = get_table()
+    items = _query_all(table, wk)
+    items.sort(key=lambda r: (r.get('hunter_name', ''), int(r.get('route_order', 1))))
     result = []
-    for r in rows:
-        row = dict(r)
-        row['days'] = _parse_days(row.get('days', ''))
-        result.append(row)
+    for item in items:
+        result.append({
+            'hex_id':       item.get('hex_id', ''),
+            'hex_code':     item.get('hex_code', ''),
+            'hunter_name':  item.get('hunter_name', ''),
+            'week':         item.get('week', wk),
+            'route_order':  int(item.get('route_order', 1)),
+            'assigned_at':  item.get('assigned_at', ''),
+            'assigned_by':  item.get('assigned_by', ''),
+            'notes':        item.get('notes', ''),
+            'days':         _parse_days(item.get('days', '')),
+        })
     return {'assignments': result, 'week': wk}
 
 
 @app.post('/api/assignments')
 def save_assignments(payload: SavePayload):
-    """Guarda el snapshot de la semana: reemplaza solo las asignaciones de esa semana."""
+    """Reemplaza el snapshot completo de la semana."""
     wk = payload.week or current_iso_week()
-    engine = get_engine()
-    with engine.begin() as conn:
-        conn.execute(text('DELETE FROM hunter_zone_assignments WHERE week = :week'), {'week': wk})
+    table = get_table()
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Borrar asignaciones existentes de la semana
+    existing = _query_all(table, wk)
+    with table.batch_writer() as batch:
+        for item in existing:
+            batch.delete_item(Key={'week': item['week'], 'hex_hunter': item['hex_hunter']})
+
+    # Insertar nuevas asignaciones
+    with table.batch_writer() as batch:
         for a in payload.assignments:
-            conn.execute(text(
-                'INSERT INTO hunter_zone_assignments '
-                '(hex_id, hex_code, hunter_name, week, route_order, assigned_by, notes, days) '
-                'VALUES (:hex_id, :hex_code, :hunter_name, :week, :route_order, :assigned_by, :notes, :days)'
-            ), {
-                'hex_id': a.hex_id, 'hex_code': a.hex_code, 'hunter_name': a.hunter_name,
-                'week': wk, 'route_order': a.route_order, 'assigned_by': payload.assigned_by,
-                'notes': a.notes,
-                'days': ','.join(str(d) for d in a.days) if a.days else '',
+            batch.put_item(Item={
+                'week':         wk,
+                'hex_hunter':   f"{a.hex_id}#{a.hunter_name}",
+                'hex_id':       a.hex_id,
+                'hex_code':     a.hex_code,
+                'hunter_name':  a.hunter_name,
+                'route_order':  a.route_order,
+                'assigned_by':  payload.assigned_by,
+                'notes':        a.notes,
+                'days':         ','.join(str(d) for d in a.days) if a.days else '',
+                'assigned_at':  now,
             })
+
     return {'saved': len(payload.assignments), 'week': wk}
 
 
@@ -195,10 +213,10 @@ CHAT_SCHEMA = {
             'items': {
                 'type': 'object',
                 'properties': {
-                    'action': {'type': 'string', 'enum': ['assign']},
-                    'hex_id': {'type': 'string'},
-                    'hex_code': {'type': 'string'},
-                    'hunter': {'type': 'string'},
+                    'action':      {'type': 'string', 'enum': ['assign']},
+                    'hex_id':      {'type': 'string'},
+                    'hex_code':    {'type': 'string'},
+                    'hunter':      {'type': 'string'},
                     'route_order': {'type': 'integer'},
                 },
                 'required': ['action', 'hex_code', 'hunter'],
@@ -236,7 +254,7 @@ def chat(payload: ChatPayload):
     )
     try:
         response = client.messages.create(
-            model='claude-haiku-4-5',   # respuestas rápidas, pedido explícito
+            model='claude-haiku-4-5',
             max_tokens=2000,
             system=[{
                 'type': 'text',

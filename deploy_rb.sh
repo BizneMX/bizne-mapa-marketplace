@@ -27,7 +27,7 @@ if [ ! -d "$VENV" ]; then
   echo "✓ Virtualenv creado en $VENV"
 fi
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q fastapi "uvicorn[standard]" anthropic sqlalchemy psycopg2-binary
+"$VENV/bin/pip" install -q fastapi "uvicorn[standard]" anthropic boto3
 echo "✓ Dependencias instaladas"
 
 # ── 3. Variables de entorno ─────────────────────────────────────────────
@@ -35,13 +35,23 @@ if [ ! -f "$ENV_FILE" ]; then
   echo ""
   echo "Configuración de entorno (se guarda en $ENV_FILE, chmod 600):"
   echo ""
-  read -rsp "  DB password para rb_writer: " DB_PASS; echo ""
+  read -rp  "  AWS_REGION (ej. us-east-1): " AWS_REGION
+  AWS_REGION="${AWS_REGION:-us-east-1}"
+  echo ""
+  echo "  Si el servidor tiene IAM Role con permisos DynamoDB, deja vacíos los siguientes:"
+  read -rsp "  AWS_ACCESS_KEY_ID (opcional si hay IAM Role): " AWS_KEY; echo ""
+  read -rsp "  AWS_SECRET_ACCESS_KEY (opcional si hay IAM Role): " AWS_SECRET; echo ""
   read -rsp "  ANTHROPIC_API_KEY (sk-ant-...): " ANT_KEY; echo ""
+  read -rp  "  DYNAMO_TABLE (default: hunter_zone_assignments): " DYNAMO_TABLE
+  DYNAMO_TABLE="${DYNAMO_TABLE:-hunter_zone_assignments}"
   read -rp  "  CORS origins (default: *): " CORS_ORIGINS
   CORS_ORIGINS="${CORS_ORIGINS:-*}"
 
   cat > "$ENV_FILE" <<EOF
-DATABASE_URL=postgresql://rb_writer:${DB_PASS}@10.200.20.198:5432/bizne_api20_staging
+AWS_REGION=${AWS_REGION}
+$([ -n "${AWS_KEY:-}" ] && echo "AWS_ACCESS_KEY_ID=${AWS_KEY}" || echo "# AWS_ACCESS_KEY_ID= (usando IAM Role)")
+$([ -n "${AWS_SECRET:-}" ] && echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET}" || echo "# AWS_SECRET_ACCESS_KEY= (usando IAM Role)")
+DYNAMO_TABLE=${DYNAMO_TABLE}
 ANTHROPIC_API_KEY=${ANT_KEY}
 RB_CORS_ORIGINS=${CORS_ORIGINS}
 PORT=${PORT}
@@ -52,27 +62,7 @@ else
   echo "✓ $ENV_FILE ya existe — no se sobreescribe"
 fi
 
-# ── 4. Usuario de BD (requiere acceso psql con privilegios) ─────────────
-echo ""
-echo "¿Quieres crear el usuario rb_writer en PostgreSQL ahora? [s/N]"
-read -r CREATE_USER
-if [[ "$CREATE_USER" =~ ^[sS]$ ]]; then
-  read -rsp "  Password de postgres (superuser): " PG_PASS; echo ""
-  source "$ENV_FILE"
-  PGPASSWORD="$PG_PASS" psql -h 10.200.20.198 -U postgres -d bizne_api20_staging <<SQL
-DO \$\$
-BEGIN
-  IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'rb_writer') THEN
-    CREATE USER rb_writer WITH PASSWORD '$(grep DB_PASS "$ENV_FILE" | cut -d: -f3 | cut -d@ -f1)';
-  END IF;
-END
-\$\$;
-GRANT CONNECT ON DATABASE bizne_api20_staging TO rb_writer;
-SQL
-  echo "✓ Usuario rb_writer listo (la tabla la crea el API en el primer arranque)"
-fi
-
-# ── 5. Servicio systemd ─────────────────────────────────────────────────
+# ── 4. Servicio systemd ─────────────────────────────────────────────────
 cat > /etc/systemd/system/${SERVICE}.service <<EOF
 [Unit]
 Description=Bizne Route Builder API
@@ -94,7 +84,7 @@ systemctl enable "$SERVICE"
 systemctl restart "$SERVICE"
 echo "✓ Servicio $SERVICE activo"
 
-# ── 6. Verificar health ─────────────────────────────────────────────────
+# ── 5. Verificar health ─────────────────────────────────────────────────
 sleep 2
 if curl -sf "http://127.0.0.1:${PORT}/api/health" > /dev/null; then
   echo "✓ Health check OK — el API responde en el puerto $PORT"
@@ -103,7 +93,7 @@ else
   exit 1
 fi
 
-# ── 7. Snippet nginx ────────────────────────────────────────────────────
+# ── 6. Snippet nginx ────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════════════════"
 echo "  Agrega esto a tu nginx.conf:"
