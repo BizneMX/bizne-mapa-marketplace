@@ -2,27 +2,32 @@
 api_server.py — API mínimo para el Route Builder del mapa Bizne (staging).
 
 Endpoints:
-  GET  /api/assignments        → asignaciones actuales (tabla DynamoDB)
-  POST /api/assignments        → guarda el snapshot completo de asignaciones
-  POST /api/chat               → chat con Claude (claude-haiku-4-5) con contexto de zonas
+  GET  /api/assignments          → asignaciones actuales (tabla DynamoDB)
+  POST /api/assignments          → guarda el snapshot completo de asignaciones
+  GET  /api/hunter/ruta          → hexes asignados al hunter autenticado (para la app de Hunting)
+  POST /api/chat                 → chat con Claude (claude-haiku-4-5) con contexto de zonas
 
 Variables de entorno:
   AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_REGION  — credenciales AWS
       (si corre en EC2/Lambda con IAM role, no se necesitan las dos primeras)
-  DYNAMO_TABLE      — nombre de la tabla DynamoDB (default: hunter_zone_assignments)
-  ANTHROPIC_API_KEY — para /api/chat
-  RB_CORS_ORIGINS   — orígenes permitidos, coma-separados (default: *)
+  DYNAMO_TABLE          — nombre de la tabla DynamoDB (default: hunter_zone_assignments)
+  ANTHROPIC_API_KEY     — para /api/chat
+  RB_CORS_ORIGINS       — orígenes permitidos, coma-separados (default: *)
+  BIZNE_JWT_SECRET      — secreto para validar el JWT emitido por la plataforma Bizne (MCP)
+  BIZNE_JWT_ALGORITHM   — algoritmo JWT (default: HS256)
+  HUNTERS_MAP           — JSON {"email": "nombre_display"} para mapear email → hunter_name
 """
 import json
 import os
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 
 import anthropic
 import boto3
-from boto3.dynamodb.conditions import Key
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.exceptions import ClientError
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from jose import JWTError, jwt
 from pydantic import BaseModel
 
 # ── DynamoDB ────────────────────────────────────────────────────────────
@@ -185,6 +190,91 @@ def save_assignments(payload: SavePayload):
             })
 
     return {'saved': len(payload.assignments), 'week': wk}
+
+
+# ── Auth JWT (MCP Bizne) ───────────────────────────────────────────────
+def _extract_jwt(request: Request) -> str | None:
+    token = request.cookies.get('bizne_token')
+    if token:
+        return token
+    auth = request.headers.get('Authorization') or request.headers.get('authorization')
+    if auth and auth.lower().startswith('bearer '):
+        return auth.split(' ', 1)[1].strip()
+    return None
+
+
+def _get_email_from_jwt(request: Request) -> str:
+    secret = os.environ.get('BIZNE_JWT_SECRET')
+    if not secret:
+        raise HTTPException(503, 'BIZNE_JWT_SECRET no configurado')
+    token = _extract_jwt(request)
+    if not token:
+        raise HTTPException(401, 'No autenticado: falta el token de la plataforma (cookie bizne_token).')
+    try:
+        claims = jwt.decode(
+            token, secret,
+            algorithms=[os.environ.get('BIZNE_JWT_ALGORITHM', 'HS256')],
+            options={'verify_aud': False},
+        )
+    except JWTError as exc:
+        raise HTTPException(401, f'Token inválido o expirado: {exc}') from exc
+    email = claims.get('sub')
+    if not email:
+        raise HTTPException(401, "Token sin claim 'sub'.")
+    return email
+
+
+def _hunters_map() -> dict:
+    raw = os.environ.get('HUNTERS_MAP', '{}')
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {}
+
+
+def _iso_week_to_monday(iso_week: str) -> str:
+    """'2026-W26' → '2026-06-22'"""
+    try:
+        m = iso_week.split('-W')
+        year, week = int(m[0]), int(m[1])
+        jan4 = date(year, 1, 4)
+        monday = jan4 - timedelta(days=jan4.weekday()) + timedelta(weeks=week - 1)
+        return monday.isoformat()
+    except Exception:
+        return date.today().isoformat()
+
+
+@app.get('/api/hunter/ruta')
+def hunter_ruta(request: Request, week: str = Query(default='')):
+    """HEXes asignados al hunter autenticado (para la app de Hunting).
+    Identidad extraída del JWT emitido por la plataforma Bizne (MCP).
+    """
+    email = _get_email_from_jwt(request)
+    wk = week or current_iso_week()
+    hunter_name = _hunters_map().get(email)
+    if not hunter_name:
+        return {'hexes': [], 'week': wk}
+
+    table = get_table()
+    items = _query_all(table, wk)
+    items = [i for i in items if i.get('hunter_name') == hunter_name]
+    items.sort(key=lambda i: int(i.get('route_order', 1)))
+
+    fecha_visita = _iso_week_to_monday(wk)
+    hexes = [
+        {
+            'hex_id':      item['hex_id'],
+            'hex_code':    item.get('hex_code', ''),
+            'colonia':     item.get('notes', ''),
+            'referencia':  None,
+            'fecha_visita': fecha_visita,
+            'estado':      'pendiente',
+            'route_order': int(item.get('route_order', 1)),
+            'days':        _parse_days(item.get('days', '')),
+        }
+        for item in items
+    ]
+    return {'hexes': hexes, 'week': wk}
 
 
 # ── Chat con Claude ────────────────────────────────────────────────────
