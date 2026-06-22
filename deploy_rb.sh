@@ -27,7 +27,7 @@ if [ ! -d "$VENV" ]; then
   echo "✓ Virtualenv creado en $VENV"
 fi
 "$VENV/bin/pip" install -q --upgrade pip
-"$VENV/bin/pip" install -q fastapi "uvicorn[standard]" anthropic boto3
+"$VENV/bin/pip" install -q fastapi "uvicorn[standard]" anthropic boto3 "python-jose[cryptography]"
 echo "✓ Dependencias instaladas"
 
 # ── 3. Variables de entorno ─────────────────────────────────────────────
