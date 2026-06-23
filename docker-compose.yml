@@ -1,0 +1,16 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: bizne_rb_db
+    environment:
+      POSTGRES_DB: bizne_rb
+      POSTGRES_USER: rb_user
+      POSTGRES_PASSWORD: rb_pass
+    ports:
+      - "5433:5432"
+    volumes:
+      - bizne_rb_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+volumes:
+  bizne_rb_data:

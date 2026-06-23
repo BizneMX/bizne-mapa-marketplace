@@ -69,13 +69,9 @@
     _currentWeek = isoWeekOf(mon);
     var wk = document.getElementById('rb-week');
     if (wk) wk.textContent = weekLabel(_currentWeek);
-    // Limpiar estado y recargar para la nueva semana
+    // Limpiar estado y recargar desde DB para la nueva semana
     window._assignments = {};
     dbAssigned = {};
-    try {
-      var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
-      if (saved) window._assignments = JSON.parse(saved);
-    } catch (e) {}
     renderAll();
     loadFromDB();
   }
@@ -653,9 +649,7 @@
         if (!rows.length) return;
         rows.forEach(function (r) {
           if (!ZONE_BY_ID[r.hex_id]) return;
-          if (assignedHunterOf(r.hex_id)) return;       // lo local manda sobre lo de BD
           assignZone(r.hex_id, r.hunter_name, (r.route_order || 1) - 1);
-          // Restaurar días asignados desde BD
           var h = r.hunter_name;
           if (_assignments[h]) {
             var z = _assignments[h].find(function (z) { return z.hex_id === r.hex_id; });
@@ -663,17 +657,17 @@
           }
           dbAssigned[r.hex_id] = true;
         });
-        chatSys('📥 ' + rows.length + ' asignaciones cargadas de la BD (borde punteado).');
+        chatSys('📥 ' + rows.length + ' asignaciones cargadas de la BD.');
         renderAll();
       })
-      .catch(function (e) { chatSys('⚠ No se pudo leer la BD (' + e.message + ') — trabajando con localStorage.'); });
+      .catch(function (e) { chatSys('⚠ No se pudo leer la BD (' + e.message + '). Verifica que el API esté corriendo.'); });
   }
 
   function saveToDB() {
     var api = apiUrl();
     var btn = document.getElementById('rb-save-db');
     if (!api) {
-      chatSys('⚠ No hay API configurado (⚙). Guardado en localStorage; usa ⬇ CSV para exportar.');
+      chatSys('⚠ No hay API configurado (⚙). Configura la URL del servidor en ⚙ para guardar.');
       return;
     }
     var payload = { assigned_by: 'mapa-staging', week: _currentWeek, assignments: [] };
@@ -700,8 +694,8 @@
         setTimeout(function () { btn.textContent = '💾 Guardar asignación en DB'; }, 2500);
       })
       .catch(function (e) {
-        btn.textContent = '❌ Error — quedó en localStorage';
-        chatSys('⚠ Error al guardar en BD (' + e.message + '). Asignación intacta en localStorage; exporta CSV como respaldo.');
+        btn.textContent = '❌ Error al guardar';
+        chatSys('⚠ Error al guardar en BD (' + e.message + '). Verifica que el servidor esté corriendo.');
         setTimeout(function () { btn.textContent = '💾 Guardar asignación en DB'; }, 3500);
       });
   }
@@ -810,19 +804,6 @@
       }
       var wk = document.getElementById('rb-week');
       if (wk) wk.textContent = weekLabel(_currentWeek);
-      // Cargar asignaciones locales de la semana activa
-      try {
-        var saved = localStorage.getItem('bizne_assign_' + _currentWeek);
-        if (saved && !Object.keys(_assignments).length) {
-          _assignments = JSON.parse(saved);
-          Object.keys(_assignments).forEach(function (h) {
-            _assignments[h].forEach(function (z) {
-              if (!z.week) z.week = _currentWeek;
-              if (!z.days) z.days = z.day_of_week ? [z.day_of_week] : [];
-            });
-          });
-        }
-      } catch (e) {}
       renderAll();
       loadFromDB();
     } else {
