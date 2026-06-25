@@ -155,17 +155,24 @@
     return h ? h.nombre : String(uid);
   }
 
+  function _applyHunters(list) {
+    _hunterById = {};
+    (list || []).forEach(function (h) { _hunterById[String(h.id)] = h; });
+    window.HUNTERS_LIST = Object.values(_hunterById).map(function (h) { return h.nombre; });
+    renderHunterPicker();
+  }
+
   function loadHunters() {
+    // Fallback inmediato desde datos bakeados en el HTML
+    var baked = window.RB_CONFIG && window.RB_CONFIG.hunters;
+    if (baked && baked.length) { _applyHunters(baked); }
+
+    // Si hay API pública, refresca desde la BD (puede haber cambios desde el último build)
     var api = apiUrl();
     if (!api) return;
     fetch(api + '/api/hunters')
       .then(function (r) { return r.json(); })
-      .then(function (data) {
-        _hunterById = {};
-        (data.hunters || []).forEach(function (h) { _hunterById[h.id] = h; });
-        window.HUNTERS_LIST = Object.values(_hunterById).map(function (h) { return h.nombre; });
-        renderHunterPicker();
-      })
+      .then(function (data) { _applyHunters(data.hunters); })
       .catch(function () {});
   }
 

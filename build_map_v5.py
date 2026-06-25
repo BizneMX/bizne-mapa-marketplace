@@ -4759,10 +4759,35 @@ if _os.path.exists(_RB_JS_PATH):
         _end   = _html.rindex(_RB_MARKER) + len(_RB_MARKER)
         _html  = _html[:_start] + _html[_end:]
     _api_url = _os.environ.get('RB_API_URL', '')
+
+    # Hunters desde RDS para fallback cuando no hay API pública
+    _hunters_data = []
+    try:
+        import psycopg2 as _pg
+        _db_url = _os.environ.get('DATABASE_URL', '')
+        if _db_url:
+            _conn = _pg.connect(_db_url)
+            _cur  = _conn.cursor()
+            _cur.execute("""
+                SELECT id, nombre, apellido, email
+                FROM usuarios
+                WHERE activo = true AND auth_role = 'hunters'
+                ORDER BY nombre
+            """)
+            _hunters_data = [
+                {'id': r[0], 'nombre': r[1] or '', 'apellido': r[2] or '', 'email': r[3]}
+                for r in _cur.fetchall()
+            ]
+            _conn.close()
+            print(f"  👥 {len(_hunters_data)} hunters bakeados desde RDS")
+    except Exception as _e:
+        print(f"  ⚠ No se pudo cargar hunters desde DB: {_e}")
+
     _rb_block = (
         f'{_RB_MARKER}\n'
         f'<script src="{_SORTABLE}"></script>\n'
-        f'<script>window.RB_CONFIG = {{"apiUrl": {json.dumps(_api_url)}}};</script>\n'
+        f'<script>window.RB_CONFIG = {{"apiUrl": {json.dumps(_api_url)}, '
+        f'"hunters": {json.dumps(_hunters_data, ensure_ascii=False)}}};</script>\n'
         f'<script>\n{_rb_js}\n</script>\n'
         f'{_RB_MARKER}'
     )
