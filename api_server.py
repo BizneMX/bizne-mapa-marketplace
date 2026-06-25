@@ -36,16 +36,17 @@ CREATE TABLE IF NOT EXISTS hunter_zone_assignments (
     week          VARCHAR(10)  NOT NULL,
     hex_id        VARCHAR(30)  NOT NULL,
     hex_code      VARCHAR(20)  NOT NULL DEFAULT '',
-    hunter_name   VARCHAR(100) NOT NULL,
+    hunter_name   VARCHAR(100) NOT NULL DEFAULT '',
+    user_id       INTEGER      REFERENCES usuarios(id),
     route_order   INTEGER      NOT NULL DEFAULT 1,
     assigned_by   VARCHAR(50)  DEFAULT 'mapa',
     notes         TEXT         DEFAULT '',
     days          VARCHAR(20)  DEFAULT '',
     assigned_at   TIMESTAMPTZ  DEFAULT NOW(),
-    CONSTRAINT uq_week_hex_hunter UNIQUE(week, hex_id, hunter_name)
+    CONSTRAINT uq_week_hex_user UNIQUE(week, hex_id, user_id)
 );
-CREATE INDEX IF NOT EXISTS idx_assignments_week   ON hunter_zone_assignments(week);
-CREATE INDEX IF NOT EXISTS idx_assignments_hunter ON hunter_zone_assignments(hunter_name);
+CREATE INDEX IF NOT EXISTS idx_assignments_week    ON hunter_zone_assignments(week);
+CREATE INDEX IF NOT EXISTS idx_assignments_user_id ON hunter_zone_assignments(user_id);
 """
 
 
@@ -92,7 +93,7 @@ app.add_middleware(
 class Assignment(BaseModel):
     hex_id: str
     hex_code: str = ''
-    hunter_name: str
+    user_id: int
     route_order: int = 1
     notes: str = ''
     days: List[int] = []
@@ -115,6 +116,22 @@ def health():
     return {'ok': True}
 
 
+@app.get('/api/hunters')
+def get_hunters():
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(text("""
+            SELECT id, nombre, apellido, email
+            FROM usuarios
+            WHERE activo = true AND auth_role = 'hunters'
+            ORDER BY nombre
+        """)).fetchall()
+    return {'hunters': [
+        {'id': r.id, 'nombre': r.nombre or '', 'apellido': r.apellido or '', 'email': r.email}
+        for r in rows
+    ]}
+
+
 @app.get('/api/assignments')
 def get_assignments(week: str = Query(default='')):
     wk = week or current_iso_week()
@@ -122,11 +139,14 @@ def get_assignments(week: str = Query(default='')):
     with engine.connect() as conn:
         rows = conn.execute(
             text("""
-                SELECT hex_id, hex_code, hunter_name, week, route_order,
-                       assigned_at, assigned_by, notes, days
-                FROM hunter_zone_assignments
-                WHERE week = :week
-                ORDER BY hunter_name, route_order
+                SELECT hza.hex_id, hza.hex_code, hza.user_id,
+                       COALESCE(u.nombre, hza.hunter_name) AS hunter_name,
+                       hza.week, hza.route_order,
+                       hza.assigned_at, hza.assigned_by, hza.notes, hza.days
+                FROM hunter_zone_assignments hza
+                LEFT JOIN usuarios u ON u.id = hza.user_id
+                WHERE hza.week = :week
+                ORDER BY hunter_name, hza.route_order
             """),
             {'week': wk},
         ).fetchall()
@@ -134,6 +154,7 @@ def get_assignments(week: str = Query(default='')):
         {
             'hex_id':      r.hex_id,
             'hex_code':    r.hex_code,
+            'user_id':     r.user_id,
             'hunter_name': r.hunter_name,
             'week':        r.week,
             'route_order': r.route_order,
@@ -152,6 +173,18 @@ def save_assignments(payload: SavePayload):
     wk = payload.week or current_iso_week()
     engine = get_engine()
     now = datetime.now(timezone.utc)
+
+    # Resolver hunter_name desde user_id
+    user_ids = list({a.user_id for a in payload.assignments})
+    name_map: Dict[int, str] = {}
+    if user_ids:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text('SELECT id, nombre FROM usuarios WHERE id = ANY(:ids)'),
+                {'ids': user_ids},
+            ).fetchall()
+            name_map = {r.id: r.nombre or '' for r in rows}
+
     with engine.begin() as conn:
         conn.execute(
             text('DELETE FROM hunter_zone_assignments WHERE week = :week'),
@@ -161,10 +194,10 @@ def save_assignments(payload: SavePayload):
             conn.execute(
                 text("""
                     INSERT INTO hunter_zone_assignments
-                        (week, hex_id, hex_code, hunter_name, route_order,
+                        (week, hex_id, hex_code, user_id, hunter_name, route_order,
                          assigned_by, notes, days, assigned_at)
                     VALUES
-                        (:week, :hex_id, :hex_code, :hunter_name, :route_order,
+                        (:week, :hex_id, :hex_code, :user_id, :hunter_name, :route_order,
                          :assigned_by, :notes, :days, :assigned_at)
                 """),
                 [
@@ -172,7 +205,8 @@ def save_assignments(payload: SavePayload):
                         'week':        wk,
                         'hex_id':      a.hex_id,
                         'hex_code':    a.hex_code,
-                        'hunter_name': a.hunter_name,
+                        'user_id':     a.user_id,
+                        'hunter_name': name_map.get(a.user_id, ''),
                         'route_order': a.route_order,
                         'assigned_by': payload.assigned_by,
                         'notes':       a.notes,
@@ -241,20 +275,25 @@ def hunter_ruta(request: Request, week: str = Query(default='')):
     """HEXes asignados al hunter autenticado. Identidad extraída del JWT del MCP."""
     email = _get_email_from_jwt(request)
     wk = week or current_iso_week()
-    hunter_name = _hunters_map().get(email)
-    if not hunter_name:
-        return {'hexes': [], 'week': wk}
 
     engine = get_engine()
     with engine.connect() as conn:
+        # Resolver user_id desde email
+        row_u = conn.execute(
+            text('SELECT id FROM usuarios WHERE email = :email'),
+            {'email': email},
+        ).fetchone()
+        if not row_u:
+            return {'hexes': [], 'week': wk}
+        uid = row_u.id
         rows = conn.execute(
             text("""
                 SELECT hex_id, hex_code, notes, route_order, days
                 FROM hunter_zone_assignments
-                WHERE week = :week AND hunter_name = :hunter_name
+                WHERE week = :week AND user_id = :user_id
                 ORDER BY route_order
             """),
-            {'week': wk, 'hunter_name': hunter_name},
+            {'week': wk, 'user_id': uid},
         ).fetchall()
 
     fecha_visita = _iso_week_to_monday(wk)

@@ -24,7 +24,8 @@
 
   var ZONES = [];            // [{hex_id, hex_code, zona, tier, rank, gap, demanda_dia, usuarios, combined_score, lat, lng}]
   var ZONE_BY_ID = {};
-  var openLanes = [];        // hunters con lane abierta
+  var _hunterById = {};      // {user_id: {id, nombre, apellido, email}}
+  var openLanes = [];        // user_ids con lane abierta
   var dbAssigned = {};       // hex_id → true (asignación que vino de la BD)
   var rbLayers = null;       // L.layerGroup con hexes asignados + rutas
   var hoverLayer = null;
@@ -149,9 +150,29 @@
     return null;
   }
 
+  function _displayName(uid) {
+    var h = _hunterById[uid];
+    return h ? h.nombre : String(uid);
+  }
+
+  function loadHunters() {
+    var api = apiUrl();
+    if (!api) return;
+    fetch(api + '/api/hunters')
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        _hunterById = {};
+        (data.hunters || []).forEach(function (h) { _hunterById[h.id] = h; });
+        window.HUNTERS_LIST = Object.values(_hunterById).map(function (h) { return h.nombre; });
+        renderHunterPicker();
+      })
+      .catch(function () {});
+  }
+
   function hunterColor(h) {
     if (!window._hunterColorMap[h]) {
-      var i = (window.HUNTERS_LIST || []).indexOf(h);
+      var keys = Object.keys(_hunterById);
+      var i = keys.indexOf(String(h));
       _hunterColorMap[h] = _ASSIGN_COLORS[(i >= 0 ? i : Object.keys(_hunterColorMap).length) % _ASSIGN_COLORS.length];
     }
     return _hunterColorMap[h];
@@ -175,7 +196,7 @@
             dashArray: dbAssigned[z.hex_id] ? '5 4' : null,
             fillColor: color, fillOpacity: 0.45, opacity: 0.9,
           },
-        }).bindTooltip('<b style="color:' + color + '">' + h + '</b> · Parada #' + (i + 1) +
+        }).bindTooltip('<b style="color:' + color + '">' + _displayName(h) + '</b> · Parada #' + (i + 1) +
                        '<br>' + (z.hex_code || z.hex_id) + ' · Gap ' + z.gap, { sticky: true }));
         rbLayers.addLayer(L.marker([z.lat, z.lng], {
           icon: L.divIcon({
@@ -512,16 +533,17 @@
     var el = document.getElementById('rb-hunter-picker');
     if (!el) return;
     el.innerHTML = '';
-    (window.HUNTERS_LIST || []).forEach(function (h) {
+    Object.keys(_hunterById).forEach(function (uid) {
+      var h = _hunterById[uid];
       var lbl = document.createElement('label');
       lbl.style.cssText = 'display:flex;align-items:center;gap:3px;font-size:10px;color:#cbd5e1;cursor:pointer;' +
         'border:1px solid #334155;border-radius:10px;padding:2px 8px';
-      var on = openLanes.indexOf(h) >= 0;
+      var on = openLanes.indexOf(uid) >= 0;
       lbl.innerHTML = '<input type="checkbox" style="margin:0"' + (on ? ' checked' : '') + '>' +
-        '<span style="width:7px;height:7px;border-radius:50%;background:' + hunterColor(h) + '"></span>' + h;
+        '<span style="width:7px;height:7px;border-radius:50%;background:' + hunterColor(uid) + '"></span>' + h.nombre;
       lbl.querySelector('input').onchange = function () {
-        if (this.checked) { if (openLanes.indexOf(h) < 0) openLanes.push(h); }
-        else { openLanes = openLanes.filter(function (x) { return x !== h; }); }
+        if (this.checked) { if (openLanes.indexOf(uid) < 0) openLanes.push(uid); }
+        else { openLanes = openLanes.filter(function (x) { return x !== uid; }); }
         renderLanes();
       };
       el.appendChild(lbl);
@@ -563,10 +585,11 @@
           zones.map(function (z) { return z.lat + ',' + z.lng; }).join('/');
         mapsBtns = '<button onclick="window.open(\'' + allUrl + '\',\'_blank\')">🗺 Google Maps</button>';
       }
+      var hName = _displayName(h);
       lane.innerHTML =
         '<div class="rb-lane-head" style="color:' + color + '">' +
         '<span style="width:9px;height:9px;border-radius:50%;background:' + color + '"></span>' +
-        h + ' <span style="color:#64748b;font-weight:400">· ' + zones.length + ' zonas</span></div>' +
+        hName + ' <span style="color:#64748b;font-weight:400">· ' + zones.length + ' zonas</span></div>' +
         '<div class="rb-lane-zones" data-hunter="' + h + '"></div>' +
         '<div class="rb-lane-btns">' + mapsBtns +
         '<button class="rb-lane-share" data-h="' + h + '">🔗 Link hunter</button></div>';
@@ -649,10 +672,10 @@
         if (!rows.length) return;
         rows.forEach(function (r) {
           if (!ZONE_BY_ID[r.hex_id]) return;
-          assignZone(r.hex_id, r.hunter_name, (r.route_order || 1) - 1);
-          var h = r.hunter_name;
-          if (_assignments[h]) {
-            var z = _assignments[h].find(function (z) { return z.hex_id === r.hex_id; });
+          var uid = String(r.user_id);
+          assignZone(r.hex_id, uid, (r.route_order || 1) - 1);
+          if (_assignments[uid]) {
+            var z = _assignments[uid].find(function (z) { return z.hex_id === r.hex_id; });
             if (z && r.days) z.days = Array.isArray(r.days) ? r.days : [];
           }
           dbAssigned[r.hex_id] = true;
@@ -671,11 +694,11 @@
       return;
     }
     var payload = { assigned_by: 'mapa-staging', week: _currentWeek, assignments: [] };
-    Object.keys(_assignments).forEach(function (h) {
-      _assignments[h].forEach(function (z, i) {
+    Object.keys(_assignments).forEach(function (uid) {
+      _assignments[uid].forEach(function (z, i) {
         payload.assignments.push({
           hex_id: z.hex_id, hex_code: z.hex_code || (ZONE_BY_ID[z.hex_id] || {}).hex_code || '',
-          hunter_name: h, route_order: i + 1, notes: z.zona || '',
+          user_id: parseInt(uid, 10), route_order: i + 1, notes: z.zona || '',
           week: _currentWeek,
           days: z.days && z.days.length ? z.days : (z.day_of_week ? [z.day_of_week] : []),
         });
@@ -723,10 +746,11 @@
       if (!hexId || !ensureZone(hexId)) return;
       var b = document.createElement('button');
       b.className = 'rb-action-btn';
-      b.textContent = '✅ Asignar ' + (a.hex_code || ZONE_BY_ID[hexId].hex_code || hexId) + ' → ' + a.hunter;
+      var uid = String(a.user_id || a.hunter);
+      b.textContent = '✅ Asignar ' + (a.hex_code || ZONE_BY_ID[hexId].hex_code || hexId) + ' → ' + _displayName(uid);
       b.onclick = function () {
-        assignZone(hexId, a.hunter, a.route_order ? a.route_order - 1 : undefined);
-        if (openLanes.indexOf(a.hunter) < 0) { openLanes.push(a.hunter); renderLanes(); }
+        assignZone(hexId, uid, a.route_order ? a.route_order - 1 : undefined);
+        if (openLanes.indexOf(uid) < 0) { openLanes.push(uid); renderLanes(); }
         b.textContent = '✔ Asignado'; b.disabled = true;
       };
       box.appendChild(b);
@@ -743,7 +767,7 @@
     });
     return {
       semana: _currentWeek,
-      hunters: window.HUNTERS_LIST || [],
+      hunters: Object.values(_hunterById).map(function (h) { return {id: h.id, nombre: h.nombre}; }),
       asignaciones: asg,
       zonas: ZONES.slice(0, 150).map(function (z) {
         return {
@@ -804,6 +828,7 @@
       }
       var wk = document.getElementById('rb-week');
       if (wk) wk.textContent = weekLabel(_currentWeek);
+      loadHunters();
       renderAll();
       loadFromDB();
     } else {
