@@ -1910,7 +1910,8 @@ PANEL_HTML = """
           <button class="sv-btn" data-sv="-1" onclick="setSinVentas(-1)">Histórico</button>
           <button class="sv-btn" data-sv="-2" onclick="setSinVentasSemana()">Semana</button>
         </div>
-        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+        <div style="font-size:9px;color:#64748b;margin-top:5px;margin-bottom:2px">Creación:</div>
+        <div style="display:flex;gap:4px;align-items:center">
           <input type="date" id="sv-desde" placeholder="Desde"
             style="font-size:9px;padding:2px 4px;border:1px solid #334155;border-radius:4px;background:#1e293b;color:#e2e8f0;flex:1"
             onchange="setSinVentasRango()">
@@ -4193,15 +4194,15 @@ document.addEventListener("DOMContentLoaded", function() {{
         if (svFilter === 30) return (parseInt(p.tx_30d) || 0) === 0;
         if (svFilter === -1) return (parseInt(p.tx_historicas) || 0) === 0;
         if (svFilter === -2 || svFilter === -3) {{
-          var dst = parseInt(p.dias_sin_trx);
-          if (isNaN(dst)) dst = 9999;
+          var dc = parseInt(p.dias_creacion);
+          if (isNaN(dc)) return false;
           var fromDays = svRangeFrom ? _daysBetween(svRangeFrom) : null;
           var toDays   = svRangeTo   ? _daysBetween(svRangeTo)   : null;
           if (fromDays !== null && toDays !== null) {{
-            return dst >= toDays && dst <= fromDays;
+            return dc <= fromDays && dc >= toDays;
           }}
-          if (fromDays !== null) return dst >= fromDays;
-          if (toDays   !== null) return dst >= toDays;
+          if (fromDays !== null) return dc <= fromDays;
+          if (toDays   !== null) return dc >= toDays;
         }}
         return true;
       }}
