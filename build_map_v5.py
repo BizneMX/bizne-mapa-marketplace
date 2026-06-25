@@ -1908,6 +1908,16 @@ PANEL_HTML = """
           <button class="sv-btn" data-sv="7" onclick="setSinVentas(7)">7D</button>
           <button class="sv-btn" data-sv="30" onclick="setSinVentas(30)">30D</button>
           <button class="sv-btn" data-sv="-1" onclick="setSinVentas(-1)">Histórico</button>
+          <button class="sv-btn" data-sv="-2" onclick="setSinVentasSemana()">Semana</button>
+        </div>
+        <div style="display:flex;gap:4px;margin-top:4px;align-items:center">
+          <input type="date" id="sv-desde" placeholder="Desde"
+            style="font-size:9px;padding:2px 4px;border:1px solid #334155;border-radius:4px;background:#1e293b;color:#e2e8f0;flex:1"
+            onchange="setSinVentasRango()">
+          <span style="font-size:9px;color:#64748b">–</span>
+          <input type="date" id="sv-hasta" placeholder="Hasta"
+            style="font-size:9px;padding:2px 4px;border:1px solid #334155;border-radius:4px;background:#1e293b;color:#e2e8f0;flex:1"
+            onchange="setSinVentasRango()">
         </div>
       </div>
       <button onclick="searchNegocios('');document.getElementById('biz-search').value='';document.getElementById('biz-nuevos-7d').checked=false;document.getElementById('biz-nuevos-30d').checked=false;filterBizNuevos(0);setSinVentas(0);setHunterFilterAll(true)"
@@ -3334,11 +3344,59 @@ function _ftbActive(idx) {{
 
 // ── Filtro sin ventas (negocios activos + dormidos) ──────────────────────────
 var _svFilter = 0;
+var _svRangeFrom = null;
+var _svRangeTo   = null;
+
 function setSinVentas(days) {{
   _svFilter = days;
+  _svRangeFrom = null;
+  _svRangeTo   = null;
+  var d1 = document.getElementById('sv-desde');
+  var d2 = document.getElementById('sv-hasta');
+  if (d1) d1.value = '';
+  if (d2) d2.value = '';
   document.querySelectorAll('.sv-btn').forEach(function(b) {{
     b.classList.toggle('active', parseInt(b.getAttribute('data-sv')) === days);
   }});
+  if (typeof searchNegocios === 'function') searchNegocios(
+    (document.getElementById('biz-search') || {{}}).value || '');
+}}
+
+function setSinVentasSemana() {{
+  var today = new Date();
+  var isoWeekday = (today.getDay() + 6) % 7; // Mon=0 … Sun=6
+  // Monday of current ISO week
+  var monday = new Date(today);
+  monday.setDate(today.getDate() - isoWeekday);
+  var yyyy = monday.getFullYear();
+  var mm   = String(monday.getMonth() + 1).padStart(2, '0');
+  var dd   = String(monday.getDate()).padStart(2, '0');
+  var d1 = document.getElementById('sv-desde');
+  var d2 = document.getElementById('sv-hasta');
+  if (d1) d1.value = yyyy + '-' + mm + '-' + dd;
+  if (d2) d2.value = today.getFullYear() + '-' +
+    String(today.getMonth() + 1).padStart(2, '0') + '-' +
+    String(today.getDate()).padStart(2, '0');
+  _svFilter = -2;
+  document.querySelectorAll('.sv-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.getAttribute('data-sv') === '-2');
+  }});
+  setSinVentasRango();
+}}
+
+function setSinVentasRango() {{
+  var d1 = document.getElementById('sv-desde');
+  var d2 = document.getElementById('sv-hasta');
+  var from = d1 && d1.value ? d1.value : null;
+  var to   = d2 && d2.value ? d2.value : null;
+  _svRangeFrom = from;
+  _svRangeTo   = to;
+  if (from || to) {{
+    _svFilter = -3;
+    document.querySelectorAll('.sv-btn').forEach(function(b) {{
+      b.classList.remove('active');
+    }});
+  }}
   if (typeof searchNegocios === 'function') searchNegocios(
     (document.getElementById('biz-search') || {{}}).value || '');
 }}
@@ -4121,12 +4179,30 @@ document.addEventListener("DOMContentLoaded", function() {{
       var vis=0, tot=0;
       var daysFilter = window._bizNuevosDays || 0;
       var hunterSet  = window._bizHunterSet || null;
-      var svFilter = window._svFilter || 0;
+      var svFilter    = window._svFilter || 0;
+      var svRangeFrom = window._svRangeFrom || null;
+      var svRangeTo   = window._svRangeTo   || null;
+      var _today = new Date(); _today.setHours(0,0,0,0);
+      function _daysBetween(dateStr) {{
+        var d = new Date(dateStr + 'T00:00:00');
+        return Math.round((_today - d) / 86400000);
+      }}
       function matchSinVentas(p) {{
         if (svFilter === 0) return true;
         if (svFilter === 7)  return (parseInt(p.tx_7d)  || 0) === 0;
         if (svFilter === 30) return (parseInt(p.tx_30d) || 0) === 0;
         if (svFilter === -1) return (parseInt(p.tx_historicas) || 0) === 0;
+        if (svFilter === -2 || svFilter === -3) {{
+          var dst = parseInt(p.dias_sin_trx);
+          if (isNaN(dst)) dst = 9999;
+          var fromDays = svRangeFrom ? _daysBetween(svRangeFrom) : null;
+          var toDays   = svRangeTo   ? _daysBetween(svRangeTo)   : null;
+          if (fromDays !== null && toDays !== null) {{
+            return dst >= toDays && dst <= fromDays;
+          }}
+          if (fromDays !== null) return dst >= fromDays;
+          if (toDays   !== null) return dst >= toDays;
+        }}
         return true;
       }}
       function matchLayer(layer) {{
