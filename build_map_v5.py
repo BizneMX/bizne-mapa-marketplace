@@ -4760,28 +4760,15 @@ if _os.path.exists(_RB_JS_PATH):
         _html  = _html[:_start] + _html[_end:]
     _api_url = _os.environ.get('RB_API_URL', '')
 
-    # Hunters desde RDS para fallback cuando no hay API pública
+    # Hunters desde hunters.json (actualizado desde RDS local cuando hay cambios)
     _hunters_data = []
+    _hunters_json_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'hunters.json')
     try:
-        import psycopg2 as _pg
-        _db_url = _os.environ.get('DATABASE_URL', '')
-        if _db_url:
-            _conn = _pg.connect(_db_url)
-            _cur  = _conn.cursor()
-            _cur.execute("""
-                SELECT id, nombre, apellido, email
-                FROM usuarios
-                WHERE activo = true AND auth_role = 'hunters'
-                ORDER BY nombre
-            """)
-            _hunters_data = [
-                {'id': r[0], 'nombre': r[1] or '', 'apellido': r[2] or '', 'email': r[3]}
-                for r in _cur.fetchall()
-            ]
-            _conn.close()
-            print(f"  👥 {len(_hunters_data)} hunters bakeados desde RDS")
+        with open(_hunters_json_path, encoding='utf-8') as _fh:
+            _hunters_data = json.load(_fh)
+        print(f"  👥 {len(_hunters_data)} hunters cargados desde hunters.json")
     except Exception as _e:
-        print(f"  ⚠ No se pudo cargar hunters desde DB: {_e}")
+        print(f"  ⚠ No se pudo leer hunters.json: {_e}")
 
     _rb_block = (
         f'{_RB_MARKER}\n'

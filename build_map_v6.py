@@ -177,26 +177,16 @@ def inject_route_builder():
         html  = html[:start] + html[end:]
     api_url = os.environ.get('RB_API_URL', '')
 
-    # Hunters desde RDS para fallback sin API pública
+    # Hunters desde hunters.json (actualizado desde RDS local cuando hay cambios)
     hunters_data = []
+    hunters_json_path = os.path.join(DIR, 'hunters.json')
     try:
-        import psycopg2
-        db_url = os.environ.get('DATABASE_URL', '')
-        if db_url:
-            conn = psycopg2.connect(db_url)
-            cur  = conn.cursor()
-            cur.execute("""
-                SELECT id, nombre, apellido, email FROM usuarios
-                WHERE activo = true AND auth_role = 'hunters' ORDER BY nombre
-            """)
-            hunters_data = [
-                {'id': r[0], 'nombre': r[1] or '', 'apellido': r[2] or '', 'email': r[3]}
-                for r in cur.fetchall()
-            ]
-            conn.close()
-            print(f"  👥 {len(hunters_data)} hunters bakeados desde RDS")
+        import json as _json_h
+        with open(hunters_json_path, encoding='utf-8') as _f:
+            hunters_data = _json_h.load(_f)
+        print(f"  👥 {len(hunters_data)} hunters cargados desde hunters.json")
     except Exception as e:
-        print(f"  ⚠ No se pudo cargar hunters desde DB: {e}")
+        print(f"  ⚠ No se pudo leer hunters.json: {e}")
 
     import json as _json
     block = (
