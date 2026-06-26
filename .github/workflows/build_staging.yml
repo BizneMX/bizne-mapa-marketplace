@@ -1,9 +1,9 @@
 name: Build Mapa Staging (PostgreSQL directo)
 
 on:
-  workflow_dispatch:  # Correr manualmente desde GitHub (seleccionando la rama db-migration)
+  workflow_dispatch:
   push:
-    branches: [db-migration]
+    branches: [main]
     paths:
       - 'build_map_v5.py'
       - 'build_map_v6.py'
@@ -54,5 +54,5 @@ jobs:
           git config user.name "Bizne Bot"
           git add staging.html
           git diff --staged --quiet && echo "Sin cambios" || git commit -m "Staging actualizado $(date '+%Y-%m-%d %H:%M UTC')"
-          git pull --rebase --autostash origin db-migration
+          git pull --rebase --autostash origin main
           git push

@@ -176,10 +176,34 @@ def inject_route_builder():
         end   = html.rindex(RB_MARKER) + len(RB_MARKER)
         html  = html[:start] + html[end:]
     api_url = os.environ.get('RB_API_URL', '')
+
+    # Hunters desde RDS para fallback sin API pública
+    hunters_data = []
+    try:
+        import psycopg2
+        db_url = os.environ.get('DATABASE_URL', '')
+        if db_url:
+            conn = psycopg2.connect(db_url)
+            cur  = conn.cursor()
+            cur.execute("""
+                SELECT id, nombre, apellido, email FROM usuarios
+                WHERE activo = true AND auth_role = 'hunters' ORDER BY nombre
+            """)
+            hunters_data = [
+                {'id': r[0], 'nombre': r[1] or '', 'apellido': r[2] or '', 'email': r[3]}
+                for r in cur.fetchall()
+            ]
+            conn.close()
+            print(f"  👥 {len(hunters_data)} hunters bakeados desde RDS")
+    except Exception as e:
+        print(f"  ⚠ No se pudo cargar hunters desde DB: {e}")
+
+    import json as _json
     block = (
         f'{RB_MARKER}\n'
         f'<script src="{SORTABLE_CDN}"></script>\n'
-        f'<script>window.RB_CONFIG = {{"apiUrl": {json_dumps(api_url)}}};</script>\n'
+        f'<script>window.RB_CONFIG = {{"apiUrl": {json_dumps(api_url)}, '
+        f'"hunters": {_json.dumps(hunters_data, ensure_ascii=False)}}};</script>\n'
         f'<script>\n{js}\n</script>\n'
         f'{RB_MARKER}'
     )
