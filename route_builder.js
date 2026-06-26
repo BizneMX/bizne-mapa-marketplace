@@ -897,14 +897,16 @@
                : '<span style="font-size:10px">' + z.zona + '</span>') +
       indicatorsHTML(cell, z);
     if (who) {
-      html += '<div style="margin-top:4px">En la ruta de <b>' + who + '</b> ' +
+      html += '<div style="margin-top:4px">En la ruta de <b>' + _displayName(who) + '</b> ' +
         '<button onclick="window._rbUnassign(\'' + cell + '\')" style="margin-left:6px;font-size:10px;' +
         'padding:2px 8px;border:1px solid #dc2626;background:none;color:#dc2626;border-radius:4px;cursor:pointer">' +
         '✕ Quitar</button></div>';
     } else {
       html += '<div style="display:flex;gap:5px;margin-top:5px">' +
         '<select id="rb-pop-h" style="flex:1;font-size:11px;padding:3px">' +
-        (window.HUNTERS_LIST || []).map(function (h) { return '<option>' + h + '</option>'; }).join('') +
+        Object.keys(_hunterById).map(function (uid) {
+          return '<option value="' + uid + '">' + _hunterById[uid].nombre + '</option>';
+        }).join('') +
         '</select>' +
         '<button onclick="window._rbAssignFromPopup(\'' + cell + '\')" style="font-size:11px;padding:3px 10px;' +
         'background:#14532d;color:#86efac;border:none;border-radius:4px;cursor:pointer;font-weight:700">➕ Asignar</button></div>';
@@ -949,10 +951,10 @@
     THE_MAP.on('click', window._rbMapClick);
     window._rbAssignFromPopup = function (hexId) {
       var sel = document.getElementById('rb-pop-h');
-      var h = sel ? sel.value : null;
-      if (!h) return;
-      if (openLanes.indexOf(h) < 0) openLanes.push(h);
-      assignZone(hexId, h);
+      var uid = sel ? sel.value : null;
+      if (!uid) return;
+      if (openLanes.indexOf(uid) < 0) openLanes.push(uid);
+      assignZone(hexId, uid);
       THE_MAP.closePopup();
     };
     window._rbUnassign = function (hexId) {
@@ -962,9 +964,16 @@
     // Asignación rápida desde el tooltip de hover (no requiere Route Builder abierto)
     window._rbAssignZone = function (hexId, hunter) {
       if (!hunter) return;
-      if (openLanes.indexOf(hunter) < 0) openLanes.push(hunter);
-      assignZone(hexId, hunter);
-      // Cierra el tooltip para dar feedback visual
+      // hunter puede llegar como nombre (tooltip v5) o como user_id — normalizar a uid
+      var uid = String(hunter);
+      if (!_hunterById[uid]) {
+        var found = Object.keys(_hunterById).find(function (id) {
+          return _hunterById[id].nombre === hunter;
+        });
+        if (found) uid = found;
+      }
+      if (openLanes.indexOf(uid) < 0) openLanes.push(uid);
+      assignZone(hexId, uid);
       THE_MAP.closeTooltip();
     };
     window._rbUnassignZone = function (hexId) {
