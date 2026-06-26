@@ -4,7 +4,15 @@ on:
   schedule:
     # Cada hora en punto (UTC) — datos frescos de Postgres cada 60 min
     - cron: '0 * * * *'
-  workflow_dispatch:  # Permite correrlo manualmente desde GitHub
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'build_map_v5.py'
+      - 'route_builder.js'
+      - 'hunters.json'
+      - 'bizne_model_ci.py'
+      - '.github/workflows/update-map.yml'
 
 jobs:
   update-map:
