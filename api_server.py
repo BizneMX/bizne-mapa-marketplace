@@ -400,6 +400,13 @@ def chat(payload: ChatPayload):
     return {'reply': data.get('reply', ''), 'actions': data.get('actions', [])}
 
 
+# Handler para AWS Lambda (Mangum adapta ASGI → Lambda event)
+try:
+    from mangum import Mangum
+    handler = Mangum(app, lifespan='off')
+except ImportError:
+    handler = None  # local: solo se usa uvicorn
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host='0.0.0.0', port=int(os.environ.get('PORT', '8000')))
