@@ -25,6 +25,7 @@ if _CI:
     METRO_CSV= _os.path.join(_DIR, 'kepler_real_metro.csv')
     SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
     UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # actualizado por bizne_model_ci.py desde BD
+    SID_JSON = _os.path.join(_DIR, 'data', 'sid_locations.json')
     TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
@@ -42,6 +43,7 @@ else:
     METRO_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_metro.csv'
     SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
     UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
+    SID_JSON = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'sid_locations.json')
     TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv'
     TRX_HIST_CSVS = [
         '/sessions/confident-jolly-pasteur/mnt/uploads/data_transacciones.csv',
@@ -822,6 +824,30 @@ for _, row in df_sec.iterrows():
 
 SEC_DATA = json.dumps({"type":"FeatureCollection","features":sec_features}, ensure_ascii=False)
 print(f"  {len(sec_features)} sectores PA")
+
+# ══════════════════════════════════════════════════════════════════════
+# 7b. GRUPO SID LOCATIONS
+# ══════════════════════════════════════════════════════════════════════
+print("Building SID_DATA…")
+try:
+    with open(SID_JSON, encoding='utf-8') as _f:
+        _sid_raw = json.load(_f)
+    sid_features = []
+    for row in _sid_raw:
+        sid_features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [float(row['lng']), float(row['lat'])]},
+            "properties": {
+                "nombre": row.get('nombre', ''),
+                "descripcion": row.get('descripcion', ''),
+                "empleados": row.get('empleados', 0),
+            }
+        })
+except Exception as _e:
+    sid_features = []
+    print(f"  ⚠ sid_locations.json no cargado: {_e}")
+SID_DATA = json.dumps({"type": "FeatureCollection", "features": sid_features}, ensure_ascii=False)
+print(f"  {len(sid_features)} ubicaciones Grupo SID")
 
 # ══════════════════════════════════════════════════════════════════════
 # 8. HUNTER DATA — combined score hex-level zones
@@ -1817,6 +1843,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
       <label class="bchk"><input type="checkbox" id="ly_kyc"     onchange="toggleLayer('kyc',this.checked)">
         <span class="bdot" style="background:#a855f7;box-shadow:0 0 5px #a855f7"></span> KYC sin consumo</label>
+      <label class="bchk"><input type="checkbox" id="ly_sid"     onchange="toggleLayer('sid',this.checked)">
+        <span class="bdot" style="background:#1d4ed8"></span> Grupo SID</label>
       <div style="margin:6px 0 2px">
         <div style="font-size:9px;color:#64748b;margin-bottom:3px">Filtro KYC sin consumo:</div>
         <div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">
@@ -2488,6 +2516,7 @@ var DORM_DATA           = {DORM_DATA};
 var METRO_DATA          = {METRO_DATA};
 var UPC_DATA            = {UPC_DATA};
 var SEC_DATA            = {SEC_DATA};
+var SID_DATA            = {SID_DATA};
 var HUNTER_DATA         = {HUNTER_DATA};
 var SESSION_DEMAND_DATA = {SESSION_DEMAND_DATA};
 var ACTIV_DATA          = {ACTIV_DATA};
@@ -3760,6 +3789,17 @@ document.addEventListener("DOMContentLoaded", function() {{
           {{sticky:true,opacity:0.97}});}}
     }}).addTo(theMap);
 
+    // Grupo SID
+    window.LYR_SID = L.geoJSON(SID_DATA, {{
+      pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:10,
+        color:"#1e3a5f",weight:2.5,fillColor:"#1d4ed8",fillOpacity:0.9}});}},
+      onEachFeature:function(f,l){{var p=f.properties;
+        l.bindTooltip("<b style='color:#93c5fd'>🏢 "+p.nombre+"</b><br>"+
+          "<span style='font-size:10px;color:#94a3b8'>"+p.descripcion+"</span>"+
+          (p.empleados ? "<br>Empleados: <b>"+p.empleados+"</b>" : ""),
+          {{sticky:true,opacity:0.97,maxWidth:200}});}}
+    }}).addTo(theMap);
+
     // Puntos de Activación
     window.LYR_ACTIV = L.geoJSON(ACTIV_DATA, {{
       pointToLayer: function(f, ll) {{
@@ -3910,7 +3950,7 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC}};
+                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC,sid:window.LYR_SID}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
       // Sync hunter hex code labels + malla completa (parte de la capa hunter)
@@ -3940,7 +3980,7 @@ document.addEventListener("DOMContentLoaded", function() {{
     }})();
 
     // ── Aplicar visibilidad inicial según checkboxes ───────────────
-    ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ'].forEach(function(name) {{
+    ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ','sid'].forEach(function(name) {{
       var el = document.getElementById('ly_'+name);
       if (!el || !el.checked) window.toggleLayer(name, false);
     }});

@@ -11,6 +11,7 @@ on:
       - 'build_map_v5.py'
       - 'route_builder.js'
       - 'hunters.json'
+      - 'data/sid_locations.json'
       - 'bizne_model_ci.py'
       - '.github/workflows/update-map.yml'
 

@@ -1,0 +1,16 @@
+[
+  {
+    "nombre": "Corporativo G. SID",
+    "descripcion": "Corporativo / El Peral",
+    "lat": 19.554942,
+    "lng": -99.194207,
+    "empleados": 169
+  },
+  {
+    "nombre": "Operativo G. SID",
+    "descripcion": "Personal / Dir Traxión",
+    "lat": 19.621084,
+    "lng": -99.179797,
+    "empleados": 436
+  }
+]
