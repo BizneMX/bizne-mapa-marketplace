@@ -46,6 +46,7 @@ jobs:
       - name: Paso 2 — Generar mapa interactivo v5 con datos frescos
         env:
           GITHUB_ACTIONS_RUN: "true"
+          RB_API_URL: ${{ vars.RB_API_URL }}
         run: python build_map_v5.py
 
       - name: Publicar mapa en GitHub Pages
