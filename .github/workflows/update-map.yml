@@ -56,7 +56,13 @@ jobs:
         run: |
           git config user.email "github-actions@bizne.mx"
           git config user.name "Bizne Bot"
-          git pull --rebase --autostash origin main
+          # Guardar el index.html recién generado
+          cp index.html /tmp/index_fresh.html
+          # Sincronizar con origin sin perder nuestro archivo
+          git fetch origin
+          git reset --hard origin/main
+          # Restaurar el index.html generado (siempre es el correcto)
+          cp /tmp/index_fresh.html index.html
           git add index.html
           git diff --staged --quiet && echo "Sin cambios" || git commit -m "Mapa actualizado $(date '+%Y-%m-%d %H:%M UTC')"
-          git push || (git pull --rebase --autostash origin main && git push)
+          git push
