@@ -871,6 +871,8 @@ try:
     for _, _row in _df_recos.iterrows():
         try:
             _rlat, _rlng = float(_row['lat']), float(_row['lng'])
+            if _rlat != _rlat or _rlng != _rlng:  # NaN check (NaN != NaN)
+                continue
         except (ValueError, TypeError):
             continue
         recos_features.append({

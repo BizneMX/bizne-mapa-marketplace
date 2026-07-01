@@ -2657,16 +2657,19 @@ def fetch_airtable_recos():
 
         lat, lng = None, None
         try:
-            lat, lng = float(f.get('Latitud')), float(f.get('Longitud'))
+            _la, _ln = float(f.get('Latitud')), float(f.get('Longitud'))
+            if _la == _la and _ln == _ln:  # NaN check
+                lat, lng = _la, _ln
         except (TypeError, ValueError):
             pass
-        if not lat and maps_url:
+        if lat is None and maps_url:
             lat, lng = _extract_coords_from_maps_url(maps_url)
 
         out.append({
             'nombre': nombre, 'direccion': direccion, 'quien': quien,
             'organizacion': org, 'estatus': estatus,
-            'lat': lat or '', 'lng': lng or '',
+            'lat': lat if lat is not None else '',
+            'lng': lng if lng is not None else '',
         })
 
     pd.DataFrame(out).to_csv(RECOS_CSV, index=False, encoding='utf-8')
