@@ -77,6 +77,7 @@ print(f"   H3 resolución       : {H3_RES}  (~{h3.average_hexagon_area(H3_RES,'k
 MCP_URL     = os.environ.get("MCP_URL", "https://mcp.bizne.com.mx/mcp")
 MCP_API_KEY = os.environ.get("MCP_API_KEY", "")
 _DIR        = os.path.dirname(os.path.abspath(__file__))
+RECOS_CSV   = os.path.join(_DIR, 'data', 'airtable_recos.csv')
 
 def _query_mcp(sql, nombre, cache_file):
     """
@@ -602,7 +603,7 @@ LEFT JOIN (
         SELECT k.user_id, k.status, k.created_date,
             ROW_NUMBER() OVER (
                 PARTITION BY k.user_id
-                ORDER BY CASE WHEN k.status='APPROVED' THEN 1 ELSE 0 END DESC,
+                ORDER BY CASE WHEN k.is_approved = true THEN 1 ELSE 0 END DESC,
                     k.created_date DESC, k.id DESC
             ) AS rn
         FROM kyc_kycsession k
@@ -2639,3 +2640,74 @@ print(f"\n   📍 bizne_mapa_real.html         — mapa Folium (preview)")
 import shutil
 shutil.copy(os.path.join(os.path.dirname(os.path.abspath(__file__)), "bizne_mapa_real.html"), os.path.join(os.path.dirname(os.path.abspath(__file__)), "index.html"))
 print("✅ index.html listo para GitHub Pages")
+
+# ── Airtable: negocios recomendados por usuarios ───────────────────────────────
+import re as _re_airtable
+
+AIRTABLE_TOKEN    = os.environ.get('AIRTABLE_TOKEN', '')
+AIRTABLE_BASE_ID  = os.environ.get('AIRTABLE_BASE_ID', '')
+AIRTABLE_TABLE_ID = os.environ.get('AIRTABLE_TABLE_ID', '')
+
+
+def _extract_coords_from_maps_url(url):
+    m = _re_airtable.search(r'@(-?\d+\.\d+),(-?\d+\.\d+)', url)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    m = _re_airtable.search(r'[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)', url)
+    if m:
+        return float(m.group(1)), float(m.group(2))
+    return None, None
+
+
+def fetch_airtable_recos():
+    if not AIRTABLE_TOKEN or not AIRTABLE_BASE_ID or not AIRTABLE_TABLE_ID:
+        print("  ⚠ Airtable no configurado — omitiendo capa de recomendados")
+        return
+    import requests as _rq
+    rows, offset = [], None
+    while True:
+        params = {'pageSize': 100}
+        if offset:
+            params['offset'] = offset
+        r = _rq.get(
+            f'https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_ID}',
+            headers={'Authorization': f'Bearer {AIRTABLE_TOKEN}'},
+            params=params, timeout=30,
+        )
+        r.raise_for_status()
+        body = r.json()
+        rows.extend(body.get('records', []))
+        offset = body.get('offset')
+        if not offset:
+            break
+
+    out = []
+    for rec in rows:
+        f = rec.get('fields', {})
+        nombre    = str(f.get('Nombre del Negocio', '') or '')
+        direccion = str(f.get('Dirección', '') or '')
+        quien     = str(f.get('Tú número', '') or '')
+        org       = str(f.get('Organización', '') or '')
+        estatus   = str(f.get('Status', '') or '')
+        maps_url  = str(f.get('URL Google maps', '') or '')
+
+        lat, lng = None, None
+        try:
+            lat, lng = float(f.get('Latitud')), float(f.get('Longitud'))
+        except (TypeError, ValueError):
+            pass
+        if not lat and maps_url:
+            lat, lng = _extract_coords_from_maps_url(maps_url)
+
+        out.append({
+            'nombre': nombre, 'direccion': direccion, 'quien': quien,
+            'organizacion': org, 'estatus': estatus,
+            'lat': lat or '', 'lng': lng or '',
+        })
+
+    pd.DataFrame(out).to_csv(RECOS_CSV, index=False, encoding='utf-8')
+    con_coords = sum(1 for row in out if row['lat'])
+    print(f"✅ airtable_recos.csv  ({len(out)} recomendados, {con_coords} con coords)")
+
+
+fetch_airtable_recos()

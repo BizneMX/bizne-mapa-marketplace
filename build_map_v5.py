@@ -25,8 +25,9 @@ if _CI:
     METRO_CSV= _os.path.join(_DIR, 'kepler_real_metro.csv')
     SEC_CSV  = _os.path.join(_DIR, 'kepler_real_sectores.csv')
     UPC_CSV  = _os.path.join(_DIR, 'data', 'upcs.csv')   # actualizado por bizne_model_ci.py desde BD
-    SID_JSON = _os.path.join(_DIR, 'data', 'sid_locations.json')
-    TRX_CSV  = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
+    SID_JSON  = _os.path.join(_DIR, 'data', 'sid_locations.json')
+    RECOS_CSV = _os.path.join(_DIR, 'data', 'airtable_recos.csv')
+    TRX_CSV   = _os.path.join(_DIR, 'pg_transacciones_cache.csv')
     TRX_HIST_CSVS = []   # CI: solo pg_transacciones_cache.csv es la fuente — histórico viene de BD
     ACTIV_CSV= _os.path.join(_DIR, 'data', 'puntos_activacion.csv')
     OTROS_CSV= _os.path.join(_DIR, 'pg_usuarios_otros_cache.csv')
@@ -43,8 +44,9 @@ else:
     METRO_CSV= '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_metro.csv'
     SEC_CSV  = '/sessions/confident-jolly-pasteur/mnt/outputs/kepler_real_sectores.csv'
     UPC_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Policía_UPCs_Data_Maps_2025_12_15.csv'
-    SID_JSON = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'sid_locations.json')
-    TRX_CSV  = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv'
+    SID_JSON  = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'sid_locations.json')
+    RECOS_CSV = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), 'data', 'airtable_recos.csv')
+    TRX_CSV   = '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_-_Last_30_days_2026_06_02.csv'
     TRX_HIST_CSVS = [
         '/sessions/confident-jolly-pasteur/mnt/uploads/data_transacciones.csv',
         '/sessions/confident-jolly-pasteur/mnt/uploads/Coordinates_Trxs_2026_05_04.csv',
@@ -190,8 +192,13 @@ cutoff = pd.Timestamp('2026-04-20')
 df_post = df_aprov[(df_aprov['created_date'] >= cutoff) & (df_aprov['transacciones'] > 0)]
 dias_prom = round(df_post['days_to_first_trx'].dropna().mean(), 1) if len(df_post) > 0 else 0
 
-# % last session sin supply (users with location but no nearby businesses)
-df_aprov_loc = df_aprov[df_aprov['lat'].notna() & (df_aprov['lat'] != 0)].copy()
+# % last session sin supply — solo usuarios con coords reales (no imputadas)
+_has_real = 'tiene_coords_reales'
+if _has_real in df_aprov.columns:
+    df_aprov_loc = df_aprov[df_aprov[_has_real] == True].copy()
+else:
+    df_aprov_loc = df_aprov[df_aprov['lat'].notna() & (df_aprov['lat'] != 0)].copy()
+n_sin_coords = len(df_aprov) - len(df_aprov_loc)  # aprobados sin ubicación real
 df_aprov_loc['hex_id'] = df_aprov_loc.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
 
 # Businesses per hex
@@ -248,7 +255,12 @@ def _kpi_for_group(df_grp):
               if 'created_date' in df_ap.columns else pd.DataFrame()
     dias_v = float(round(df_post['days_to_first_trx'].dropna().mean(), 1)) if len(df_post) > 0 else 0.0
     if pd.isna(dias_v): dias_v = 0.0
-    df_loc = df_ap[df_ap['lat'].notna() & (df_ap['lat'] != 0)].copy()
+    _has_real = 'tiene_coords_reales'
+    if _has_real in df_ap.columns:
+        df_loc = df_ap[df_ap[_has_real] == True].copy()
+    else:
+        df_loc = df_ap[df_ap['lat'].notna() & (df_ap['lat'] != 0)].copy()
+    n_sc = int(len(df_ap) - len(df_loc))
     if len(df_loc) > 0:
         df_loc['_hx'] = df_loc.apply(lambda r: safe_h3(r['lat'], r['lng']), axis=1)
         df_loc['_nb'] = df_loc['_hx'].apply(biz_nearby)
@@ -264,6 +276,7 @@ def _kpi_for_group(df_grp):
         'conv_reg':       round(n_tx / n_sig * 100, 1) if n_sig > 0 else 0.0,
         'dias_prom':      dias_v,
         'pct_sin_supply': pct_sup,
+        'n_sin_coords':   n_sc,
     }
 
 # Pre-filtrar df_trx por org una sola vez
@@ -325,6 +338,7 @@ k = {
     'conv_registrados_tx': conv_registrados_tx,
     'dias_prom_primer_consumo': dias_prom,
     'pct_sin_supply': pct_sin_supply,
+    'n_sin_coords': int(n_sin_coords),
     'negocios_activos': neg_activos,
     'negocios_dormidos': neg_dormidos,
     'dormidos_pct_total': dormidos_pct,
@@ -848,6 +862,32 @@ except Exception as _e:
     print(f"  ⚠ sid_locations.json no cargado: {_e}")
 SID_DATA = json.dumps({"type": "FeatureCollection", "features": sid_features}, ensure_ascii=False)
 print(f"  {len(sid_features)} ubicaciones Grupo SID")
+
+# Airtable: negocios recomendados por usuarios
+print("Building RECOS_DATA…")
+recos_features = []
+try:
+    _df_recos = pd.read_csv(RECOS_CSV, encoding='utf-8')
+    for _, _row in _df_recos.iterrows():
+        try:
+            _rlat, _rlng = float(_row['lat']), float(_row['lng'])
+        except (ValueError, TypeError):
+            continue
+        recos_features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [_rlng, _rlat]},
+            "properties": {
+                "nombre":       str(_row.get('nombre', '') or ''),
+                "direccion":    str(_row.get('direccion', '') or ''),
+                "quien":        str(_row.get('quien', '') or ''),
+                "organizacion": str(_row.get('organizacion', '') or ''),
+                "estatus":      str(_row.get('estatus', '') or ''),
+            },
+        })
+except Exception as _e:
+    print(f"  ⚠ airtable_recos.csv no cargado: {_e}")
+RECOS_DATA = json.dumps({"type": "FeatureCollection", "features": recos_features}, ensure_ascii=False)
+print(f"  {len(recos_features)} negocios recomendados con coords")
 
 # ══════════════════════════════════════════════════════════════════════
 # 8. HUNTER DATA — combined score hex-level zones
@@ -1674,7 +1714,7 @@ KPI_HTML = f"""
     <div class="ksec"><span class="ksec-lbl">👤 Usuarios</span><span id="kpi-org-label" style="font-size:8px;color:#94a3b8"></span></div>
     <div class="kc"><div class="kl">Signups</div><div class="kv t" id="kpi-signups">{k['signups_totales']}</div></div>
     <div class="kc"><div class="kl">Aprobados</div><div class="kv" id="kpi-aprobados">{k['usuarios_aprobados']}</div><div class="ks" id="kpi-ap-pct">{ap_pct}%</div></div>
-    <div class="kc"><div class="kl">Sin supply</div><div class="kv {ss_col}" id="kpi-sin-supply">{k['pct_sin_supply']}%</div><div class="ks">sin negocio cerca</div></div>
+    <div class="kc"><div class="kl">Sin supply</div><div class="kv {ss_col}" id="kpi-sin-supply">{k['pct_sin_supply']}%</div><div class="ks">sin negocio cerca · <span id="kpi-sin-coords" style="color:#94a3b8">{k['n_sin_coords']} sin ubicación</span></div></div>
     <!-- Embudo compacto -->
     <div class="kc full">
       <div class="kl" style="margin-bottom:3px">Embudo conversión <span style="font-weight:400;color:#94a3b8">(excluye membresías)</span></div>
@@ -1843,6 +1883,8 @@ PANEL_HTML = """
         <span class="bdot" style="background:#E879F9;box-shadow:0 0 5px #E879F9"></span> Puntos de Activación</label>
       <label class="bchk"><input type="checkbox" id="ly_kyc"     onchange="toggleLayer('kyc',this.checked)">
         <span class="bdot" style="background:#a855f7;box-shadow:0 0 5px #a855f7"></span> KYC sin consumo</label>
+      <label class="bchk"><input type="checkbox" id="ly_recos"   onchange="toggleLayer('recos',this.checked)">
+        <span class="bdot" style="background:#f59e0b"></span> Recomendados usuarios</label>
       <label class="bchk"><input type="checkbox" id="ly_sid"     onchange="toggleLayer('sid',this.checked)">
         <span class="bdot" style="background:#1d4ed8"></span> Grupo SID</label>
       <div style="margin:6px 0 2px">
@@ -2517,6 +2559,7 @@ var METRO_DATA          = {METRO_DATA};
 var UPC_DATA            = {UPC_DATA};
 var SEC_DATA            = {SEC_DATA};
 var SID_DATA            = {SID_DATA};
+var RECOS_DATA          = {RECOS_DATA};
 var HUNTER_DATA         = {HUNTER_DATA};
 var SESSION_DEMAND_DATA = {SESSION_DEMAND_DATA};
 var ACTIV_DATA          = {ACTIV_DATA};
@@ -2823,6 +2866,7 @@ function updateKPIMetrics() {{
     _setText('kpi-dias-prom',   d.dias_prom + 'd');
     _setText('kpi-sin-supply',  d.pct_sin_supply + '%');
     _setColor('kpi-sin-supply', supColor);
+    if (d.n_sin_coords !== undefined) _setText('kpi-sin-coords', d.n_sin_coords + ' sin ubicación');
 
     // Transacciones — responden al filtro de org × rango
     _setText('kpi-trx-ok',      d.trx_ok !== undefined ? d.trx_ok : '—');
@@ -3800,6 +3844,20 @@ document.addEventListener("DOMContentLoaded", function() {{
           {{sticky:true,opacity:0.97,maxWidth:200}});}}
     }}).addTo(theMap);
 
+    // Recomendados por usuarios (Airtable)
+    window.LYR_RECOS = L.geoJSON(RECOS_DATA, {{
+      pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:9,
+        color:"#92400e",weight:2,fillColor:"#f59e0b",fillOpacity:0.9}});}},
+      onEachFeature:function(f,l){{var p=f.properties;
+        var est=p.estatus?"<br><span style='color:#fbbf24;font-size:9px'>● "+p.estatus+"</span>":'';
+        l.bindTooltip(
+          "<b style='color:#fbbf24'>⭐ "+p.nombre+"</b>"+est+
+          (p.direccion?"<br><span style='color:#94a3b8;font-size:9px'>"+p.direccion+"</span>":'')+
+          (p.quien?"<br><span style='font-size:9px'>Recomendado por: <b>"+p.quien+"</b></span>":'')+
+          (p.organizacion?"<br><span style='color:#64748b;font-size:9px'>"+p.organizacion+"</span>":''),
+          {{sticky:true,opacity:0.97,maxWidth:240}});}}
+    }});
+
     // Puntos de Activación
     window.LYR_ACTIV = L.geoJSON(ACTIV_DATA, {{
       pointToLayer: function(f, ll) {{
@@ -3950,7 +4008,8 @@ document.addEventListener("DOMContentLoaded", function() {{
       var map = {{hexes:window.LYR_HEX,activos:window.LYR_BIZ,dormidas:window.LYR_DORM,
                  hunter:window.LYR_HUNTER,sdemand:window.LYR_SESSION_DEMAND,
                  metro:window.LYR_METRO,upcs:window.LYR_UPCS,sec:window.LYR_SEC,
-                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC,sid:window.LYR_SID}};
+                 activ:window.LYR_ACTIV,kyc:window.LYR_KYC,sid:window.LYR_SID,
+                 recos:window.LYR_RECOS}};
       var lyr = map[name]; if (!lyr) return;
       show ? (!m.hasLayer(lyr) && m.addLayer(lyr)) : (m.hasLayer(lyr) && m.removeLayer(lyr));
       // Sync hunter hex code labels + malla completa (parte de la capa hunter)
@@ -3980,7 +4039,7 @@ document.addEventListener("DOMContentLoaded", function() {{
     }})();
 
     // ── Aplicar visibilidad inicial según checkboxes ───────────────
-    ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ','sid'].forEach(function(name) {{
+    ['hexes','dormidas','hunter','sdemand','metro','upcs','sec','activ','sid','recos'].forEach(function(name) {{
       var el = document.getElementById('ly_'+name);
       if (!el || !el.checked) window.toggleLayer(name, false);
     }});

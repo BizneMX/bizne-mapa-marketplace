@@ -41,6 +41,9 @@ jobs:
           MCP_API_KEY: ${{ secrets.MCP_API_KEY }}
           MCP_URL: "https://mcp.bizne.com.mx/mcp"
           GITHUB_ACTIONS_RUN: "true"
+          AIRTABLE_TOKEN:    ${{ secrets.AIRTABLE_TOKEN }}
+          AIRTABLE_BASE_ID:  ${{ vars.AIRTABLE_BASE_ID }}
+          AIRTABLE_TABLE_ID: ${{ vars.AIRTABLE_TABLE_ID }}
         run: python bizne_model_ci.py
 
       - name: Paso 2 — Generar mapa interactivo v5 con datos frescos
