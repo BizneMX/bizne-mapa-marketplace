@@ -2667,7 +2667,7 @@ def fetch_airtable_recos():
 
         out.append({
             'nombre': nombre, 'direccion': direccion, 'quien': quien,
-            'organizacion': org, 'estatus': estatus,
+            'organizacion': org, 'estatus': estatus, 'maps_url': maps_url,
             'lat': lat if lat is not None else '',
             'lng': lng if lng is not None else '',
         })

@@ -875,15 +875,19 @@ try:
                 continue
         except (ValueError, TypeError):
             continue
+        def _sv(v):
+            s = '' if v is None else str(v)
+            return '' if s in ('nan', 'None') else s
         recos_features.append({
             "type": "Feature",
             "geometry": {"type": "Point", "coordinates": [_rlng, _rlat]},
             "properties": {
-                "nombre":       str(_row.get('nombre', '') or ''),
-                "direccion":    str(_row.get('direccion', '') or ''),
-                "quien":        str(_row.get('quien', '') or ''),
-                "organizacion": str(_row.get('organizacion', '') or ''),
-                "estatus":      str(_row.get('estatus', '') or ''),
+                "nombre":       _sv(_row.get('nombre')),
+                "direccion":    _sv(_row.get('direccion')),
+                "quien":        _sv(_row.get('quien')),
+                "organizacion": _sv(_row.get('organizacion')),
+                "estatus":      _sv(_row.get('estatus')),
+                "maps_url":     _sv(_row.get('maps_url')),
             },
         })
 except Exception as _e:
@@ -3848,16 +3852,21 @@ document.addEventListener("DOMContentLoaded", function() {{
 
     // Recomendados por usuarios (Airtable)
     window.LYR_RECOS = L.geoJSON(RECOS_DATA, {{
-      pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:9,
-        color:"#92400e",weight:2,fillColor:"#f59e0b",fillOpacity:0.9}});}},
+      pointToLayer:function(f,ll){{return L.circleMarker(ll,{{radius:5,
+        color:"#92400e",weight:1.5,fillColor:"#f59e0b",fillOpacity:0.9}});}},
       onEachFeature:function(f,l){{var p=f.properties;
-        var est=p.estatus?"<br><span style='color:#fbbf24;font-size:9px'>● "+p.estatus+"</span>":'';
-        l.bindTooltip(
-          "<b style='color:#fbbf24'>⭐ "+p.nombre+"</b>"+est+
-          (p.direccion?"<br><span style='color:#94a3b8;font-size:9px'>"+p.direccion+"</span>":'')+
-          (p.quien?"<br><span style='font-size:9px'>Recomendado por: <b>"+p.quien+"</b></span>":'')+
-          (p.organizacion?"<br><span style='color:#64748b;font-size:9px'>"+p.organizacion+"</span>":''),
-          {{sticky:true,opacity:0.97,maxWidth:240}});}}
+        var nombre=p.nombre||'Sin nombre';
+        var est=p.estatus?"<span style='color:#fbbf24;font-size:9px'>● "+p.estatus+"</span><br>":'';
+        var mapsLink=p.maps_url?"<a href='"+p.maps_url+"' target='_blank' style='color:#60a5fa;font-size:9px'>📍 Ver en Google Maps</a><br>":'';
+        var popupHtml=
+          "<div style='min-width:180px'>"+
+          "<b style='color:#d97706'>⭐ "+nombre+"</b><br>"+est+
+          (p.direccion?"<span style='color:#6b7280;font-size:9px'>"+p.direccion+"</span><br>":'')+
+          mapsLink+
+          (p.quien?"<span style='font-size:9px'>Por: <b>"+p.quien+"</b></span><br>":'')+
+          (p.organizacion?"<span style='color:#9ca3af;font-size:9px'>"+p.organizacion+"</span>":'')+"</div>";
+        l.bindTooltip("<b style='color:#fbbf24'>⭐ "+nombre+"</b>",{{sticky:true,opacity:0.9}});
+        l.bindPopup(popupHtml,{{maxWidth:260}});}}
     }});
 
     // Puntos de Activación
