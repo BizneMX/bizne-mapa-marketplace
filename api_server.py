@@ -14,6 +14,8 @@ Variables de entorno:
   BIZNE_JWT_SECRET      — secreto para validar el JWT de la plataforma Bizne (MCP)
   BIZNE_JWT_ALGORITHM   — algoritmo JWT (default: HS256)
   HUNTERS_MAP           — JSON {"email": "nombre_display"} email → hunter_name
+  MCP_URL               — URL del servidor MCP de Bizne (default: https://mcp.bizne.com.mx/mcp)
+  MCP_API_KEY           — API key del MCP (Bearer token); si está vacío el chat opera sin herramientas
 """
 import json
 import os
@@ -21,11 +23,116 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Dict, List, Optional
 
 import anthropic
+import requests as _requests
 from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from jose import JWTError, jwt
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
+
+# ── MCP ────────────────────────────────────────────────────────────────
+MCP_URL = os.environ.get('MCP_URL', 'https://mcp.bizne.com.mx/mcp')
+MCP_API_KEY = os.environ.get('MCP_API_KEY', '')
+
+_MCP_TOOLS_CACHE: Optional[list] = None
+
+
+def _mcp_call_tool(name: str, arguments: dict) -> str:
+    headers = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
+        'Authorization': f'Bearer {MCP_API_KEY}',
+    }
+    r = _requests.post(MCP_URL, json={
+        'jsonrpc': '2.0', 'id': 0, 'method': 'initialize',
+        'params': {'protocolVersion': '2024-11-05',
+                   'clientInfo': {'name': 'rb-chat', 'version': '1.0'},
+                   'capabilities': {}},
+    }, headers=headers, timeout=30)
+    r.raise_for_status()
+    sid = r.headers.get('mcp-session-id')
+    if sid:
+        headers['mcp-session-id'] = sid
+
+    _requests.post(MCP_URL, json={
+        'jsonrpc': '2.0', 'method': 'notifications/initialized', 'params': {},
+    }, headers=headers, timeout=15)
+
+    r = _requests.post(MCP_URL, json={
+        'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+        'params': {'name': name, 'arguments': arguments},
+    }, headers=headers, timeout=60)
+    r.raise_for_status()
+
+    ct = r.headers.get('content-type', '')
+    if 'text/event-stream' in ct:
+        body = None
+        for line in r.text.splitlines():
+            if line.startswith('data:'):
+                body = json.loads(line[5:].strip())
+    else:
+        body = r.json()
+
+    if body is None:
+        return ''
+    content = body.get('result', {}).get('content', [])
+    return content[0].get('text', '') if content else json.dumps(body)
+
+
+def _mcp_get_tools() -> list:
+    global _MCP_TOOLS_CACHE
+    if not MCP_API_KEY:
+        return []
+    if _MCP_TOOLS_CACHE is not None:
+        return _MCP_TOOLS_CACHE
+    try:
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json, text/event-stream',
+            'Authorization': f'Bearer {MCP_API_KEY}',
+        }
+        r = _requests.post(MCP_URL, json={
+            'jsonrpc': '2.0', 'id': 0, 'method': 'initialize',
+            'params': {'protocolVersion': '2024-11-05',
+                       'clientInfo': {'name': 'rb-chat', 'version': '1.0'},
+                       'capabilities': {}},
+        }, headers=headers, timeout=30)
+        r.raise_for_status()
+        sid = r.headers.get('mcp-session-id')
+        if sid:
+            headers['mcp-session-id'] = sid
+
+        _requests.post(MCP_URL, json={
+            'jsonrpc': '2.0', 'method': 'notifications/initialized', 'params': {},
+        }, headers=headers, timeout=15)
+
+        r = _requests.post(MCP_URL, json={
+            'jsonrpc': '2.0', 'id': 1, 'method': 'tools/list', 'params': {},
+        }, headers=headers, timeout=30)
+        r.raise_for_status()
+
+        ct = r.headers.get('content-type', '')
+        if 'text/event-stream' in ct:
+            body = None
+            for line in r.text.splitlines():
+                if line.startswith('data:'):
+                    body = json.loads(line[5:].strip())
+        else:
+            body = r.json()
+
+        raw_tools = (body or {}).get('result', {}).get('tools', [])
+        _MCP_TOOLS_CACHE = [
+            {
+                'name': t['name'],
+                'description': t.get('description', ''),
+                'input_schema': t.get('inputSchema', {'type': 'object', 'properties': {}}),
+            }
+            for t in raw_tools
+        ]
+    except Exception:
+        _MCP_TOOLS_CACHE = []
+    return _MCP_TOOLS_CACHE
+
 
 # ── Base de datos ───────────────────────────────────────────────────────
 _engine = None
@@ -314,21 +421,24 @@ def hunter_ruta(request: Request, week: str = Query(default='')):
 
 
 # ── Chat con Claude ────────────────────────────────────────────────────
-SYSTEM_PROMPT = """Eres el asistente de planeación de rutas de hunting de Bizne para \
-Policía Auxiliar en CDMX y Estado de México. Conoces el modelo de zonas H3 (resolución 8, \
-malla con numeración HEX-XXXXX fija): la prioridad de cada hexágono se calcula 100% con \
-sesiones de usuarios (proxy de demanda) cruzadas con la oferta de negocios en el hex y su \
-anillo vecino. Tiers: A=rojo alta prioridad (demanda sin cobertura), B=naranja media-alta, \
-C=amarillo equilibrio, D=verde cubierta. gap = cocinas faltantes (1 cocina ≈ 10 usuarios).
+SYSTEM_PROMPT = """Eres el Consultor Bizne del mapa de hunting en CDMX y Estado de México.
 
-Tu trabajo: ayudar a asignar zonas a hunters y optimizar sus rutas de campo.
-- Para agrupar zonas contiguas usa la distancia entre lat/lng (hexes H3-r8 miden ~0.7 km
-  de radio; vecinos están a <1.5 km del centro).
-- Prioriza tier A (🔴) y zonas con mayor score/gap.
-- Cuando sugieras asignaciones concretas, inclúyelas en `actions` para que el usuario
-  las confirme con un clic. Usa hex_code (HEX-XXXX) y el nombre exacto del hunter.
-- Responde en español, conciso y accionable. El contexto JSON del estado actual del
-  mapa (zonas, métricas, hunters, asignaciones) llega en cada mensaje."""
+Tienes acceso a la base de datos completa de Bizne mediante herramientas MCP. Úsalas \
+para responder preguntas sobre negocios, consumos, KPIs, menús, niveles de calidad y \
+zonas H3 del mapa.
+
+Nomenclatura obligatoria: "Biznes" (no "restaurantes"), "Consumos" (no "transacciones"), \
+"BzCoins" (no "puntos").
+
+Modelo de zonas H3 (resolución 8): prioridad calculada con sesiones de usuarios (demanda) \
+vs oferta de Biznes en el hex y su anillo vecino. Tiers: A=rojo (demanda sin cobertura), \
+B=naranja media-alta, C=amarillo equilibrio, D=verde cubierta. \
+gap = cocinas faltantes (1 cocina ≈ 10 usuarios).
+
+Cuando presentes listas de Biznes, usa tablas markdown con los campos más relevantes. \
+Responde en español, conciso y accionable. \
+Si el usuario pide asignaciones de zonas a hunters, inclúyelas en `actions`. \
+El contexto JSON del mapa (hexes, hunters, asignaciones) llega en cada mensaje."""
 
 CHAT_SCHEMA = {
     'type': 'object',
@@ -369,29 +479,61 @@ def get_claude():
 @app.post('/api/chat')
 def chat(payload: ChatPayload):
     client = get_claude()
-    history = [
-        {'role': m['role'], 'content': m['content']}
-        for m in payload.history[-12:]
-        if m.get('role') in ('user', 'assistant') and m.get('content')
-    ]
+    mcp_tools = _mcp_get_tools()
+
     user_msg = (
         f"<contexto_mapa>\n{json.dumps(payload.context, ensure_ascii=False)}\n</contexto_mapa>\n\n"
         f"{payload.message}"
     )
+    messages = [
+        *[
+            {'role': m['role'], 'content': m['content']}
+            for m in payload.history[-12:]
+            if m.get('role') in ('user', 'assistant') and m.get('content')
+        ],
+        {'role': 'user', 'content': user_msg},
+    ]
+
+    response = None
     try:
-        response = client.messages.create(
-            model='claude-haiku-4-5',
-            max_tokens=2000,
-            system=[{
-                'type': 'text',
-                'text': SYSTEM_PROMPT,
-                'cache_control': {'type': 'ephemeral'},
-            }],
-            messages=history + [{'role': 'user', 'content': user_msg}],
-            output_config={'format': {'type': 'json_schema', 'schema': CHAT_SCHEMA}},
-        )
+        for _ in range(6):
+            kwargs: dict = dict(
+                model='claude-haiku-4-5',
+                max_tokens=2000,
+                system=[{
+                    'type': 'text',
+                    'text': SYSTEM_PROMPT,
+                    'cache_control': {'type': 'ephemeral'},
+                }],
+                messages=messages,
+                output_config={'format': {'type': 'json_schema', 'schema': CHAT_SCHEMA}},
+            )
+            if mcp_tools:
+                kwargs['tools'] = mcp_tools
+            response = client.messages.create(**kwargs)
+
+            if response.stop_reason == 'tool_use':
+                tool_results = []
+                for block in response.content:
+                    if block.type == 'tool_use':
+                        try:
+                            result = _mcp_call_tool(block.name, block.input)
+                        except Exception as exc:
+                            result = f'Error al llamar {block.name}: {exc}'
+                        tool_results.append({
+                            'type': 'tool_result',
+                            'tool_use_id': block.id,
+                            'content': result,
+                        })
+                messages.append({'role': 'assistant', 'content': response.content})
+                messages.append({'role': 'user', 'content': tool_results})
+            else:
+                break
     except anthropic.APIStatusError as e:
         raise HTTPException(502, f'Claude API error: {e.message}')
+
+    if response is None:
+        return {'reply': 'Sin respuesta', 'actions': []}
     text_block = next((b.text for b in response.content if b.type == 'text'), '{}')
     try:
         data = json.loads(text_block)

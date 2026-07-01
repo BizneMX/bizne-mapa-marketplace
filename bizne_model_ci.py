@@ -234,6 +234,56 @@ def _coerce_numeric(df):
 
 # ── SQL Queries ────────────────────────────────────────────────────────────────
 SQL_NEGOCIOS = """
+WITH tx_agg AS (
+    -- Un solo scan de transaction_transaction con aggregates condicionales por ventana
+    SELECT
+        tt.service_id,
+        COUNT(t.id)                                                                                                      AS transacciones_historicas,
+        COUNT(t.id) FILTER (WHERE t.hidden IS FALSE AND tt.user_id NOT IN (108608,109497,108604,108609,108585))          AS transacciones_hist_real,
+        COUNT(t.id)        FILTER (WHERE t.created_date >= NOW()-INTERVAL '90 days')                                     AS transacciones_ultimos_90_dias,
+        AVG(t.amount)      FILTER (WHERE t.created_date >= NOW()-INTERVAL '90 days')::float                              AS ticket_promedio_ultimos_90_dias,
+        COUNT(t.id)        FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days')                                     AS transacciones_ultimos_30_dias,
+        COALESCE(SUM(tt.count) FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days'),0)                              AS comidas_ultimos_30_dias,
+        COALESCE(SUM(t.amount) FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days'),0)                              AS ventas_ultimos_30_dias,
+        AVG(t.amount)      FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days')::float                              AS ticket_promedio_ultimos_30_dias,
+        COALESCE(SUM(t.service_fee) FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days'),0)                         AS bizne_fee_ultimos_30_dias,
+        COUNT(t.id) FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days' AND t.hidden IS FALSE AND tt.is_active IS TRUE) AS transacciones_acceptadas_ultimos_30_dias,
+        COUNT(t.id) FILTER (WHERE t.created_date >= NOW()-INTERVAL '30 days' AND t.delivery IS TRUE)                     AS delivery_ultimos_30_dias,
+        COUNT(t.id) FILTER (WHERE t.created_date >= NOW()-INTERVAL '7 days' AND t.hidden IS FALSE)                       AS transacciones_ultimos_7_dias,
+        COALESCE(SUM(t.amount) FILTER (WHERE t.created_date >= NOW()-INTERVAL '7 days' AND t.hidden IS FALSE),0)          AS ventas_ultimos_7_dias,
+        AVG(EXTRACT(EPOCH FROM (tt.last_modified_date-tt.created_date))/60.0) FILTER (
+            WHERE t.created_date >= NOW()-INTERVAL '30 days'
+              AND tt.last_modified_date IS NOT NULL AND tt.created_date IS NOT NULL
+              AND tt.last_modified_date >= tt.created_date
+              AND tt.is_active IS TRUE AND t.hidden IS FALSE
+        ) AS tiempo_p50_aceptacion_min_ultimos_30_dias
+    FROM transaction_transaction t
+    JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
+    GROUP BY tt.service_id
+),
+menu_flags AS (
+    SELECT ss2.id AS service_id,
+        COALESCE(BOOL_OR(lm.name ILIKE '%carta%'),FALSE) AS menu_a_la_carta,
+        COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'),FALSE) AS menu_bizne,
+        COALESCE(BOOL_OR(lm.name ILIKE '%premium%'),FALSE) AS menu_premium,
+        COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'),FALSE) AS menu_de_dia
+    FROM service_service ss2
+    LEFT JOIN (
+        SELECT DISTINCT ON (sm.service_id, sm.name) sm.service_id, sm.name
+        FROM service_internmenuservice sm
+        WHERE sm.is_active IS TRUE
+        ORDER BY sm.service_id, sm.name, sm.created_date DESC
+    ) lm ON ss2.id = lm.service_id
+    WHERE ss2.is_active IS TRUE
+    GROUP BY ss2.id
+),
+food_types_agg AS (
+    SELECT csft.service_id,
+        STRING_AGG(DISTINCT sf.name, ', ' ORDER BY sf.name) AS food_types
+    FROM service_service_food_types csft
+    JOIN service_foodtype sf ON sf.id = csft.foodtype_id
+    GROUP BY csft.service_id
+)
 SELECT
     service_id, name, phone_number, owner_name, hunter, address, cp, colonia, delegacion,
     latitude, longitude, is_active, sleep,
@@ -259,151 +309,65 @@ SELECT
          WHEN dias_desde_creacion<=90 THEN 'En crecimiento'
          ELSE 'Maduro' END AS etapa_negocio,
     service_cohort, food_types, categoria_negocio, allow_delivery, max_delivery_distance,
-    last_transaction_register, bizne_creation_date,
-    schedule
+    last_transaction_register, bizne_creation_date, schedule
 FROM (
-    SELECT *,
-        ROUND((COALESCE(rating,0)/5.0*25)::numeric,2) AS score_rating,
-        ROUND(GREATEST(0,15*(1-LEAST(COALESCE(tiempo_p50_aceptacion_min_ultimos_30_dias,15),15)/15.0))::numeric,2) AS score_tiempo_aceptacion,
-        ROUND(GREATEST(0,10*(1-COALESCE(tasa_no_aceptados_ultimos_30_dias,1)))::numeric,2) AS score_no_aceptados,
-        CASE WHEN menu_de_dia IS TRUE THEN 20 ELSE 0 END AS score_menu_dia,
-        CASE WHEN menu_a_la_carta IS TRUE THEN 20 ELSE 0 END AS score_menu_carta,
-        CASE WHEN menu_bizne IS TRUE THEN 10 ELSE 0 END AS score_menu_bizne
-    FROM (
-        SELECT
-            s.id AS service_id, s.name, s.phone_number, s.owner_name,
-            a.address,
-            SUBSTRING(a.address FROM '[0-9]{5}') AS cp,
-            NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',2),'\m[0-9]{5}\M','','g'))),'') AS colonia,
-            NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',3),'\m[0-9]{5}\M','','g'))),'') AS delegacion,
-            ST_Y(a.coordinates) AS latitude,
-            ST_X(a.coordinates) AS longitude,
-            s.is_active, s.allow_delivery, s.max_delivery_distance, s.sleep,
-            COALESCE(s.schedule, '') AS schedule,
-            ft.food_types,
-            mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
-            COALESCE(th.transacciones_historicas,0) AS transacciones_historicas,
-            COALESCE(th_real.transacciones_hist_real,0) AS transacciones_hist_real,
-            COALESCE(t90.transacciones_ultimos_90_dias,0) AS transacciones_ultimos_90_dias,
-            t90.ticket_promedio_ultimos_90_dias,
-            COALESCE(sm30.transacciones_ultimos_30_dias,0) AS transacciones_ultimos_30_dias,
-            COALESCE(sm7.transacciones_ultimos_7_dias,0) AS transacciones_ultimos_7_dias,
-            COALESCE(sm7.ventas_ultimos_7_dias,0) AS ventas_ultimos_7_dias,
-            COALESCE(sm30.comidas_ultimos_30_dias,0) AS comidas_ultimos_30_dias,
-            sm30.ticket_promedio_ultimos_30_dias,
-            COALESCE(sm30.bizne_fee_ultimos_30_dias,0) AS bizne_fee_ultimos_30_dias,
-            COALESCE(sm30.ventas_ultimos_30_dias,0) AS ventas_ultimos_30_dias,
-            COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias,0) AS transacciones_acceptadas_ultimos_30_dias,
-            COALESCE(sm30.delivery_ultimos_30_dias,0) AS delivery_ultimos_30_dias,
-            s.last_transaction_register,
-            s.created_date AS bizne_creation_date,
-            ROUND(sm30.tiempo_p50_aceptacion_min_ultimos_30_dias) AS tiempo_p50_aceptacion_min_ultimos_30_dias,
-            GREATEST(CURRENT_DATE-s.created_date::date,0) AS dias_desde_creacion,
-            CASE WHEN s.last_transaction_register IS NULL THEN NULL
-                 ELSE GREATEST(CURRENT_DATE-s.last_transaction_register::date,0) END AS dias_desde_ultima_transaccion,
-            ROUND(COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0)::numeric,2) AS tasa_aceptacion_ultimos_30_dias,
-            ROUND((1-COALESCE(sm30.transacciones_acceptadas_ultimos_30_dias/NULLIF(sm30.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS tasa_no_aceptados_ultimos_30_dias,
-            ROUND((s.calification_sum/NULLIF(s.calification_count::float,0))::numeric,2) AS rating,
-            u.name AS hunter,
-            COALESCE(scat.name, '') AS categoria_negocio,
-            CASE WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<1500 THEN '5 - Low Critico'
-                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<5000 THEN '4 - Low'
-                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<10000 THEN '3 - Growth'
-                 WHEN COALESCE(sm30.ventas_ultimos_30_dias,0)<25000 THEN '2 - Core'
-                 ELSE '1 - Elite' END AS service_cohort
-        FROM service_service s
-        JOIN administrative_division_address a ON s.address_id = a.id
-        LEFT JOIN (
-            SELECT ss.id, COUNT(t.id) AS transacciones_historicas
-            FROM transaction_transaction t
-            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
-            JOIN service_service ss ON tt.service_id = ss.id
-            GROUP BY ss.id
-        ) th ON th.id = s.id
-        LEFT JOIN (
-            -- Tx históricas excluyendo usuarios internos/test (para métrica de activación real)
-            SELECT ss.id, COUNT(t.id) AS transacciones_hist_real
-            FROM transaction_transaction t
-            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
-            JOIN service_service ss ON tt.service_id = ss.id
-            WHERE tt.user_id NOT IN (108608, 109497, 108604, 108609, 108585)
-            GROUP BY ss.id
-        ) th_real ON th_real.id = s.id
-        LEFT JOIN (
-            SELECT ss.id,
-                COUNT(t.id) AS transacciones_ultimos_90_dias,
-                AVG(t.amount)::float AS ticket_promedio_ultimos_90_dias
-            FROM transaction_transaction t
-            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
-            JOIN service_service ss ON tt.service_id = ss.id
-            WHERE t.created_date >= NOW() - INTERVAL '90 days'
-            GROUP BY ss.id
-        ) t90 ON t90.id = s.id
-        LEFT JOIN (
-            SELECT ss.id,
-                COUNT(t.id) AS transacciones_ultimos_30_dias,
-                COALESCE(SUM(tt.count),0) AS comidas_ultimos_30_dias,
-                COALESCE(SUM(t.amount),0) AS ventas_ultimos_30_dias,
-                AVG(t.amount)::float AS ticket_promedio_ultimos_30_dias,
-                COALESCE(SUM(t.service_fee),0) AS bizne_fee_ultimos_30_dias,
-                COUNT(*) FILTER (WHERE t.hidden IS FALSE AND tt.is_active IS TRUE) AS transacciones_acceptadas_ultimos_30_dias,
-                COUNT(*) FILTER (WHERE t.delivery IS TRUE) AS delivery_ultimos_30_dias,
-                PERCENTILE_CONT(0.5) WITHIN GROUP (
-                    ORDER BY EXTRACT(EPOCH FROM (tt.last_modified_date-tt.created_date))/60.0
-                ) FILTER (
-                    WHERE tt.last_modified_date IS NOT NULL AND tt.created_date IS NOT NULL
-                      AND tt.last_modified_date >= tt.created_date
-                      AND tt.is_active IS TRUE AND t.hidden IS FALSE
-                ) AS tiempo_p50_aceptacion_min_ultimos_30_dias
-            FROM transaction_transaction t
-            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
-            JOIN service_service ss ON tt.service_id = ss.id
-            WHERE t.created_date >= NOW() - INTERVAL '30 days'
-            GROUP BY ss.id
-        ) sm30 ON sm30.id = s.id
-        LEFT JOIN (
-            SELECT ss.id,
-                COUNT(t.id) AS transacciones_ultimos_7_dias,
-                COALESCE(SUM(t.amount),0) AS ventas_ultimos_7_dias
-            FROM transaction_transaction t
-            JOIN transaction_transactionticket tt ON t.ticket_id = tt.id
-            JOIN service_service ss ON tt.service_id = ss.id
-            WHERE t.created_date >= NOW() - INTERVAL '7 days'
-              AND t.hidden IS FALSE
-            GROUP BY ss.id
-        ) sm7 ON sm7.id = s.id
-        LEFT JOIN (
-            SELECT ss2.id AS service_id,
-                COALESCE(BOOL_OR(lm.name ILIKE '%carta%'),FALSE) AS menu_a_la_carta,
-                COALESCE(BOOL_OR(lm.name ILIKE '%bizne%'),FALSE) AS menu_bizne,
-                COALESCE(BOOL_OR(lm.name ILIKE '%premium%'),FALSE) AS menu_premium,
-                COALESCE(BOOL_OR(lm.name ILIKE '%dia%' OR lm.name ILIKE '%día%'),FALSE) AS menu_de_dia
-            FROM service_service ss2
-            LEFT JOIN (
-                SELECT DISTINCT ON (sm.service_id, sm.name) sm.service_id, sm.name
-                FROM service_internmenuservice sm
-                WHERE sm.is_active IS TRUE
-                ORDER BY sm.service_id, sm.name, sm.created_date DESC
-            ) lm ON ss2.id = lm.service_id
-            WHERE ss2.is_active IS TRUE
-            GROUP BY ss2.id
-        ) mf ON mf.service_id = s.id
-        LEFT JOIN (
-            SELECT csft.service_id,
-                STRING_AGG(DISTINCT sf.name, ', ' ORDER BY sf.name) AS food_types
-            FROM service_service_food_types csft
-            JOIN service_foodtype sf ON sf.id = csft.foodtype_id
-            GROUP BY csft.service_id
-        ) ft ON ft.service_id = s.id
-        LEFT JOIN user_user u ON u.id = s.hunter_id
-        LEFT JOIN service_servicecategory scat ON scat.id = s.category_id
-        WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
-    ) _base
+    SELECT
+        s.id AS service_id, s.name, s.phone_number, s.owner_name,
+        a.address,
+        SUBSTRING(a.address FROM '[0-9]{5}') AS cp,
+        NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',2),'\m[0-9]{5}\M','','g'))),'') AS colonia,
+        NULLIF(UPPER(TRIM(REGEXP_REPLACE(SPLIT_PART(a.address,',',3),'\m[0-9]{5}\M','','g'))),'') AS delegacion,
+        ST_Y(a.coordinates) AS latitude, ST_X(a.coordinates) AS longitude,
+        s.is_active, s.allow_delivery, s.max_delivery_distance, s.sleep,
+        COALESCE(s.schedule,'') AS schedule,
+        ft.food_types,
+        mf.menu_a_la_carta, mf.menu_bizne, mf.menu_premium, mf.menu_de_dia,
+        COALESCE(tx.transacciones_historicas,0)                  AS transacciones_historicas,
+        COALESCE(tx.transacciones_hist_real,0)                   AS transacciones_hist_real,
+        COALESCE(tx.transacciones_ultimos_90_dias,0)             AS transacciones_ultimos_90_dias,
+        tx.ticket_promedio_ultimos_90_dias,
+        COALESCE(tx.transacciones_ultimos_30_dias,0)             AS transacciones_ultimos_30_dias,
+        COALESCE(tx.transacciones_ultimos_7_dias,0)              AS transacciones_ultimos_7_dias,
+        COALESCE(tx.ventas_ultimos_7_dias,0)                     AS ventas_ultimos_7_dias,
+        COALESCE(tx.comidas_ultimos_30_dias,0)                   AS comidas_ultimos_30_dias,
+        tx.ticket_promedio_ultimos_30_dias,
+        COALESCE(tx.bizne_fee_ultimos_30_dias,0)                 AS bizne_fee_ultimos_30_dias,
+        COALESCE(tx.ventas_ultimos_30_dias,0)                    AS ventas_ultimos_30_dias,
+        COALESCE(tx.transacciones_acceptadas_ultimos_30_dias,0)  AS transacciones_acceptadas_ultimos_30_dias,
+        COALESCE(tx.delivery_ultimos_30_dias,0)                  AS delivery_ultimos_30_dias,
+        s.last_transaction_register,
+        s.created_date AS bizne_creation_date,
+        ROUND(tx.tiempo_p50_aceptacion_min_ultimos_30_dias)      AS tiempo_p50_aceptacion_min_ultimos_30_dias,
+        GREATEST(CURRENT_DATE-s.created_date::date,0)            AS dias_desde_creacion,
+        CASE WHEN s.last_transaction_register IS NULL THEN NULL
+             ELSE GREATEST(CURRENT_DATE-s.last_transaction_register::date,0) END AS dias_desde_ultima_transaccion,
+        ROUND(COALESCE(tx.transacciones_acceptadas_ultimos_30_dias/NULLIF(tx.transacciones_ultimos_30_dias,0)::float,0)::numeric,2) AS tasa_aceptacion_ultimos_30_dias,
+        ROUND((1-COALESCE(tx.transacciones_acceptadas_ultimos_30_dias/NULLIF(tx.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS tasa_no_aceptados_ultimos_30_dias,
+        ROUND((s.calification_sum/NULLIF(s.calification_count::float,0))::numeric,2) AS rating,
+        u.name AS hunter,
+        COALESCE(scat.name,'') AS categoria_negocio,
+        CASE WHEN COALESCE(tx.ventas_ultimos_30_dias,0)<1500  THEN '5 - Low Critico'
+             WHEN COALESCE(tx.ventas_ultimos_30_dias,0)<5000  THEN '4 - Low'
+             WHEN COALESCE(tx.ventas_ultimos_30_dias,0)<10000 THEN '3 - Growth'
+             WHEN COALESCE(tx.ventas_ultimos_30_dias,0)<25000 THEN '2 - Core'
+             ELSE '1 - Elite' END AS service_cohort,
+        ROUND((COALESCE(s.calification_sum/NULLIF(s.calification_count::float,0),0)/5.0*25)::numeric,2) AS score_rating,
+        ROUND(GREATEST(0,15*(1-LEAST(COALESCE(tx.tiempo_p50_aceptacion_min_ultimos_30_dias,15),15)/15.0))::numeric,2) AS score_tiempo_aceptacion,
+        ROUND(GREATEST(0,10*COALESCE(tx.transacciones_acceptadas_ultimos_30_dias/NULLIF(tx.transacciones_ultimos_30_dias,0)::float,0))::numeric,2) AS score_no_aceptados,
+        CASE WHEN mf.menu_de_dia    IS TRUE THEN 20 ELSE 0 END AS score_menu_dia,
+        CASE WHEN mf.menu_a_la_carta IS TRUE THEN 20 ELSE 0 END AS score_menu_carta,
+        CASE WHEN mf.menu_bizne     IS TRUE THEN 10 ELSE 0 END AS score_menu_bizne
+    FROM service_service s
+    JOIN administrative_division_address a ON s.address_id = a.id
+    LEFT JOIN tx_agg       tx  ON tx.service_id  = s.id
+    LEFT JOIN menu_flags   mf  ON mf.service_id  = s.id
+    LEFT JOIN food_types_agg ft ON ft.service_id = s.id
+    LEFT JOIN user_user    u   ON u.id            = s.hunter_id
+    LEFT JOIN service_servicecategory scat ON scat.id = s.category_id
+    WHERE s.is_active IS TRUE AND a.coordinates IS NOT NULL
 ) _scored
 ORDER BY kitchen_quality_score DESC, ventas_ultimos_30_dias DESC, transacciones_historicas DESC
 """
-
-# (bloque CTE legacy eliminado — reemplazado por subqueries en SQL_NEGOCIOS)
 
 _UNUSED = """
 WITH trx_historicas AS (
