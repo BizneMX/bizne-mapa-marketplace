@@ -1,125 +1,127 @@
 id,name,address,latitude,longitude
-9,UPC Teotongo,"Morelos 19, Santa Martha Acatitla, Iztapalapa, 09510 Ciudad de México, CDMX, México",-99.01393949999999,19.354175
-8,UPC Santa Cruz,"C. 71 s/n, Santa Cruz Meyehualco, Iztapalapa, 09290 Ciudad de México, CDMX, México",-99.0478912,19.3459341
-7,UPC Estrella,"Av. San Lorenzo, Cerro de la Estrella, Ciudad de México, CDMX, México",-99.0753479,19.3251028
-18,UPC La Noria,"Lic. Martínez de Castro 436, San Mateo Xalpa, Xochimilco, 16800 Ciudad de México, CDMX, México",-99.12443069999999,19.2324421
-6,UPC Quetzal,"C. 71 s/n, Santa Cruz Meyehualco, Iztapalapa, 09290 Ciudad de México, CDMX, México",-99.0478912,19.3459341
-5,UPC Abasto - Reforma,"CEDA, 09040 Ciudad de México, CDMX, México",-99.0875219,19.37384
-20,UPC Tecómitl,"Prol. Ignacio Zaragoza AREA VERDE, Xaltipac, Milpa Alta, 12100 San Antonio Tecómitl, CDMX, México",-98.9886841,19.2172158
-4,UPC Granjas,"C. Anillo de Circunvalación, Sta Bárbara, Ciudad de México, CDMX, México",-99.1052826,19.3608541
-2,UPC Alameda,"Manuel Gonzalez 407, San Simón Tolnahuac, Cuauhtémoc, 06920 Ciudad de México, CDMX, México",-99.1464482,19.4568382
-43,ABONO SSC,"Pl. Villa de Madrid, Roma Nte., Cuauhtémoc, 06700 Ciudad de México, CDMX, México",-99.16631149999999,19.4200098
-42,DIR. GEN. REG. VCA,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",-99.0602342,19.4544869
-26,UPC Tepeyac,"Excelsior 13, Guadalupe Insurgentes, Gustavo A. Madero, 07870 Ciudad de México, CDMX, México",-99.13143149999999,19.4746836
-27,UPC Quiroga,"Ote. 153 SN, Salvador Díaz Mirón, Gustavo A. Madero, 07400 Ciudad de México, CDMX, México",-99.1022866,19.487196
-28,UPC Pradera,"Deportivo los Galeana, Gustavo A. Madero, 07910 Ciudad de México, CDMX, México",-99.07759759999999,19.47890259999999
-30,UPC Cuchilla,"H.Congreso de la Unión 625, Granjas Modernas, Gustavo A. Madero, 07470 Ciudad de México, CDMX, México",-99.10739489999999,19.4754963
-31,UPC Cuautepec,"Cda. 5 de Mayo 59, Cuautepec de Madero, Gustavo A. Madero, 07200 Ciudad de México, CDMX, México",-99.1391596,19.5471287
-32,UPC Aragón,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",-99.0602342,19.4544869
-33,DIR. REG. REG. GAM,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",-99.0602342,19.4544869
-34,COORD. GRAL ZONA NORTE,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",-99.0602342,19.4544869
-36,UPC Arenal,"Periférico-Calle 7 668, El Sol, 15640 Ciudad de México, Méx., México",-99.0522721,19.4310665
-37,UPC Congreso,"Sidar y Rovirosa, El Parque, 15960 Ciudad de México, CDMX, México",-99.11580819999999,19.4272046
-38,UPC Consulado,"Cecilio Robelo 7, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",-99.1163548,19.4262879
-39,UPC Merced Balbuena,"Cecilio Robelo 103, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",-99.11443050000001,19.4249279
-40,UPC Moctezuma,"C. Rupias 40, Aquiles Serdán, Venustiano Carranza, 15430 Ciudad de México, CDMX, México",-99.09249249999999,19.4504605
-41,UPC Zaragoza,"Aeronáutica Militar, 15970 Ciudad de México, CDMX, México",-99.1158717,19.4202985
-16,UPC Milpa Alta,"Av. México Nte. 22, Villa Milpa Alta, Santa Martha, Milpa Alta, 12005 Villa Milpa Alta, CDMX, México",-99.02380409999999,19.1943357
-3,UPC Churubusco,"C. Anillo de Circunvalación, Sta Bárbara, Ciudad de México, CDMX, México",-99.1052826,19.3608541
-11,UPC Roma,"C. Antonio M. Anza SERVICIOS, Centro Urbano Pdte. Juárez, Roma Nte., Cuauhtémoc, 06760 Ciudad de México, CDMX, México",-99.15881924949964,19.411624657951815
-12,UPC Tlatelolco,"Manuel Gonzalez 407, San Simón Tolnahuac, Cuauhtémoc, 06920 Ciudad de México, CDMX, México",-99.1464482,19.4568382
-344,REGION IZTACALCO,"Ote. 237 344, Agrícola Oriental, Iztacalco, 08500 Ciudad de México, CDMX, México",-99.0760243,19.3941583
-351,UPC POLANCO,"Bahía de Todos Los Santos 175, Verónica Anzúres, Miguel Hidalgo, 11300 Ciudad de México, CDMX, México",-99.17276729999999,19.4339993
-356,UPC CLAVERIA,"C. San Mateo 32, San Mateo, Azcapotzalco, 02490 Ciudad de México, CDMX, México",-99.1891459,19.4828985
-277,UPC Morelos,"Adelina Patti 1659, Ex Hipódromo de Peralvillo, Cuauhtémoc, 06250 Ciudad de México, CDMX, México",-99.1319628,19.4535832
-281,UPC ANGEL ZONA ROSA,"Ponciano Arriaga 6A, Tabacalera, Cuauhtémoc, 06030 Ciudad de México, CDMX, México",-99.15339139999999,19.4382499
-352,UPC CHAPULTEPEC,"Av. Pdte. Masaryk, Polanco, Lomas de Chapultepec III Secc, Miguel Hidalgo, 11530 Ciudad de México, CDMX, México",-99.20835,19.43208
-357,UPC LA RAZA,"Calle Castilla Ote. 345, Los Reyes, Azcapotzalco, 02010 Ciudad de México, CDMX, México",-99.1822169,19.48382999999999
-361,"DIRECCIÓN GENERAL REGIONAL DE POLICÍA DE PRÓXIMIDAD ""CUAJIMALPA DE MORELOS""","Blvrd Reforma, Ciudad de México, CDMX, México",-99.27006519999999,19.3719869
-482,SAN JERONIMO,"Cda soledad, San Bernabé Ocotepec, 10300 Ciudad de México, CDMX, México",-99.2579829,19.3094671
-488,COAPA,"Coapa, Baldío Canal Nacional, Tlalpan, 14339 Ciudad de México, CDMX, México",-99.10204089999999,19.2953887
-467,ZONA SUR,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.1552687,19.4008397
-448,UPC XOCHIMILCO,"Xochimilco, CDMX, México",-99.1029664,19.2572314
-469,NAPOLES,"Río Becerra 127, 8 de Agosto, Benito Juárez, 03820 Ciudad de México, CDMX, México",-99.18779169999999,19.394821
-471,NARVARTE,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.1552687,19.4008397
-473,NATIVITAS,"Bretaña 6, Zacahuitzco, Benito Juárez, 03550 Ciudad de México, CDMX, México",-99.1404577,19.3734564
-475,UNIVERSIDAD,"Tenantitla 12, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",-99.1671368,19.3440064
-477,TAXQUEÑA,"Cafetales, Culhuacan CTM V, Ciudad de México, CDMX, México",-99.1119135,19.3319853
-479,CULHUACAN,"Viad. Tlalpan 3331, Ejido Viejo de Sta Úrsula Coapa, Coyoacán, 04980 Ciudad de México, CDMX, México",-99.1440473,19.3030408
-483,REGION TLALPAN,"Calz. de Tlalpan 2962, Coapa, Espartaco, Coyoacán, 04980 Ciudad de México, CDMX, México",-99.13817829999999,19.3147712
-484,PADIERNA,"Miguel Hidalgo 2da Secc, 14250 Ciudad de México, CDMX, México",-99.2023662,19.2811638
-353,UPC TACUBAYA,"Calle José María Vigil 63, Escandón I Secc, Miguel Hidalgo, 11800 Ciudad de México, CDMX, México",-99.1841733,19.4014156
-358,UPC PLATEROS,"Chiviscoyo, Sede Delegacional, Álvaro Obregón, 01150 Ciudad de México, CDMX, México",-99.20003799999999,19.3909586
-1,UPC Oasis,"Av. Canal de San Juan S/N, Ejército Constitucionalista I II y III, Iztapalapa, 09220 Ciudad de México, CDMX, México",-99.05988950000001,19.3876089
-29,UPC Lindavista,"Calz. Vallejo, México",-99.1552632,19.4975074
-445,UPM Femenil,"Sidar y Rovirosa 71, El Parque, Venustiano Carranza, 15960 Ciudad de México, CDMX, México",-99.1174116,19.4277315
-528,DOV4 Sur,"Viad. Tlalpan 3333, Coapa, Ejido Viejo de Sta Úrsula Coapa, Coyoacán, 04980 Ciudad de México, CDMX, México",-99.14293459999999,19.3046945
-447,UPC Tlahuac,"10 MZ92 LT1, Col del Mar, Tláhuac, 13270 Ciudad de México, CDMX, México",-99.0635903,19.283437
-468,REGION BENITO JUAREZ,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",-99.14893219999999,19.3719124
-449,UPC TACUBA,"C. Mar Arábigo 9, Tacuba, Miguel Hidalgo, 11410 Ciudad de México, CDMX, México",-99.1851173,19.4590937
-470,DEL VALLE,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.1552687,19.4008397
-472,PORTALES,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",-99.14893219999999,19.3719124
-474,REGION COYOACAN,"Itzolinque 19, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",-99.16749809999999,19.3440702
-476,COYOACAN,"Itzolinque 19, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",-99.16749809999999,19.3440702
-478,XOTEPINGO,"Av. del Imán 548, Pedregal de Carrasco, Coyoacán, 04300 Ciudad de México, CDMX, México",-99.1647947,19.3084614
-480,REGION MAGDALENA CONTRERAS,"Cda soledad, San Bernabé Ocotepec, 10300 Ciudad de México, CDMX, México",-99.2579829,19.3094671
-354,UPC CUITLAHUAC,"Calle Castilla Ote. 345, Los Reyes, Azcapotzalco, 02010 Ciudad de México, CDMX, México",-99.1822169,19.48382999999999
-359,UPC CUAJIMALPA,"Ramírez, Cuajimalpa, Cuajimalpa de Morelos, 05000 Ciudad de México, CDMX, México",-99.2982131,19.3576391
-35,UPC Aeropuerto,"Ruiz Cortines, Pensador Mexicano, 15510 Ciudad de México, CDMX, México",-99.0790509,19.4461983
-347,UPC PANTITLAN,"Cda. Ote. 157, Salvador Díaz Mirón, Ciudad de México, CDMX, México",-99.0971876,19.4880293
-279,UPC Buenavista,"C. Guerrero 222, Buenavista, Cuauhtémoc, 06350 Ciudad de México, CDMX, México",-99.14678209521738,19.449344867119926
-14,UPC Zapotitla,"10 MZ92 LT1, Col del Mar, Iztapalapa, 13270 Ciudad de México, CDMX, México",-99.0636327,19.2839113
-501,D.G.O.P.M,"Cinematografistas, El Vergel, Ciudad de México, CDMX, México",-99.0809203,19.3176997
-278,UPC Centro,"Pje. Allende 94, Lagunilla, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.137743,19.4432524
-346,UPC TLACOTAL,"Av. Té sn, Granjas México, Iztacalco, 08000 Ciudad de México, CDMX, México",-99.09499609999999,19.3962132
-345,UPC IZTACCIHUATL,"Santa Anita, Iztacalco, 08300 Ciudad de México, CDMX, México",-99.1212623,19.40267219999999
-343,REGION BALAM,"Cecilio Robelo 103, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",-99.11534879999999,19.426033
-280,UPC Asturias,"Chimalpopoca 100, Centro, Cuauhtémoc, 06080 Ciudad de México, CDMX, México",-99.13738699999999,19.4226273
-450,ZONA PONIENTE/CLAVERIA,"C. San Mateo 31, Santo Domingo, Azcapotzalco, 02160 Ciudad de México, CDMX, México",-99.18921259999999,19.4831986
-355,UPC HORMIGA,"SN SALIDAS POSTERIORES, 02100, Av. de las Culturas SN SALIDAS POSTERIORES, El Rosario, Azcapotzalco, 02100 Ciudad de México, CDMX, México",-99.20580190000001,19.5084087
-360,UPC EL YAQUI,"Ramírez, Cuajimalpa, Cuajimalpa de Morelos, 05000 Ciudad de México, CDMX, México",-99.2982131,19.3576391
-10,UPC Tezonco,"Martina Istella, San Antonio, 09900 Ciudad de México, CDMX, México",-99.0763214,19.3067922
-25,UPC Ticomán,"Calz. Vallejo, México",-99.1552632,19.4975074
-17,UPC Tepepan,"Calle Cuitlahuac 10, San Pedro, Xochimilco, 16090 Ciudad de México, CDMX, México",-99.1082072,19.2578703
-497,UPC SANTA FE,"Calle Peral, Santa Fe, Jalalpa el Grande 1er Reacomodo, Álvaro Obregón, 01377 Ciudad de México, CDMX, México",-99.2409378,19.3719129
-481,DINAMO,"Juan Álvarez, La Concepción, 10830 Ciudad de México, CDMX, México",-99.23513229999999,19.3015771
-526,DOV1 Norte,"C. Genaro García 355, Jardín Balbuena, Venustiano Carranza, 15900 Ciudad de México, CDMX, México",-99.1014786,19.4109549
-527,DOVZ2C,"C. Puente Santo Tomas 19, La Merced, Centro, Cuauhtémoc, 06090 Ciudad de México, CDMX, México",-99.1271323,19.4242665
-529,DOV5 Pte,"Av. 5 de Mayo, Plenitud, Ciudad de México, CDMX, México",-99.1970789,19.4723464
-517,DCEVP,"Eje Central Lázaro Cárdenas 711, Narvarte Poniente, Benito Juárez, 03410 Ciudad de México, CDMX, México",-99.146627,19.3908525
-493,UPC EMBAJADAS,"Av. Ignacio Zaragoza, Lomas Altas, Miguel Hidalgo, 11950 Ciudad de México, CDMX, México",-99.2220866,19.4010648
-494,UPC SOTELO,"02780, Av. 5 de Mayo 249, San Miguel Amantla, Miguel Hidalgo, 11210 Ciudad de México, CDMX, México",-99.1976979,19.4722501
-523,SCT,"Eje Central Lázaro Cárdenas 711, Narvarte Poniente, Benito Juárez, 03410 Ciudad de México, CDMX, México",-99.146627,19.3908525
-491,HUIPULCO-HOSPITALES,"Viad. Tlalpan 1048, Arenal Tepepan, Tlalpan, 14610 Ciudad de México, CDMX, México",-99.1553596,19.2870574
-490,NARVARTE-ALAMOS,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.1552687,19.4008397
-531,ASUNTOS INTERNOS,"06600, Liverpool 136, Juárez, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.16343649999999,19.4245339
-487,TOPILEJO,"Tetenco 9, San Miguel Topilejo, Tlalpan, 14500 San Miguel Topilejo, CDMX, México",-99.14343559999999,19.1974159
-485,FUENTE,"Av. de Las Torres 20, Miguel Hidalgo 2da Secc, Tlalpan, 14250 Ciudad de México, CDMX, México",-99.19494399999999,19.2804859
-486,HOSPITALES,"Viad. Tlalpan 1048, Arenal Tepepan, Tlalpan, 14610 Ciudad de México, CDMX, México",-99.1553596,19.2870574
-492,DOIPP,"Liverpool 136, Juárez, Cuauhtémoc, 06600 Ciudad de México, CDMX, México",-99.1635967,19.4244207
-513,DSV,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.1345753,19.4226036
-532,REGION TLAHUAC,"10 MZ92 LT1, Col del Mar, Iztapalapa, 13270 Ciudad de México, CDMX, México",-99.0636327,19.2839113
-512,DIDM,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.1345753,19.4226036
-534,UCS,"Av Arcos de Belén 79, Colonia Centro, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.14808,19.4278366
-507,Dirección de operaciones 24x24,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",-99.13387639999999,19.4317762
-506,Dirección de operaciones 12x12,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",-99.13387639999999,19.4317762
-535,SDI,"Chimalpopoca, Centro, Ciudad de México, CDMX, México",-99.137911,19.4224874
-505,DIRECCIÓN DE OPERACIONES 12X36,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",-99.13387639999999,19.4317762
-504,Penitenciaria,"San Antonio Abad 130-piso 10, Tránsito, Cuauhtémoc, 06820 Ciudad de México, CDMX, México",-99.1340184,19.4158099
-510,UPC ALPES,"Tlaxcala & Avenida Toluca, Progreso, 01080 Ciudad de México, CDMX, México",-99.2026088,19.3403978
-489,ABRAHAM,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",-99.14893219999999,19.3719124
-509,San Angel,"Tlaxcala 19, Tizapán San Ángel, Progreso, Álvaro Obregón, 01080 Ciudad de México, CDMX, México",-99.2019093,19.3396758
-499,TEQUIHUA-ALAMO,"Cinematografistas, El Vergel, Ciudad de México, CDMX, México",-99.0809203,19.3176997
-515,DGIT,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.1345753,19.4226036
-524,SPI,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.1345753,19.4226036
-525,ZV3,"Ermita Iztapalapa, Prado Churubusco, Ciudad de México, CDMX, México",-99.1250987,19.3579767
-522,DIDF,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.15061999999999,19.40239
-521,DGANT,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.15061999999999,19.40239
-520,DCIPI,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.15061999999999,19.40239
-519,DCD,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.15061999999999,19.40239
-518,DDGIT,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",-99.15061999999999,19.40239
-516,DGOT,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",-99.1345753,19.4226036
-514,DSOT,"C. Nivel 99, Lorenzo Boturini, Venustiano Carranza, 15820 Ciudad de México, CDMX, México",-99.12584918349734,19.41599089389335
-511,DIIT,"Casa del Obrero Mundial 358, Piedad Narvarte, Benito Juárez, 03000 Ciudad de México, CDMX, México",-99.1573992,19.40195
-533,DIRECCION GENERAL DE APLICACIÓN DE NORMATIVIDAD DE TRANSITO,"Centro, Cuauhtémoc, 06080 Ciudad de México, CDMX, México",-99.1364559,19.4242562
-536,DEUEG,"Av Arcos de Belén 79-piso 8, Colonia Centro, Centro, Cuauhtémoc, 06070 Ciudad de México, CDMX, México",-99.14830409999999,19.4276479
+9,UPC Teotongo,"Morelos 19, Santa Martha Acatitla, Iztapalapa, 09510 Ciudad de México, CDMX, México",19.354175,-99.0139395
+8,UPC Santa Cruz,"C. 71 s/n, Santa Cruz Meyehualco, Iztapalapa, 09290 Ciudad de México, CDMX, México",19.3459341,-99.0478912
+7,UPC Estrella,"Av. San Lorenzo, Cerro de la Estrella, Ciudad de México, CDMX, México",19.3251028,-99.0753479
+18,UPC La Noria,"Lic. Martínez de Castro 436, San Mateo Xalpa, Xochimilco, 16800 Ciudad de México, CDMX, México",19.2324421,-99.1244307
+6,UPC Quetzal,"C. 71 s/n, Santa Cruz Meyehualco, Iztapalapa, 09290 Ciudad de México, CDMX, México",19.3459341,-99.0478912
+5,UPC Abasto - Reforma,"CEDA, 09040 Ciudad de México, CDMX, México",19.37384,-99.0875219
+20,UPC Tecómitl,"Prol. Ignacio Zaragoza AREA VERDE, Xaltipac, Milpa Alta, 12100 San Antonio Tecómitl, CDMX, México",19.2172158,-98.9886841
+4,UPC Granjas,"C. Anillo de Circunvalación, Sta Bárbara, Ciudad de México, CDMX, México",19.3608541,-99.1052826
+2,UPC Alameda,"Manuel Gonzalez 407, San Simón Tolnahuac, Cuauhtémoc, 06920 Ciudad de México, CDMX, México",19.4568382,-99.1464482
+43,ABONO SSC,"Pl. Villa de Madrid, Roma Nte., Cuauhtémoc, 06700 Ciudad de México, CDMX, México",19.4200098,-99.1663115
+42,DIR. GEN. REG. VCA,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",19.4544869,-99.0602342
+26,UPC Tepeyac,"Excelsior 13, Guadalupe Insurgentes, Gustavo A. Madero, 07870 Ciudad de México, CDMX, México",19.4746836,-99.1314315
+27,UPC Quiroga,"Ote. 153 SN, Salvador Díaz Mirón, Gustavo A. Madero, 07400 Ciudad de México, CDMX, México",19.487196,-99.1022866
+28,UPC Pradera,"Deportivo los Galeana, Gustavo A. Madero, 07910 Ciudad de México, CDMX, México",19.47890259999999,-99.0775976
+30,UPC Cuchilla,"H.Congreso de la Unión 625, Granjas Modernas, Gustavo A. Madero, 07470 Ciudad de México, CDMX, México",19.4754963,-99.1073949
+31,UPC Cuautepec,"Cda. 5 de Mayo 59, Cuautepec de Madero, Gustavo A. Madero, 07200 Ciudad de México, CDMX, México",19.5471287,-99.1391596
+32,UPC Aragón,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",19.4544869,-99.0602342
+33,DIR. REG. REG. GAM,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",19.4544869,-99.0602342
+34,COORD. GRAL ZONA NORTE,"Av. 661 599, F0VISSTE Aragón, Narciso Bassols, Gustavo A. Madero, 07979 Ciudad de México, CDMX, México",19.4544869,-99.0602342
+36,UPC Arenal,"Periférico-Calle 7 668, El Sol, 15640 Ciudad de México, Méx., México",19.4310665,-99.0522721
+37,UPC Congreso,"Sidar y Rovirosa, El Parque, 15960 Ciudad de México, CDMX, México",19.4272046,-99.1158082
+38,UPC Consulado,"Cecilio Robelo 7, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",19.4262879,-99.1163548
+39,UPC Merced Balbuena,"Cecilio Robelo 103, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",19.4249279,-99.1144305
+40,UPC Moctezuma,"C. Rupias 40, Aquiles Serdán, Venustiano Carranza, 15430 Ciudad de México, CDMX, México",19.4504605,-99.0924925
+41,UPC Zaragoza,"Aeronáutica Militar, 15970 Ciudad de México, CDMX, México",19.4202985,-99.1158717
+16,UPC Milpa Alta,"Av. México Nte. 22, Villa Milpa Alta, Santa Martha, Milpa Alta, 12005 Villa Milpa Alta, CDMX, México",19.1943357,-99.0238041
+3,UPC Churubusco,"C. Anillo de Circunvalación, Sta Bárbara, Ciudad de México, CDMX, México",19.3608541,-99.1052826
+11,UPC Roma,"C. Antonio M. Anza SERVICIOS, Centro Urbano Pdte. Juárez, Roma Nte., Cuauhtémoc, 06760 Ciudad de México, CDMX, México",19.411624657951812,-99.15881924949964
+12,UPC Tlatelolco,"Manuel Gonzalez 407, San Simón Tolnahuac, Cuauhtémoc, 06920 Ciudad de México, CDMX, México",19.4568382,-99.1464482
+344,REGION IZTACALCO,"Ote. 237 344, Agrícola Oriental, Iztacalco, 08500 Ciudad de México, CDMX, México",19.3941583,-99.0760243
+351,UPC POLANCO,"Bahía de Todos Los Santos 175, Verónica Anzúres, Miguel Hidalgo, 11300 Ciudad de México, CDMX, México",19.4339993,-99.1727673
+356,UPC CLAVERIA,"C. San Mateo 32, San Mateo, Azcapotzalco, 02490 Ciudad de México, CDMX, México",19.4828985,-99.1891459
+277,UPC Morelos,"Adelina Patti 1659, Ex Hipódromo de Peralvillo, Cuauhtémoc, 06250 Ciudad de México, CDMX, México",19.4535832,-99.1319628
+281,UPC ANGEL ZONA ROSA,"Ponciano Arriaga 6A, Tabacalera, Cuauhtémoc, 06030 Ciudad de México, CDMX, México",19.4382499,-99.1533914
+352,UPC CHAPULTEPEC,"Av. Pdte. Masaryk, Polanco, Lomas de Chapultepec III Secc, Miguel Hidalgo, 11530 Ciudad de México, CDMX, México",19.43208,-99.20835
+357,UPC LA RAZA,"Calle Castilla Ote. 345, Los Reyes, Azcapotzalco, 02010 Ciudad de México, CDMX, México",19.48382999999999,-99.1822169
+361,"DIRECCIÓN GENERAL REGIONAL DE POLICÍA DE PRÓXIMIDAD ""CUAJIMALPA DE MORELOS""","Blvrd Reforma, Ciudad de México, CDMX, México",19.3719869,-99.2700652
+486,HOSPITALES,"Viad. Tlalpan 1048, Arenal Tepepan, Tlalpan, 14610 Ciudad de México, CDMX, México",19.2870574,-99.1553596
+467,ZONA SUR,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.4008397,-99.1552687
+448,UPC XOCHIMILCO,"Xochimilco, CDMX, México",19.2572314,-99.1029664
+469,NAPOLES,"Río Becerra 127, 8 de Agosto, Benito Juárez, 03820 Ciudad de México, CDMX, México",19.394821,-99.1877917
+471,NARVARTE,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.4008397,-99.1552687
+473,NATIVITAS,"Bretaña 6, Zacahuitzco, Benito Juárez, 03550 Ciudad de México, CDMX, México",19.3734564,-99.1404577
+475,UNIVERSIDAD,"Tenantitla 12, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",19.3440064,-99.1671368
+477,TAXQUEÑA,"Cafetales, Culhuacan CTM V, Ciudad de México, CDMX, México",19.3319853,-99.1119135
+479,CULHUACAN,"Viad. Tlalpan 3331, Ejido Viejo de Sta Úrsula Coapa, Coyoacán, 04980 Ciudad de México, CDMX, México",19.3030408,-99.1440473
+483,REGION TLALPAN,"Calz. de Tlalpan 2962, Coapa, Espartaco, Coyoacán, 04980 Ciudad de México, CDMX, México",19.3147712,-99.1381783
+484,PADIERNA,"Miguel Hidalgo 2da Secc, 14250 Ciudad de México, CDMX, México",19.2811638,-99.2023662
+353,UPC TACUBAYA,"Calle José María Vigil 63, Escandón I Secc, Miguel Hidalgo, 11800 Ciudad de México, CDMX, México",19.4014156,-99.1841733
+358,UPC PLATEROS,"Chiviscoyo, Sede Delegacional, Álvaro Obregón, 01150 Ciudad de México, CDMX, México",19.3909586,-99.200038
+1,UPC Oasis,"Av. Canal de San Juan S/N, Ejército Constitucionalista I II y III, Iztapalapa, 09220 Ciudad de México, CDMX, México",19.3876089,-99.0598895
+29,UPC Lindavista,"Calz. Vallejo, México",19.4975074,-99.1552632
+445,UPM Femenil,"Sidar y Rovirosa 71, El Parque, Venustiano Carranza, 15960 Ciudad de México, CDMX, México",19.4277315,-99.1174116
+528,DOV4 Sur,"Viad. Tlalpan 3333, Coapa, Ejido Viejo de Sta Úrsula Coapa, Coyoacán, 04980 Ciudad de México, CDMX, México",19.3046945,-99.1429346
+447,UPC Tlahuac,"10 MZ92 LT1, Col del Mar, Tláhuac, 13270 Ciudad de México, CDMX, México",19.283437,-99.0635903
+468,REGION BENITO JUAREZ,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",19.3719124,-99.1489322
+449,UPC TACUBA,"C. Mar Arábigo 9, Tacuba, Miguel Hidalgo, 11410 Ciudad de México, CDMX, México",19.4590937,-99.1851173
+470,DEL VALLE,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.4008397,-99.1552687
+472,PORTALES,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",19.3719124,-99.1489322
+474,REGION COYOACAN,"Itzolinque 19, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",19.3440702,-99.1674981
+476,COYOACAN,"Itzolinque 19, San Francisco, Coyoacán, 04320 Ciudad de México, CDMX, México",19.3440702,-99.1674981
+478,XOTEPINGO,"Av. del Imán 548, Pedregal de Carrasco, Coyoacán, 04300 Ciudad de México, CDMX, México",19.3084614,-99.1647947
+480,REGION MAGDALENA CONTRERAS,"Cda soledad, San Bernabé Ocotepec, 10300 Ciudad de México, CDMX, México",19.3094671,-99.2579829
+354,UPC CUITLAHUAC,"Calle Castilla Ote. 345, Los Reyes, Azcapotzalco, 02010 Ciudad de México, CDMX, México",19.48382999999999,-99.1822169
+359,UPC CUAJIMALPA,"Ramírez, Cuajimalpa, Cuajimalpa de Morelos, 05000 Ciudad de México, CDMX, México",19.3576391,-99.2982131
+35,UPC Aeropuerto,"Ruiz Cortines, Pensador Mexicano, 15510 Ciudad de México, CDMX, México",19.4461983,-99.0790509
+347,UPC PANTITLAN,"Cda. Ote. 157, Salvador Díaz Mirón, Ciudad de México, CDMX, México",19.4880293,-99.0971876
+279,UPC Buenavista,"C. Guerrero 222, Buenavista, Cuauhtémoc, 06350 Ciudad de México, CDMX, México",19.44934486711993,-99.14678209521738
+14,UPC Zapotitla,"10 MZ92 LT1, Col del Mar, Iztapalapa, 13270 Ciudad de México, CDMX, México",19.2839113,-99.0636327
+501,D.G.O.P.M,"Cinematografistas, El Vergel, Ciudad de México, CDMX, México",19.3176997,-99.0809203
+278,UPC Centro,"Pje. Allende 94, Lagunilla, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4432524,-99.137743
+346,UPC TLACOTAL,"Av. Té sn, Granjas México, Iztacalco, 08000 Ciudad de México, CDMX, México",19.3962132,-99.0949961
+345,UPC IZTACCIHUATL,"Santa Anita, Iztacalco, 08300 Ciudad de México, CDMX, México",19.40267219999999,-99.1212623
+343,REGION BALAM,"Cecilio Robelo 103, Aeronáutica Militar, Venustiano Carranza, 15970 Ciudad de México, CDMX, México",19.426033,-99.1153488
+280,UPC Asturias,"Chimalpopoca 100, Centro, Cuauhtémoc, 06080 Ciudad de México, CDMX, México",19.4226273,-99.137387
+450,ZONA PONIENTE/CLAVERIA,"C. San Mateo 31, Santo Domingo, Azcapotzalco, 02160 Ciudad de México, CDMX, México",19.4831986,-99.1892126
+355,UPC HORMIGA,"SN SALIDAS POSTERIORES, 02100, Av. de las Culturas SN SALIDAS POSTERIORES, El Rosario, Azcapotzalco, 02100 Ciudad de México, CDMX, México",19.5084087,-99.2058019
+360,UPC EL YAQUI,"Ramírez, Cuajimalpa, Cuajimalpa de Morelos, 05000 Ciudad de México, CDMX, México",19.3576391,-99.2982131
+10,UPC Tezonco,"Martina Istella, San Antonio, 09900 Ciudad de México, CDMX, México",19.3067922,-99.0763214
+25,UPC Ticomán,"Calz. Vallejo, México",19.4975074,-99.1552632
+17,UPC Tepepan,"Calle Cuitlahuac 10, San Pedro, Xochimilco, 16090 Ciudad de México, CDMX, México",19.2578703,-99.1082072
+497,UPC SANTA FE,"Calle Peral, Santa Fe, Jalalpa el Grande 1er Reacomodo, Álvaro Obregón, 01377 Ciudad de México, CDMX, México",19.3719129,-99.2409378
+481,DINAMO,"Juan Álvarez, La Concepción, 10830 Ciudad de México, CDMX, México",19.3015771,-99.2351323
+517,DCEVP,"Eje Central Lázaro Cárdenas 711, Narvarte Poniente, Benito Juárez, 03410 Ciudad de México, CDMX, México",19.3908525,-99.146627
+493,UPC EMBAJADAS,"Av. Ignacio Zaragoza, Lomas Altas, Miguel Hidalgo, 11950 Ciudad de México, CDMX, México",19.4010648,-99.2220866
+494,UPC SOTELO,"02780, Av. 5 de Mayo 249, San Miguel Amantla, Miguel Hidalgo, 11210 Ciudad de México, CDMX, México",19.4722501,-99.1976979
+491,HUIPULCO-HOSPITALES,"Viad. Tlalpan 1048, Arenal Tepepan, Tlalpan, 14610 Ciudad de México, CDMX, México",19.2870574,-99.1553596
+490,NARVARTE-ALAMOS,"Ermita 8, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.4008397,-99.1552687
+531,ASUNTOS INTERNOS,"06600, Liverpool 136, Juárez, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4245339,-99.1634365
+487,TOPILEJO,"Tetenco 9, San Miguel Topilejo, Tlalpan, 14500 San Miguel Topilejo, CDMX, México",19.1974159,-99.1434356
+485,FUENTE,"Av. de Las Torres 20, Miguel Hidalgo 2da Secc, Tlalpan, 14250 Ciudad de México, CDMX, México",19.2804859,-99.194944
+482,SAN JERONIMO,"Cda soledad, San Bernabé Ocotepec, 10300 Ciudad de México, CDMX, México",19.3094671,-99.2579829
+488,COAPA,"Coapa, Baldío Canal Nacional, Tlalpan, 14339 Ciudad de México, CDMX, México",19.2953887,-99.1020409
+492,DOIPP,"Liverpool 136, Juárez, Cuauhtémoc, 06600 Ciudad de México, CDMX, México",19.4244207,-99.1635967
+532,REGION TLAHUAC,"10 MZ92 LT1, Col del Mar, Iztapalapa, 13270 Ciudad de México, CDMX, México",19.2839113,-99.0636327
+534,UCS,"Av Arcos de Belén 79, Colonia Centro, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4278366,-99.14808
+507,Dirección de operaciones 24x24,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",19.4317762,-99.1338764
+506,Dirección de operaciones 12x12,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",19.4317762,-99.1338764
+535,SDI,"Chimalpopoca, Centro, Ciudad de México, CDMX, México",19.4224874,-99.137911
+505,DIRECCIÓN DE OPERACIONES 12X36,"P.za de la Constitución 2, Centro Histórico de la Cdad. de México, Tránsito, Cuauhtémoc, 06060 Ciudad de México, CDMX, México",19.4317762,-99.1338764
+504,Penitenciaria,"San Antonio Abad 130-piso 10, Tránsito, Cuauhtémoc, 06820 Ciudad de México, CDMX, México",19.4158099,-99.1340184
+510,UPC ALPES,"Tlaxcala & Avenida Toluca, Progreso, 01080 Ciudad de México, CDMX, México",19.3403978,-99.2026088
+489,ABRAHAM,"Monrovia 143, Portales Nte, Benito Juárez, 03300 Ciudad de México, CDMX, México",19.3719124,-99.1489322
+509,San Angel,"Tlaxcala 19, Tizapán San Ángel, Progreso, Álvaro Obregón, 01080 Ciudad de México, CDMX, México",19.3396758,-99.2019093
+499,TEQUIHUA-ALAMO,"Cinematografistas, El Vergel, Ciudad de México, CDMX, México",19.3176997,-99.0809203
+529,DOV5 Pte,"Av. 5 de Mayo, Plenitud, Ciudad de México, CDMX, México",19.4723464,-99.1970789
+527,DOVZ2C,"C. Puente Santo Tomas 19, La Merced, Centro, Cuauhtémoc, 06090 Ciudad de México, CDMX, México",19.4242665,-99.1271323
+524,SPI,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4226036,-99.1345753
+513,DSV,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4226036,-99.1345753
+511,DIIT,"Casa del Obrero Mundial 358, Piedad Narvarte, Benito Juárez, 03000 Ciudad de México, CDMX, México",19.40195,-99.1573992
+512,DIDM,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4226036,-99.1345753
+514,DSOT,"C. Nivel 99, Lorenzo Boturini, Venustiano Carranza, 15820 Ciudad de México, CDMX, México",19.41599089389335,-99.12584918349734
+515,DGIT,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4226036,-99.1345753
+516,DGOT,"Calle Tabachin S/N, Centro, Cuauhtémoc, 06000 Ciudad de México, CDMX, México",19.4226036,-99.1345753
+526,DOV1 Norte,"C. Genaro García 355, Jardín Balbuena, Venustiano Carranza, 15900 Ciudad de México, CDMX, México",19.4109549,-99.1014786
+525,ZV3,"Ermita Iztapalapa, Prado Churubusco, Ciudad de México, CDMX, México",19.3579767,-99.1250987
+522,DIDF,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.40239,-99.15062
+521,DGANT,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.40239,-99.15062
+520,DCIPI,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.40239,-99.15062
+518,DDGIT,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.40239,-99.15062
+519,DCD,"Casa del Obrero Mundial 4, Narvarte Poniente, Benito Juárez, 03020 Ciudad de México, CDMX, México",19.40239,-99.15062
+533,DIRECCION GENERAL DE APLICACIÓN DE NORMATIVIDAD DE TRANSITO,"Centro, Cuauhtémoc, 06080 Ciudad de México, CDMX, México",19.4242562,-99.1364559
+536,DEUEG,"Av Arcos de Belén 79-piso 8, Colonia Centro, Centro, Cuauhtémoc, 06070 Ciudad de México, CDMX, México",19.4276479,-99.1483041
+523,SCT,"Eje Central Lázaro Cárdenas 711, Narvarte Poniente, Benito Juárez, 03410 Ciudad de México, CDMX, México",19.3908525,-99.146627
+574,Conduce sin Alcohol,"Liverpool 136, Juárez, Cuauhtémoc, 06600 Ciudad de México, CDMX, México",19.4244394,-99.1635947
+575,DEyCIPD,"Liverpool 136, Juárez, Cuauhtémoc, 06600 Ciudad de México, CDMX, México",19.4244394,-99.1635947
